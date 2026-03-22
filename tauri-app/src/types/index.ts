@@ -136,9 +136,15 @@ export interface ModelConfig {
   enabled: boolean;
 }
 
+export interface MaterialComposition {
+  material: string;
+  percentage: number;
+}
+
 export interface AutomationConfig {
   shipping_template: string;
   shipping_templates: string[];
+  material_compositions: MaterialComposition[];
 }
 
 export interface Settings {

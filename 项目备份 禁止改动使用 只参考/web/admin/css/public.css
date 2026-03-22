@@ -1,0 +1,26 @@
+.user-menu img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    padding: 3px;
+    background-color: #d8f4ee;
+}
+
+.user-menu span {
+    font-size: 16px;
+    margin-left: 6px;
+}
+
+.pear-admin .layui-layout-right .layui-nav-child {
+    right: 20px;
+    min-width: 0;
+}
+
+.layui-nav-itemed .layui-nav-child dd a i {
+    display: inline;
+    margin-left: 26px;
+}
+
+.layui-nav-itemed .layui-nav-child dd a span {
+    margin-left: 0 !important;
+}

@@ -1,0 +1,42 @@
+{
+  "pricing_config": {
+    "base_cost_per_unit": 8.0,
+    "platform_commission": 0.06,
+    "shipping_cost": 5.0,
+    "packaging_cost": 1.0,
+    "target_profit_margin": 0.35,
+    "min_profit_margin": 0.15,
+    "max_profit_margin": 0.5,
+    "quantity_discount_tiers": {
+      "1": 0.0,
+      "2": 0.05,
+      "3": 0.1,
+      "5": 0.15,
+      "10": 0.2
+    },
+    "auto_update_prices": true,
+    "enable_dynamic_pricing": false,
+    "competitor_monitoring": true,
+    "seasonal_adjustment": true,
+    "price_rounding_strategy": "psychology",
+    "currency": "CNY",
+    "tax_rate": 0.0,
+    "volume_pricing_enabled": true
+  },
+  "system_config": {
+    "language": "zh_CN",
+    "theme": "auto",
+    "debug_mode": false,
+    "auto_save_interval": 300,
+    "backup_retention_days": 30,
+    "max_log_size_mb": 100,
+    "db_connection_pool_size": 5,
+    "db_query_timeout": 30,
+    "cache_enabled": true,
+    "cache_ttl_seconds": 3600,
+    "max_concurrent_calculations": 10
+  },
+  "custom_configs": {},
+  "export_timestamp": "2025-07-10T18:01:01.769276",
+  "version": "1.0"
+}

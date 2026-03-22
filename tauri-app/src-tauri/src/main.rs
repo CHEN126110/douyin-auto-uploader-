@@ -6,15 +6,40 @@
 )]
 
 use std::process::{Child, Command, Stdio};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(debug_assertions)))]
 use std::os::windows::process::CommandExt;
 
 struct PythonProcess(Mutex<Option<Child>>);
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn first_existing_path(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|candidate| candidate.exists()).cloned()
+}
+
+fn resolve_debug_tauri_app_dir() -> Result<PathBuf, String> {
+    let path = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or_else(|| "failed to resolve executable directory".to_string())?
+        .parent()
+        .ok_or_else(|| "failed to resolve target directory".to_string())?
+        .parent()
+        .ok_or_else(|| "failed to resolve src-tauri directory".to_string())?
+        .parent()
+        .ok_or_else(|| "failed to resolve tauri-app directory".to_string())?
+        .to_path_buf();
+
+    Ok(path)
+}
 
 fn kill_and_wait(child: &mut Child, timeout: Duration) {
     let _ = child.kill();
@@ -45,17 +70,7 @@ async fn start_python_backend(state: tauri::State<'_, PythonProcess>) -> Result<
     }
 
     #[cfg(debug_assertions)]
-    let debug_project_dir = std::env::current_exe()
-        .map_err(|e| e.to_string())?
-        .parent()
-        .ok_or_else(|| "failed to resolve executable directory".to_string())?
-        .parent()
-        .ok_or_else(|| "failed to resolve target directory".to_string())?
-        .parent()
-        .ok_or_else(|| "failed to resolve src-tauri directory".to_string())?
-        .parent()
-        .ok_or_else(|| "failed to resolve tauri-app directory".to_string())?
-        .to_path_buf();
+    let debug_project_dir = resolve_debug_tauri_app_dir()?;
 
     #[cfg(debug_assertions)]
     let result = Command::new("python")
@@ -126,15 +141,15 @@ async fn stop_python_backend(state: tauri::State<'_, PythonProcess>) -> Result<S
 
 #[tauri::command]
 async fn check_backend_status() -> Result<serde_json::Value, String> {
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
         .map_err(|e| e.to_string())?;
 
-    match client.get("http://127.0.0.1:5001/health").send() {
+    match client.get("http://127.0.0.1:5001/health").send().await {
         Ok(response) => {
             if response.status().is_success() {
-                response.json().map_err(|e| e.to_string())
+                response.json().await.map_err(|e| e.to_string())
             } else {
                 Err("Backend returned error status".to_string())
             }
@@ -177,13 +192,107 @@ async fn open_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_app_info() -> serde_json::Value {
+fn get_app_info(app: tauri::AppHandle) -> serde_json::Value {
+    #[cfg(debug_assertions)]
+    let runtime_mode = "development";
+    #[cfg(not(debug_assertions))]
+    let runtime_mode = "packaged";
+
+    let fallback_app_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    #[cfg(debug_assertions)]
+    let app_dir = resolve_debug_tauri_app_dir().unwrap_or_else(|_| fallback_app_dir.clone());
+
+    #[cfg(not(debug_assertions))]
+    let current_exe = std::env::current_exe().ok();
+
+    #[cfg(not(debug_assertions))]
+    let app_dir = current_exe
+        .as_ref()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| fallback_app_dir.clone());
+
+    let resource_root = app.path().resource_dir().ok();
+
+    #[cfg(debug_assertions)]
+    let workspace_root = app_dir
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| app_dir.clone());
+
+    #[cfg(not(debug_assertions))]
+    let workspace_root = resource_root
+        .clone()
+        .unwrap_or_else(|| app_dir.clone());
+
+    let mcp_server_dir = if cfg!(debug_assertions) {
+        workspace_root.join("mcp-server")
+    } else {
+        resource_root
+            .as_ref()
+            .map(|root| root.join("mcp-server"))
+            .unwrap_or_else(|| app_dir.join("mcp-server"))
+    };
+    let mcp_server_entry = mcp_server_dir.join("server.js");
+    let mcp_readme_path = mcp_server_dir.join("README.md");
+
+    let skill_dir = if cfg!(debug_assertions) {
+        workspace_root.join("skills").join("douyin-publisher-mcp")
+    } else {
+        resource_root
+            .as_ref()
+            .map(|root| root.join("skills").join("douyin-publisher-mcp"))
+            .unwrap_or_else(|| app_dir.join("skills").join("douyin-publisher-mcp"))
+    };
+
+    #[cfg(target_os = "windows")]
+    let mcp_executable_name = "douyin-publisher-mcp.exe";
+    #[cfg(not(target_os = "windows"))]
+    let mcp_executable_name = "douyin-publisher-mcp";
+
+    let mut mcp_executable_candidates = vec![
+        app_dir.join(mcp_executable_name),
+        app_dir.join("mcp-server").join(mcp_executable_name),
+        mcp_server_dir.join(mcp_executable_name),
+        workspace_root.join("dist").join(mcp_executable_name),
+        workspace_root.join("mcp-server").join("dist").join(mcp_executable_name),
+    ];
+
+    if let Some(root) = resource_root.as_ref() {
+        mcp_executable_candidates.push(root.join(mcp_executable_name));
+        mcp_executable_candidates.push(root.join("mcp-server").join(mcp_executable_name));
+        mcp_executable_candidates.push(root.join("mcp").join(mcp_executable_name));
+    }
+
+    let mcp_executable_path = first_existing_path(&mcp_executable_candidates);
+    let preferred_mcp_launch_mode = if mcp_executable_path.is_some() {
+        "exe"
+    } else {
+        "node"
+    };
+
     serde_json::json!({
         "name": "Douyin Sock Publisher",
         "version": "4.0.0",
         "platform": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
-        "backend_url": "http://127.0.0.1:5001"
+        "backend_url": "http://127.0.0.1:5001",
+        "runtime_mode": runtime_mode,
+        "app_dir": path_to_string(&app_dir),
+        "workspace_root": path_to_string(&workspace_root),
+        "resource_root": resource_root.as_ref().map(|path| path_to_string(path)),
+        "mcp_server_dir": path_to_string(&mcp_server_dir),
+        "mcp_server_entry": path_to_string(&mcp_server_entry),
+        "mcp_readme_path": path_to_string(&mcp_readme_path),
+        "skill_dir": path_to_string(&skill_dir),
+        "mcp_http_endpoint": "http://127.0.0.1:3300/mcp",
+        "mcp_executable_path": mcp_executable_path.as_ref().map(|path| path_to_string(path)),
+        "mcp_server_exists": mcp_server_dir.exists(),
+        "mcp_server_entry_exists": mcp_server_entry.exists(),
+        "mcp_readme_exists": mcp_readme_path.exists(),
+        "skill_dir_exists": skill_dir.exists(),
+        "mcp_executable_exists": mcp_executable_path.is_some(),
+        "preferred_mcp_launch_mode": preferred_mcp_launch_mode
     })
 }
 
@@ -229,27 +338,15 @@ fn main() {
             println!("Tauri version: {}", tauri::VERSION);
             println!("Starting Python sidecar...");
 
-            let exe_dir = std::env::current_exe()
-                .expect("failed to get current executable path")
-                .parent()
-                .unwrap()
-                .to_path_buf();
-
             let state = app.state::<PythonProcess>();
             let mut process = state.0.lock().unwrap();
 
-            #[cfg(target_os = "windows")]
+            #[cfg(all(target_os = "windows", not(debug_assertions)))]
             const CREATE_NO_WINDOW: u32 = 0x08000000;
 
             #[cfg(debug_assertions)]
-            let debug_project_dir = exe_dir
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .to_path_buf();
+            let debug_project_dir =
+                resolve_debug_tauri_app_dir().expect("failed to resolve tauri-app debug directory");
 
             #[cfg(debug_assertions)]
             println!("Debug backend cwd: {:?}", debug_project_dir);
@@ -264,7 +361,6 @@ fn main() {
                         .env("SIDECAR_MODE", "1")
                         .env("SIDECAR_PORT", "5001")
                         .current_dir(&debug_project_dir)
-                        .creation_flags(CREATE_NO_WINDOW)
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .spawn()
@@ -286,6 +382,11 @@ fn main() {
 
             #[cfg(not(debug_assertions))]
             let result = {
+                let exe_dir = std::env::current_exe()
+                    .expect("failed to get current executable path")
+                    .parent()
+                    .unwrap()
+                    .to_path_buf();
                 let sidecar_path = exe_dir.join("python-backend.exe");
                 println!("Sidecar path: {:?}", sidecar_path);
 

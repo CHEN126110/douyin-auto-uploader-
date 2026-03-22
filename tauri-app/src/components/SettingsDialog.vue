@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { api } from "@/services/api";
+import { api, tauriCommands } from "@/services/api";
 import type {
   AutomationConfig,
   CostItem,
+  MaterialComposition,
   ModelConfig,
   Settings,
 } from "@/types";
@@ -16,6 +17,30 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:visible", value: boolean): void;
 }>();
+
+type AppInfo = {
+  name: string;
+  version: string;
+  platform: string;
+  arch: string;
+  backend_url: string;
+  runtime_mode: "development" | "packaged";
+  app_dir: string;
+  workspace_root: string;
+  resource_root: string | null;
+  mcp_server_dir: string;
+  mcp_server_entry: string;
+  mcp_readme_path: string;
+  skill_dir: string;
+  mcp_http_endpoint: string;
+  mcp_executable_path: string | null;
+  mcp_server_exists: boolean;
+  mcp_server_entry_exists: boolean;
+  mcp_readme_exists: boolean;
+  skill_dir_exists: boolean;
+  mcp_executable_exists: boolean;
+  preferred_mcp_launch_mode: "node" | "exe";
+};
 
 // 当前选中的标签页
 const activeTab = ref("pricing");
@@ -179,6 +204,57 @@ const shippingTemplates = ref<string[]>(["中通包邮"]);
 const selectedShippingTemplate = ref("中通包邮");
 // 新增模板名称
 const newTemplateName = ref("");
+const materialCompositions = ref<MaterialComposition[]>([
+  { material: "棉", percentage: 75 },
+  { material: "氨纶", percentage: 25 },
+]);
+const newMaterialName = ref("");
+const newMaterialPercentage = ref(0);
+
+function normalizeMaterialCompositions(
+  source?: Array<Partial<MaterialComposition>> | null
+): MaterialComposition[] {
+  const normalized = Array.isArray(source)
+    ? source
+        .map((item) => ({
+          material: String(item?.material ?? "").trim(),
+          percentage: Number(item?.percentage ?? 0),
+        }))
+        .filter((item) => item.material && Number.isFinite(item.percentage) && item.percentage > 0)
+    : [];
+  if (!normalized.length) {
+    return [
+      { material: "棉", percentage: 75 },
+      { material: "氨纶", percentage: 25 },
+    ];
+  }
+  return normalized;
+}
+
+const materialPercentageTotal = computed(() =>
+  materialCompositions.value.reduce((sum, item) => sum + Number(item.percentage || 0), 0)
+);
+const materialSettingsInvalid = computed(() => materialPercentageTotal.value !== 100);
+
+function addMaterialComposition() {
+  const material = newMaterialName.value.trim();
+  const percentage = Number(newMaterialPercentage.value);
+  if (!material) {
+    ElMessage.warning("请输入材质名称");
+    return;
+  }
+  if (!Number.isFinite(percentage) || percentage <= 0) {
+    ElMessage.warning("请输入有效含量");
+    return;
+  }
+  materialCompositions.value.push({ material, percentage });
+  newMaterialName.value = "";
+  newMaterialPercentage.value = 0;
+}
+
+function removeMaterialComposition(index: number) {
+  materialCompositions.value.splice(index, 1);
+}
 
 // 添加运费模板
 function addShippingTemplate() {
@@ -307,31 +383,128 @@ async function testModelConnection(config: ModelConfig) {
   }, 1000);
 }
 
-const projectRootPath = "E:\\Script Project\\Dyin\\beiufen\\2.0";
-const mcpServerPath = `${projectRootPath}\\mcp-server\\server.js`;
-const mcpHttpEndpoint = "http://127.0.0.1:3300/mcp";
-const skillPath = `${projectRootPath}\\skills\\douyin-publisher-mcp`;
-const mcpReadmePath = `${projectRootPath}\\mcp-server\\README.md`;
+const defaultAppInfo: AppInfo = {
+  name: "Douyin Sock Publisher",
+  version: "4.0.0",
+  platform: "windows",
+  arch: "x64",
+  backend_url: "http://127.0.0.1:5001",
+  runtime_mode: "development",
+  app_dir: "",
+  workspace_root: "",
+  resource_root: null,
+  mcp_server_dir: "",
+  mcp_server_entry: "",
+  mcp_readme_path: "",
+  skill_dir: "",
+  mcp_http_endpoint: "http://127.0.0.1:3300/mcp",
+  mcp_executable_path: null,
+  mcp_server_exists: false,
+  mcp_server_entry_exists: false,
+  mcp_readme_exists: false,
+  skill_dir_exists: false,
+  mcp_executable_exists: false,
+  preferred_mcp_launch_mode: "node",
+};
 
-const mcpStdioCommand = `Set-Location '${projectRootPath}\\mcp-server'
+const appInfo = ref<AppInfo>({ ...defaultAppInfo });
+
+function escapeForPowerShell(path: string) {
+  return path.replace(/'/g, "''");
+}
+
+function escapeForJson(path: string) {
+  return path.replace(/\\/g, "\\\\");
+}
+
+const backendUrl = computed(() => appInfo.value.backend_url || "http://127.0.0.1:5001");
+const mcpServerDir = computed(() => appInfo.value.mcp_server_dir || "未检测到");
+const mcpServerPath = computed(() => appInfo.value.mcp_server_entry || "未检测到");
+const mcpHttpEndpoint = computed(
+  () => appInfo.value.mcp_http_endpoint || "http://127.0.0.1:3300/mcp"
+);
+const skillPath = computed(() => appInfo.value.skill_dir || "未检测到");
+const mcpReadmePath = computed(() => appInfo.value.mcp_readme_path || "未检测到");
+const mcpExecutablePath = computed(() => appInfo.value.mcp_executable_path || "");
+const runtimeModeLabel = computed(() =>
+  appInfo.value.runtime_mode === "packaged" ? "安装包模式" : "开发模式"
+);
+const preferredMcpModeLabel = computed(() =>
+  appInfo.value.preferred_mcp_launch_mode === "exe" ? "stdio(EXE)" : "Node(stdio/HTTP)"
+);
+const mcpLaunchHint = computed(() => {
+  if (appInfo.value.preferred_mcp_launch_mode === "exe" && mcpExecutablePath.value) {
+    return "当前已检测到独立 MCP 可执行文件，推荐直接用 stdio(EXE) 接入客户端；这样不依赖源码路径，也更适合打包分发。";
+  }
+  return "当前检测到的是 Node 版 MCP Server，适合开发调试。后续如果提供独立 MCP EXE，这里会自动切换为 EXE 启动指引。";
+});
+const mcpAvailabilityHint = computed(() => {
+  if (appInfo.value.mcp_executable_exists) {
+    return "";
+  }
+  if (!appInfo.value.mcp_server_entry_exists) {
+    return "当前环境未检测到 MCP 入口文件，HTTP 模式和 Node 版 stdio 模式可能不可用。";
+  }
+  return "";
+});
+
+const mcpStdioCommand = computed(() => {
+  if (appInfo.value.mcp_executable_exists && mcpExecutablePath.value) {
+    return `& '${escapeForPowerShell(mcpExecutablePath.value)}'`;
+  }
+  if (appInfo.value.mcp_server_dir) {
+    return `Set-Location '${escapeForPowerShell(appInfo.value.mcp_server_dir)}'
 npm start`;
+  }
+  return "当前环境未检测到可用的 MCP 启动路径";
+});
 
-const mcpHttpCommand = `Set-Location '${projectRootPath}\\mcp-server'
+const mcpHttpCommand = computed(() => {
+  if (!appInfo.value.mcp_server_entry_exists || !appInfo.value.mcp_server_dir) {
+    return "当前环境未检测到 Node 版 MCP Server，HTTP 模式不可用";
+  }
+  return `Set-Location '${escapeForPowerShell(appInfo.value.mcp_server_dir)}'
 npm run start:http`;
+});
 
-const mcpClientConfig = `{
+const mcpClientConfig = computed(() => {
+  if (appInfo.value.mcp_executable_exists && mcpExecutablePath.value) {
+    return `{
   "mcpServers": {
     "douyin-publisher": {
-      "command": "node",
-      "args": [
-        "${mcpServerPath.replace(/\\/g, "\\\\")}"
-      ],
+      "command": "${escapeForJson(mcpExecutablePath.value)}",
+      "args": [],
       "env": {
-        "DOUYIN_BACKEND_URL": "http://127.0.0.1:5001"
+        "DOUYIN_BACKEND_URL": "${backendUrl.value}"
       }
     }
   }
 }`;
+  }
+
+  return `{
+  "mcpServers": {
+    "douyin-publisher": {
+      "command": "node",
+      "args": [
+        "${escapeForJson(appInfo.value.mcp_server_entry || "<your-mcp-server-entry>")}"
+      ],
+      "env": {
+        "DOUYIN_BACKEND_URL": "${backendUrl.value}"
+      }
+    }
+  }
+}`;
+});
+
+async function loadAppInfo() {
+  try {
+    appInfo.value = await tauriCommands.getAppInfo();
+  } catch (error) {
+    console.error("加载应用运行时路径失败:", error);
+    appInfo.value = { ...defaultAppInfo };
+  }
+}
 
 async function copyGuideText(text: string, label: string) {
   try {
@@ -406,9 +579,11 @@ async function loadSettings() {
             shippingTemplates.value.push(ac.shipping_template);
           }
         }
+        materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
         console.log("[Settings] 加载自动化配置:", {
           templates: shippingTemplates.value,
-          selected: selectedShippingTemplate.value
+          selected: selectedShippingTemplate.value,
+          materials: materialCompositions.value,
         });
       }
     }
@@ -433,8 +608,16 @@ async function handleSave() {
       automation_config: {
         shipping_template: selectedShippingTemplate.value,
         shipping_templates: shippingTemplates.value,
+        material_compositions: normalizeMaterialCompositions(materialCompositions.value),
       },
     };
+
+    if (materialSettingsInvalid.value) {
+      activeTab.value = "automation";
+      ElMessage.warning("材质面料总和必须等于100%，请先调整后再保存");
+      loading.value = false;
+      return;
+    }
 
     console.log("[Settings] 保存设置:", settingsToSave);
 
@@ -481,10 +664,15 @@ watch(
   () => props.visible,
   (visible) => {
     if (visible) {
+      loadAppInfo();
       loadSettings();
     }
   }
 );
+
+onMounted(() => {
+  loadAppInfo();
+});
 </script>
 
 <template>
@@ -854,7 +1042,7 @@ watch(
                   <el-button
                     type="danger"
                     size="small"
-                    text
+                    class="automation-delete-btn"
                     :disabled="shippingTemplates.length <= 1"
                     @click="removeShippingTemplate(index)"
                   >
@@ -876,6 +1064,63 @@ watch(
                 添加模板
               </el-button>
             </div>
+
+            <h3 class="section-title material-title">🧵 产品材质面料</h3>
+            <div class="material-config-panel" :class="{ invalid: materialSettingsInvalid }">
+              <div class="material-list">
+                <div
+                  v-for="(item, index) in materialCompositions"
+                  :key="`material-${index}`"
+                  class="material-item"
+                >
+                  <el-input v-model="item.material" placeholder="材质名称" class="material-name-input" />
+                  <el-input-number
+                    v-model="item.percentage"
+                    :min="1"
+                    :max="100"
+                    :precision="0"
+                    :controls="false"
+                    class="material-percentage-input"
+                  />
+                  <span class="material-unit">%</span>
+                  <el-button
+                    type="danger"
+                    size="small"
+                    class="automation-delete-btn"
+                    :disabled="materialCompositions.length <= 1"
+                    @click="removeMaterialComposition(index)"
+                  >
+                    删除
+                  </el-button>
+                </div>
+              </div>
+              <div class="add-material-form">
+                <el-input
+                  v-model="newMaterialName"
+                  placeholder="输入材质名称"
+                  class="material-name-input"
+                  @keyup.enter="addMaterialComposition"
+                />
+                <el-input-number
+                  v-model="newMaterialPercentage"
+                  :min="1"
+                  :max="100"
+                  :precision="0"
+                  :controls="false"
+                  class="material-percentage-input"
+                />
+                <span class="material-unit">%</span>
+                <el-button type="primary" @click="addMaterialComposition">
+                  添加材质
+                </el-button>
+              </div>
+              <div class="material-total" :class="{ warning: materialSettingsInvalid }">
+                当前含量总和：{{ materialPercentageTotal }}%
+              </div>
+              <div v-if="materialSettingsInvalid" class="material-warning-text">
+                材质含量总和必须等于100%，否则保存后上传会失败
+              </div>
+            </div>
           </div>
 
           <!-- 配置说明 -->
@@ -883,6 +1128,7 @@ watch(
             <p><strong>💡 配置说明：</strong></p>
             <ul>
               <li>📋 <strong>运费模板</strong> - 管理可用的运费模板列表，选择上传时使用的模板</li>
+              <li>🧵 <strong>面料材质</strong> - 自动填写面料材质与含量，总和需为100%</li>
               <li>🔍 <strong>自动匹配</strong> - 脚本会在抖音运费模板下拉列表中查找匹配的选项</li>
               <li>⚠️ <strong>注意</strong> - 模板名称需与抖音后台设置的完全一致</li>
             </ul>
@@ -892,7 +1138,7 @@ watch(
           <div class="settings-section">
             <h3 class="section-title">📚 帮助与引导</h3>
             <div class="help-buttons">
-              <el-button type="primary" plain @click="showOnboarding">
+              <el-button type="primary" plain class="guide-white-btn" @click="showOnboarding">
                 📖 重新查看新手引导
               </el-button>
               <el-button plain @click="resetOnboarding">
@@ -908,11 +1154,17 @@ watch(
             <h3 class="section-title">🚀 部署前提</h3>
             <div class="deploy-guide-card">
               <ul class="deploy-guide-list">
-                <li>先启动本工具，让本地后端可用，默认地址是 <code>http://127.0.0.1:5001</code></li>
-                <li>MCP 服务位于 <code>{{ mcpServerPath }}</code></li>
+                <li>先启动本工具，让本地后端可用，默认地址是 <code>{{ backendUrl }}</code></li>
+                <li>Runtime mode: <code>{{ runtimeModeLabel }}</code></li>
+                <li>Preferred MCP launch mode: <code>{{ preferredMcpModeLabel }}</code></li>
+                <li>MCP directory: <code>{{ mcpServerDir }}</code></li>
+                <li>MCP entry: <code>{{ mcpServerPath }}</code></li>
                 <li>Skill 目录位于 <code>{{ skillPath }}</code></li>
                 <li>如果客户端支持远程 MCP，优先使用 <code>streamable_http</code>；否则使用本地 <code>stdio</code></li>
               </ul>
+              <p class="guide-note">{{ mcpLaunchHint }}</p>
+              <p v-if="mcpExecutablePath" class="guide-note">Detected MCP executable: <code>{{ mcpExecutablePath }}</code></p>
+              <p v-if="mcpAvailabilityHint" class="guide-note">{{ mcpAvailabilityHint }}</p>
             </div>
           </div>
 
@@ -925,6 +1177,7 @@ watch(
             </div>
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpStdioCommand }}</pre>
+              <p class="guide-note">Use stdio for direct MCP client integration.</p>
             </div>
           </div>
 
@@ -938,6 +1191,7 @@ watch(
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpHttpCommand }}</pre>
               <p class="guide-note">HTTP 端点：<code>{{ mcpHttpEndpoint }}</code></p>
+              <p class="guide-note">HTTP mode is mainly for local debugging. If an MCP EXE is available, prefer stdio(EXE) to avoid a Node dependency.</p>
             </div>
           </div>
 
@@ -950,6 +1204,7 @@ watch(
             </div>
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpClientConfig }}</pre>
+              <p class="guide-note">This config is generated from the current machine's runtime paths instead of a hardcoded development path.</p>
               <p class="guide-note">将上面的 JSON 合并到支持 MCP 的客户端配置里。</p>
             </div>
           </div>
@@ -968,6 +1223,7 @@ watch(
                 <li>如果客户端不支持 Skills，也可以只接入 MCP，能力仍然可用</li>
                 <li>建议先调用 <code>health_check</code>，再执行采集、导入、定价或上传</li>
               </ul>
+              <p v-if="!appInfo.skill_dir_exists" class="guide-note">Skill directory was not found in the current runtime. For installer builds, package the Skill files as resources.</p>
             </div>
           </div>
 
@@ -1642,6 +1898,10 @@ watch(
   gap: 4px;
 }
 
+.automation-delete-btn {
+  color: #fff !important;
+}
+
 .add-template-form {
   display: flex;
   gap: 12px;
@@ -1654,6 +1914,78 @@ watch(
 .template-input {
   flex: 1;
   max-width: 300px;
+}
+
+.material-title {
+  margin-top: 20px;
+}
+
+.material-config-panel {
+  padding: 12px;
+  border: 1px solid rgba(92, 124, 250, 0.2);
+  border-radius: 10px;
+  background: rgba(92, 124, 250, 0.03);
+}
+
+.material-config-panel.invalid {
+  border-color: var(--danger-color);
+  box-shadow: 0 0 0 1px rgba(245, 108, 108, 0.25) inset;
+}
+
+.material-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.material-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(92, 124, 250, 0.15);
+  border-radius: 8px;
+  background: rgba(92, 124, 250, 0.02);
+}
+
+.material-name-input {
+  width: 240px;
+}
+
+.material-percentage-input {
+  width: 120px;
+}
+
+.material-unit {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.add-material-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed rgba(105, 219, 124, 0.4);
+  border-radius: 8px;
+  background: rgba(105, 219, 124, 0.05);
+}
+
+.material-total {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.material-total.warning {
+  color: var(--danger-color);
+}
+
+.material-warning-text {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--danger-color);
 }
 
 .automation-tip {
@@ -1682,6 +2014,12 @@ watch(
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.guide-white-btn {
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+  --el-button-active-text-color: #fff;
 }
 
 .help-tip {

@@ -4,6 +4,8 @@ import traceback
 import time as system_time
 import os
 import sys
+import copy
+import uuid
 
 if sys.platform == 'win32':
     try:
@@ -128,6 +130,25 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 open_url_list = ['/admin', '/component', '/login', '/captcha']
 
 
+class _GuiState:
+    def __init__(self):
+        self.page = None
+
+
+gui = _GuiState()
+
+
+_BROWSER_DEBUG_DEFAULT_URL = 'https://fxg.jinritemai.com/login/common'
+_BROWSER_DEBUG_MAX_EVENTS = 200
+_BROWSER_DEBUG_MAX_SESSIONS = 8
+_browser_debug_lock = threading.Lock()
+_browser_debug_state = {
+    'current_session_id': None,
+    'sessions': {},
+    'last_error': None,
+}
+
+
 def is_sidecar_mode() -> bool:
     return os.environ.get('SIDECAR_MODE') == '1'
 
@@ -167,6 +188,760 @@ def health():
         'mode': 'sidecar' if is_sidecar_mode() else 'gui',
         'port': get_sidecar_port() if is_sidecar_mode() else 5000
     })
+
+
+def _debug_now_iso():
+    return datetime.now().isoformat()
+
+
+def _debug_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _debug_int(value, default, minimum=None, maximum=None):
+    try:
+        number = int(value)
+    except Exception:
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+def _debug_normalize_text(value, limit=300):
+    text = ' '.join(str(value or '').split())
+    if limit and len(text) > limit:
+        return text[:limit] + '...'
+    return text
+
+
+def _debug_slug(value):
+    raw = str(value or 'debug')
+    chars = []
+    for ch in raw:
+        if ch.isalnum():
+            chars.append(ch.lower())
+        else:
+            chars.append('_')
+    slug = ''.join(chars).strip('_')
+    while '__' in slug:
+        slug = slug.replace('__', '_')
+    return slug[:64] or 'debug'
+
+
+def _debug_root_dir():
+    if getattr(sys, 'frozen', False):
+        base_dir = get_app_root()
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    target = os.path.join(base_dir, 'output', 'browser-debug')
+    os.makedirs(target, exist_ok=True)
+    return target
+
+
+def _create_browser_debug_session(label='manual'):
+    session_id = f"{_debug_slug(label)}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+    artifacts_dir = os.path.join(_debug_root_dir(), session_id)
+    os.makedirs(artifacts_dir, exist_ok=True)
+    session = {
+        'session_id': session_id,
+        'label': label,
+        'created_at': _debug_now_iso(),
+        'updated_at': _debug_now_iso(),
+        'artifacts_dir': artifacts_dir,
+        'events': [],
+    }
+
+    with _browser_debug_lock:
+        _browser_debug_state['sessions'][session_id] = session
+        _browser_debug_state['current_session_id'] = session_id
+
+        ordered_ids = sorted(
+            _browser_debug_state['sessions'].keys(),
+            key=lambda item: _browser_debug_state['sessions'][item].get('created_at', '')
+        )
+        while len(ordered_ids) > _BROWSER_DEBUG_MAX_SESSIONS:
+            stale_id = ordered_ids.pop(0)
+            _browser_debug_state['sessions'].pop(stale_id, None)
+            if _browser_debug_state.get('current_session_id') == stale_id:
+                _browser_debug_state['current_session_id'] = None
+
+    return session
+
+
+def _get_browser_debug_session(create=False, label='manual'):
+    with _browser_debug_lock:
+        current_id = _browser_debug_state.get('current_session_id')
+        session = _browser_debug_state['sessions'].get(current_id) if current_id else None
+
+    if session or not create:
+        return session
+    return _create_browser_debug_session(label=label)
+
+
+def _append_browser_debug_event(event_type, message, data=None, session_id=None):
+    session = None
+    with _browser_debug_lock:
+        resolved_session_id = session_id or _browser_debug_state.get('current_session_id')
+        if resolved_session_id:
+            session = _browser_debug_state['sessions'].get(resolved_session_id)
+        if not session:
+            return None
+
+        event = {
+            'timestamp': _debug_now_iso(),
+            'type': event_type,
+            'message': message,
+            'data': data or {},
+        }
+        session['events'].append(event)
+        if len(session['events']) > _BROWSER_DEBUG_MAX_EVENTS:
+            session['events'] = session['events'][-_BROWSER_DEBUG_MAX_EVENTS:]
+        session['updated_at'] = event['timestamp']
+        return copy.deepcopy(event)
+
+
+def _set_last_browser_debug_error(report):
+    with _browser_debug_lock:
+        _browser_debug_state['last_error'] = copy.deepcopy(report)
+
+
+def _get_last_browser_debug_error():
+    with _browser_debug_lock:
+        report = _browser_debug_state.get('last_error')
+        return copy.deepcopy(report) if report else None
+
+
+def _latest_browser_debug_error_after(started_at=None):
+    report = _get_last_browser_debug_error()
+    if not report:
+        return None
+    if not started_at:
+        return report
+    captured_at = report.get('captured_at')
+    if captured_at and captured_at >= started_at:
+        return report
+    return None
+
+
+def _serialize_browser_debug_session(session, include_events=False, recent_event_count=20):
+    if not session:
+        return None
+    data = {
+        'session_id': session.get('session_id'),
+        'label': session.get('label'),
+        'created_at': session.get('created_at'),
+        'updated_at': session.get('updated_at'),
+        'artifacts_dir': session.get('artifacts_dir'),
+        'event_count': len(session.get('events', [])),
+    }
+    if include_events:
+        data['events'] = session.get('events', [])[-recent_event_count:]
+    return data
+
+
+def _get_current_browser_tab(create_if_missing=False, url=None, navigate=False):
+    meta = {
+        'created_browser': False,
+        'reused_browser': False,
+        'navigated': False,
+    }
+    target_url = url or _BROWSER_DEBUG_DEFAULT_URL
+
+    if not gui.page:
+        if not create_if_missing:
+            return None, meta
+        gui.page = get_page(target_url)
+        meta['created_browser'] = True
+        meta['navigated'] = True
+
+    try:
+        tab = gui.page.get_tab(gui.page.latest_tab)
+        meta['reused_browser'] = not meta['created_browser']
+    except Exception:
+        if not create_if_missing:
+            raise
+        gui.page = get_page(target_url)
+        meta['created_browser'] = True
+        meta['reused_browser'] = False
+        meta['navigated'] = True
+        tab = gui.page.get_tab(gui.page.latest_tab)
+
+    if navigate and url:
+        tab.get(url)
+        meta['navigated'] = True
+
+    return tab, meta
+
+
+def _collect_browser_page_bits(tab, max_fields=30, max_controls=30):
+    script = """
+    const maxFields = %d;
+    const maxControls = %d;
+    const normalize = (value, limit = 160) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    };
+    const fieldItems = Array.from(document.querySelectorAll('[attr-field-id]'))
+      .filter(isVisible)
+      .slice(0, maxFields)
+      .map((el, index) => ({
+        index,
+        field_id: el.getAttribute('attr-field-id') || '',
+        text: normalize(el.innerText, 180)
+      }));
+    const controlItems = Array.from(document.querySelectorAll('button, input, textarea, select, [role="button"]'))
+      .filter(isVisible)
+      .slice(0, maxControls)
+      .map((el, index) => ({
+        index,
+        tag: (el.tagName || '').toLowerCase(),
+        type: el.getAttribute('type') || '',
+        text: normalize(el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '', 140),
+        value: normalize(el.value || '', 80),
+        attr_field_id: el.getAttribute('attr-field-id') || ''
+      }));
+    return {
+      url: location.href,
+      title: document.title,
+      ready_state: document.readyState,
+      scroll: { x: window.scrollX, y: window.scrollY },
+      field_items: fieldItems,
+      control_items: controlItems
+    };
+    """ % (max_fields, max_controls)
+
+    try:
+        return tab.run_js(script) or {}
+    except Exception:
+        return {}
+
+
+def _normalize_debug_locator(locator, locator_type='raw'):
+    value = str(locator or '').strip()
+    if not value:
+        raise Exception('Locator is required.')
+    locator_type = str(locator_type or 'raw').strip().lower()
+    if locator_type == 'css':
+        return value if value.startswith('css:') else f'css:{value}'
+    if locator_type == 'xpath':
+        return value if value.startswith('xpath:') else f'xpath:{value}'
+    return value
+
+
+def _summarize_debug_element(element, index, include_html=False):
+    summary = {
+        'index': index,
+        'text': '',
+        'tag': '',
+        'id': '',
+        'class_name': '',
+        'attr_field_id': '',
+        'value': '',
+        'placeholder': '',
+        'displayed': False,
+    }
+
+    try:
+        summary['text'] = _debug_normalize_text(element.text, 240)
+    except Exception:
+        pass
+    try:
+        summary['tag'] = _debug_normalize_text(
+            element.run_js('return (this.tagName || "").toLowerCase();'),
+            40
+        )
+    except Exception:
+        pass
+
+    for attr_name, key_name in (
+        ('id', 'id'),
+        ('class', 'class_name'),
+        ('attr-field-id', 'attr_field_id'),
+        ('value', 'value'),
+        ('placeholder', 'placeholder'),
+    ):
+        try:
+            summary[key_name] = _debug_normalize_text(element.attr(attr_name), 240)
+        except Exception:
+            pass
+
+    try:
+        summary['displayed'] = bool(element.states.is_displayed)
+    except Exception:
+        pass
+
+    if include_html:
+        try:
+            summary['outer_html'] = _debug_normalize_text(
+                element.run_js('return this.outerHTML || "";'),
+                1200
+            )
+        except Exception:
+            summary['outer_html'] = ''
+
+    return summary
+
+
+def _query_browser_elements(tab, locator, locator_type='raw', timeout=1.0, limit=10, include_html=False, only_visible=False):
+    normalized_locator = _normalize_debug_locator(locator, locator_type)
+    elements = tab.eles(normalized_locator, timeout=timeout) or []
+    if only_visible:
+        visible_items = []
+        for item in elements:
+            try:
+                if item.states.is_displayed:
+                    visible_items.append(item)
+            except Exception:
+                continue
+        elements = visible_items
+
+    matches = []
+    for index, element in enumerate(elements[:limit]):
+        matches.append(_summarize_debug_element(element, index, include_html=include_html))
+
+    return {
+        'locator': normalized_locator,
+        'match_count': len(elements),
+        'matches': matches,
+    }
+
+
+def _get_browser_target_element(tab, locator, locator_type='raw', timeout=1.0, index=0, only_visible=True):
+    normalized_locator = _normalize_debug_locator(locator, locator_type)
+    elements = tab.eles(normalized_locator, timeout=timeout) or []
+    if only_visible:
+        filtered = []
+        for element in elements:
+            try:
+                if element.states.is_displayed:
+                    filtered.append(element)
+            except Exception:
+                continue
+        elements = filtered
+
+    if not elements:
+        raise Exception(f'No element matched locator: {normalized_locator}')
+    if index < 0 or index >= len(elements):
+        raise Exception(f'Element index {index} is out of range for locator: {normalized_locator}')
+    return elements[index], normalized_locator, len(elements)
+
+
+def _snapshot_browser_context(tab, locator=None, locator_type='raw', limit=5, include_html=False):
+    page_bits = _collect_browser_page_bits(tab)
+    session = _get_browser_debug_session(create=False)
+    context = {
+        'session': _serialize_browser_debug_session(session, include_events=True, recent_event_count=15),
+        'url': page_bits.get('url') or getattr(tab, 'url', ''),
+        'title': page_bits.get('title') or '',
+        'ready_state': page_bits.get('ready_state') or '',
+        'scroll': page_bits.get('scroll') or {'x': 0, 'y': 0},
+        'visible_fields': page_bits.get('field_items') or [],
+        'visible_controls': page_bits.get('control_items') or [],
+    }
+
+    if locator:
+        context['query'] = _query_browser_elements(
+            tab,
+            locator,
+            locator_type=locator_type,
+            timeout=1.0,
+            limit=limit,
+            include_html=include_html,
+            only_visible=False,
+        )
+
+    if include_html:
+        try:
+            context['html_excerpt'] = _debug_normalize_text(tab.html, 4000)
+        except Exception:
+            context['html_excerpt'] = ''
+
+    return context
+
+
+def _capture_browser_debug_artifacts(tab, label='snapshot', include_html=True, session_label='manual'):
+    session = _get_browser_debug_session(create=True, label=session_label)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    base_name = f"{timestamp}_{_debug_slug(label)}"
+    screenshot_path = os.path.join(session['artifacts_dir'], f'{base_name}.png')
+    html_path = os.path.join(session['artifacts_dir'], f'{base_name}.html')
+    context_path = os.path.join(session['artifacts_dir'], f'{base_name}.json')
+    artifacts = {
+        'session_id': session.get('session_id'),
+        'artifacts_dir': session.get('artifacts_dir'),
+        'screenshot_path': None,
+        'html_path': None,
+        'context_path': None,
+    }
+
+    if tab:
+        try:
+            tab.get_screenshot(
+                path=session['artifacts_dir'],
+                name=f'{base_name}.png',
+                full_page=False,
+            )
+            artifacts['screenshot_path'] = screenshot_path
+        except Exception as exc:
+            artifacts['screenshot_error'] = str(exc)
+
+        try:
+            context = _snapshot_browser_context(tab, include_html=False)
+            with open(context_path, 'w', encoding='utf-8') as fp:
+                json.dump(context, fp, ensure_ascii=False, indent=2)
+            artifacts['context_path'] = context_path
+        except Exception as exc:
+            artifacts['context_error'] = str(exc)
+
+        if include_html:
+            try:
+                with open(html_path, 'w', encoding='utf-8') as fp:
+                    fp.write(tab.html or '')
+                artifacts['html_path'] = html_path
+            except Exception as exc:
+                artifacts['html_error'] = str(exc)
+
+    _append_browser_debug_event(
+        'artifact',
+        f'Captured browser artifacts for {label}',
+        data=artifacts,
+        session_id=session.get('session_id')
+    )
+    return artifacts
+
+
+def _record_browser_automation_error(stage, error, traceback_text, tab=None, extra=None):
+    session = _get_browser_debug_session(create=True, label='upload-error')
+    artifacts = _capture_browser_debug_artifacts(
+        tab,
+        label=f'error_{stage}',
+        include_html=True,
+        session_label=session.get('label') or 'upload-error'
+    )
+    report = {
+        'captured_at': _debug_now_iso(),
+        'stage': stage,
+        'error': str(error),
+        'traceback': traceback_text,
+        'artifacts': artifacts,
+        'page': _snapshot_browser_context(tab, include_html=False) if tab else None,
+        'extra': extra or {},
+        'session': _serialize_browser_debug_session(session, include_events=True, recent_event_count=20),
+    }
+    report_path = os.path.join(
+        session['artifacts_dir'],
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{_debug_slug(stage)}_report.json"
+    )
+    try:
+        with open(report_path, 'w', encoding='utf-8') as fp:
+            json.dump(report, fp, ensure_ascii=False, indent=2)
+        report['report_path'] = report_path
+    except Exception as exc:
+        report['report_path_error'] = str(exc)
+
+    _set_last_browser_debug_error(report)
+    _append_browser_debug_event(
+        'automation_error',
+        f'Automation failed at stage: {stage}',
+        data={
+            'error': str(error),
+            'report_path': report.get('report_path'),
+        },
+        session_id=session.get('session_id')
+    )
+    return report
+
+
+@app.post('/api/debug/browser/ensure')
+def debug_browser_ensure():
+    data = request.get_json(silent=True) or {}
+    label = data.get('label') or 'manual'
+    new_session = _debug_bool(data.get('new_session'))
+    create_browser = _debug_bool(data.get('create_browser'), True)
+    navigate = _debug_bool(data.get('navigate'))
+    url = (data.get('url') or '').strip() or None
+
+    session = _create_browser_debug_session(label) if new_session else _get_browser_debug_session(create=True, label=label)
+
+    try:
+        tab, meta = _get_current_browser_tab(
+            create_if_missing=create_browser,
+            url=url,
+            navigate=navigate
+        )
+    except Exception as exc:
+        return api_error(f'Failed to prepare browser: {str(exc)}')
+
+    if not tab:
+        return api_error('Browser is not running. Set create_browser=true to launch it.')
+
+    snapshot = _snapshot_browser_context(
+        tab,
+        limit=_debug_int(data.get('limit'), 5, minimum=1, maximum=20),
+        include_html=_debug_bool(data.get('include_html'))
+    )
+    _append_browser_debug_event(
+        'ensure_browser',
+        'Browser is ready for debugging.',
+        data={
+            'url': snapshot.get('url'),
+            'title': snapshot.get('title'),
+            'meta': meta,
+        },
+        session_id=session.get('session_id')
+    )
+
+    return api_ok('Debug browser is ready.', data={
+        'session': _serialize_browser_debug_session(session, include_events=True, recent_event_count=10),
+        'browser': meta,
+        'snapshot': snapshot,
+    })
+
+
+@app.get('/api/debug/browser/session')
+def debug_browser_session():
+    session = _get_browser_debug_session(create=False)
+    return api_ok('Current browser debug session loaded.', data={
+        'session': _serialize_browser_debug_session(session, include_events=True, recent_event_count=30),
+        'last_error': _get_last_browser_debug_error(),
+    })
+
+
+@app.get('/api/debug/browser/context')
+def debug_browser_context():
+    include_html = _debug_bool(request.args.get('include_html'))
+    locator = request.args.get('locator')
+    locator_type = request.args.get('locator_type') or 'raw'
+    limit = _debug_int(request.args.get('limit'), 5, minimum=1, maximum=20)
+
+    try:
+        tab, _ = _get_current_browser_tab(create_if_missing=False)
+    except Exception as exc:
+        return api_error(f'Failed to access browser: {str(exc)}')
+
+    if not tab:
+        return api_error('Browser is not running.')
+
+    snapshot = _snapshot_browser_context(
+        tab,
+        locator=locator,
+        locator_type=locator_type,
+        limit=limit,
+        include_html=include_html
+    )
+    return api_ok('Browser context loaded.', data=snapshot)
+
+
+@app.post('/api/debug/browser/query')
+def debug_browser_query():
+    data = request.get_json(silent=True) or {}
+    locator = data.get('locator')
+    if not locator:
+        return api_error('Locator is required.')
+
+    locator_type = data.get('locator_type') or 'raw'
+    include_html = _debug_bool(data.get('include_html'))
+    only_visible = _debug_bool(data.get('only_visible'), True)
+    limit = _debug_int(data.get('limit'), 10, minimum=1, maximum=50)
+
+    try:
+        timeout = float(data.get('timeout') or 1.0)
+    except Exception:
+        timeout = 1.0
+    timeout = max(0.1, min(timeout, 5.0))
+
+    try:
+        tab, _ = _get_current_browser_tab(create_if_missing=_debug_bool(data.get('create_browser')))
+    except Exception as exc:
+        return api_error(f'Failed to access browser: {str(exc)}')
+
+    if not tab:
+        return api_error('Browser is not running.')
+
+    try:
+        result = _query_browser_elements(
+            tab,
+            locator,
+            locator_type=locator_type,
+            timeout=timeout,
+            limit=limit,
+            include_html=include_html,
+            only_visible=only_visible
+        )
+        _append_browser_debug_event(
+            'query',
+            f'Queried locator: {result.get("locator")}',
+            data={
+                'match_count': result.get('match_count'),
+                'only_visible': only_visible,
+            }
+        )
+        return api_ok('Browser element query completed.', data={
+            'query': result,
+            'snapshot': _snapshot_browser_context(tab, limit=min(limit, 10), include_html=False),
+        })
+    except Exception as exc:
+        artifacts = _capture_browser_debug_artifacts(tab, label='query_failed', include_html=True)
+        return api_error(
+            f'Failed to query browser elements: {str(exc)}',
+            data={'artifacts': artifacts}
+        )
+
+
+@app.post('/api/debug/browser/action')
+def debug_browser_action():
+    data = request.get_json(silent=True) or {}
+    action = str(data.get('action') or '').strip().lower()
+    if not action:
+        return api_error('Action is required.')
+
+    try:
+        timeout = float(data.get('timeout') or 1.0)
+    except Exception:
+        timeout = 1.0
+    timeout = max(0.1, min(timeout, 5.0))
+
+    locator = data.get('locator')
+    locator_type = data.get('locator_type') or 'raw'
+    element_index = _debug_int(data.get('index'), 0, minimum=0, maximum=50)
+    only_visible = _debug_bool(data.get('only_visible'), True)
+    value = data.get('value')
+
+    try:
+        tab, meta = _get_current_browser_tab(
+            create_if_missing=_debug_bool(data.get('create_browser')),
+            url=(data.get('url') or '').strip() or None,
+            navigate=_debug_bool(data.get('navigate'))
+        )
+    except Exception as exc:
+        return api_error(f'Failed to access browser: {str(exc)}')
+
+    if not tab:
+        return api_error('Browser is not running.')
+
+    try:
+        action_result = {
+            'action': action,
+            'locator': locator,
+            'locator_type': locator_type,
+            'index': element_index,
+            'browser': meta,
+        }
+
+        if action == 'navigate':
+            target_url = (data.get('url') or '').strip()
+            if not target_url:
+                return api_error('url is required for navigate action.')
+            tab.get(target_url)
+            action_result['url'] = target_url
+        else:
+            if not locator:
+                return api_error('Locator is required for this action.')
+
+            target, normalized_locator, match_count = _get_browser_target_element(
+                tab,
+                locator,
+                locator_type=locator_type,
+                timeout=timeout,
+                index=element_index,
+                only_visible=only_visible
+            )
+            action_result['resolved_locator'] = normalized_locator
+            action_result['match_count'] = match_count
+
+            if action == 'click':
+                target.scroll.to_center()
+                target.click(by_js=_debug_bool(data.get('by_js'), True))
+            elif action == 'hover':
+                target.scroll.to_center()
+                target.hover()
+            elif action == 'scroll':
+                target.scroll.to_center()
+            elif action == 'clear':
+                target.click(by_js=True)
+                target.clear(by_js=True)
+            elif action == 'input':
+                if value is None:
+                    return api_error('value is required for input action.')
+                target.scroll.to_center()
+                target.input(str(value), clear=_debug_bool(data.get('clear'), True))
+            else:
+                return api_error(f'Unsupported action: {action}')
+
+        time.sleep(0.1)
+        snapshot = _snapshot_browser_context(
+            tab,
+            locator=locator if action != 'navigate' else None,
+            locator_type=locator_type,
+            limit=5,
+            include_html=False
+        )
+        _append_browser_debug_event(
+            'action',
+            f'Executed browser action: {action}',
+            data=action_result
+        )
+        return api_ok('Browser action completed.', data={
+            'result': action_result,
+            'snapshot': snapshot,
+        })
+    except Exception as exc:
+        artifacts = _capture_browser_debug_artifacts(tab, label=f'action_{action}_failed', include_html=True)
+        _append_browser_debug_event(
+            'action_error',
+            f'Browser action failed: {action}',
+            data={
+                'error': str(exc),
+                'locator': locator,
+                'action': action,
+                'artifacts': artifacts,
+            }
+        )
+        return api_error(
+            f'Browser action failed: {str(exc)}',
+            data={'artifacts': artifacts}
+        )
+
+
+@app.post('/api/debug/browser/capture')
+def debug_browser_capture():
+    data = request.get_json(silent=True) or {}
+    label = data.get('label') or 'manual_capture'
+    include_html = _debug_bool(data.get('include_html'), True)
+
+    try:
+        tab, _ = _get_current_browser_tab(create_if_missing=False)
+    except Exception as exc:
+        return api_error(f'Failed to access browser: {str(exc)}')
+
+    if not tab:
+        return api_error('Browser is not running.')
+
+    artifacts = _capture_browser_debug_artifacts(
+        tab,
+        label=label,
+        include_html=include_html,
+        session_label=data.get('session_label') or 'manual'
+    )
+    return api_ok('Browser artifacts captured.', data=artifacts)
+
+
+@app.get('/api/debug/browser/last-error')
+def debug_browser_last_error():
+    report = _get_last_browser_debug_error()
+    if not report:
+        return api_ok('No browser debug error report is available.', data=None)
+    return api_ok('Latest browser debug error report loaded.', data=report)
 
 
 @app.route('/delete_sku', methods=['POST'])
@@ -285,15 +1060,22 @@ def load_detail():
                     sku['url'] = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TG9hZCBFcnJvcjwvdGV4dD48L3N2Zz4K'
                     print(f"⚠️ 图片加载失败: {sku['path']}, 错误: {img_error}")
             else:
-                # 🔧 快速模式：不加载图片，只设置占位符
-                sku['url'] = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+'
+                if 'url' in sku:
+                    sku.pop('url', None)
         
+        clazz_value = None
+        if record.clazz is not None and str(record.clazz).strip() != '':
+            try:
+                clazz_value = int(str(record.clazz).strip())
+            except Exception:
+                clazz_value = None
+
         return api_ok(msg='操作成功！', data={
             'id': record.id,
             'title': record.title,
             'repo': record.repo,
             'name': record.name if len(arr) < 4 else arr[3],
-            'clazz': record.clazz,
+            'clazz': clazz_value,
             'remark': record.remark,
             'content': sku_list
         })
@@ -402,10 +1184,40 @@ def start():
     try:
         # 🚀 启动上传流程
         print("🚀 开始上传流程...")
-        
-        record_list = Record.select().execute()
+
+        request_data = request.get_json(silent=True) or {}
+        record_id = request_data.get('record_id')
+
+        if record_id:
+            record = Record.get_or_none(Record.id == record_id)
+            if not record:
+                return api_error(msg='指定产品不存在')
+            record_list = [record]
+        else:
+            record_list = list(Record.select().execute())
+
         if len(record_list) == 0:
             return api_error(msg='没有待上传数据！')
+
+        user_settings = settings_manager.get_settings()
+        automation_config = settings_manager.normalize_automation_config(user_settings.automation_config)
+        shipping_template_name = str(automation_config.get('shipping_template') or '中通包邮').strip() or '中通包邮'
+        configured_materials = []
+        for item in automation_config.get('material_compositions') or []:
+            if not isinstance(item, dict):
+                continue
+            material_name = str(item.get('material') or '').strip()
+            percentage = item.get('percentage')
+            if not material_name:
+                continue
+            try:
+                percentage_text = str(int(float(percentage)))
+            except Exception:
+                percentage_text = ''
+            configured_materials.append((material_name, percentage_text))
+        configured_materials = [item for item in configured_materials if item[0] and item[1]]
+        if not configured_materials:
+            configured_materials = [('棉', '75'), ('氨纶', '25')]
         
         # 确保 gui.page 存在且不为 None
         if not gui.page:
@@ -436,6 +1248,7 @@ def start():
         for record in record_list:
             record_ok = False
             error_tip = ''
+            current_stage = 'prechecks'
 
             try:
                 if not record.title:
@@ -498,6 +1311,7 @@ def start():
                 white_pic = get_white_pic(record, sku_list)
 
                 print('打开商品发布页面...')
+                current_stage = 'open_publish_page'
                 main_tab.handle_alert(next_one=True)
                 main_tab.get('https://fxg.jinritemai.com/ffa/g/create')
                 ready = False
@@ -528,10 +1342,12 @@ def start():
                 except:
                     pass
 
+                current_stage = 'upload_main_images'
                 upload_file(main_tab, main_pic_list, '主图', error_size='长宽比需为1:1' if record.type == 2 else None)
 
                 # 🚀 使用增强的类目选择器
                 print(f'开始智能类目选择: {wazi_dict.get(record.clazz)}')
+                current_stage = 'select_category'
                 if not smart_select_category(main_tab, record.clazz):
                     print("❌ 类目选择失败，已尝试推荐与手动选择。请检查页面结构或账号资质。")
                     raise Exception("类目选择失败")
@@ -571,6 +1387,7 @@ def start():
                         time.sleep(0.1)
 
                 # 根据当前页面类目处理属性填写，避免 record.clazz 与二级页实际类目不一致
+                current_stage = 'fill_category_attributes'
                 current_category_text = get_current_category_text(main_tab)
                 current_sock_height = infer_sock_height_value(current_category_text, record.clazz)
                 is_ship_socks = '船袜' in current_category_text
@@ -620,7 +1437,9 @@ def start():
                     print('处理其他类目属性（无吊牌）...')
                     main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
                     time.sleep(0.1)
-                    set_material_composition(main_tab, [('棉', '75'), ('氨纶', '25')])
+                    material_ok = set_material_composition(main_tab, configured_materials)
+                    if not material_ok:
+                        raise Exception('面料材质填写失败')
                     select_text(main_tab, '品牌', '无品牌')
                     select_text(main_tab, '适用人群', '成人')
                     select_text(main_tab, '适用性别', get_sex(record.title))
@@ -629,6 +1448,7 @@ def start():
 
 
                 # 🔧 只有当sub_pic_list不为空时才上传3:4主图
+                current_stage = 'upload_media_assets'
                 if len(sub_pic_list) > 0:
                     upload_file(
                         main_tab,
@@ -688,7 +1508,7 @@ def start():
                         time.sleep(0.5)
                 except:
                     pass
-                upload_file(main_tab, detail_pic_list, '图片', extra=True)
+                upload_file(main_tab, detail_pic_list, '图片', extra=True, target_field_id='商品详情')
 
                 main_tab.ele('xpath://span[text()="价格与库存"]').scroll.to_see()
                 time.sleep(0.1)
@@ -706,9 +1526,11 @@ def start():
                     del_btn.click(by_js=True)
                     time.sleep(0.1)
 
+                current_stage = 'configure_sku_entries'
                 for i, sku in enumerate(sku_list):
                     set_sku_info(main_tab, i, sku, record.remark)
 
+                current_stage = 'configure_sku_structure'
                 print('选择均码')
                 main_tab.ele('xpath://div[@id="skuValue-码数"]//input').scroll.to_center()
                 time.sleep(0.1)
@@ -725,6 +1547,7 @@ def start():
                 except:
                     pass
 
+                current_stage = 'fill_price_and_stock'
                 print('设置价格和库存...')
                 price_stock_root = main_tab.ele('xpath://div[@attr-field-id="价格与库存"]')
                 if not price_stock_root:
@@ -777,7 +1600,7 @@ def start():
                 main_tab.ele('xpath://span[text()="售后服务承诺"]').scroll.to_see()
                 time.sleep(0.1)
 
-                select_text(main_tab, '运费模板', '中通包邮', '包邮')
+                select_text(main_tab, '运费模板', shipping_template_name, '包邮')
                 time.sleep(0.1)
                 youhui_btn = main_tab.ele('xpath://button[contains(@class,"marketing_sylva-switch-checked")]', timeout=1)
                 if youhui_btn:
@@ -810,6 +1633,7 @@ def start():
                     print('处理联盟达人带货失败，已跳过')
                 
 
+                current_stage = 'submit_publish'
                 print('发布商品')
                 main_tab.ele('xpath://span[text()="发布商品"]/..').click()
                 time.sleep(0.5)
@@ -849,6 +1673,19 @@ def start():
                 print("------------- 详细错误报告 -------------")
                 print(detailed_error)
                 print("------------------------------------")
+                try:
+                    _record_browser_automation_error(
+                        current_stage,
+                        e,
+                        detailed_error,
+                        tab=main_tab,
+                        extra={
+                            'record_id': record.id,
+                            'record_name': record.name,
+                        }
+                    )
+                except Exception:
+                    traceback.print_exc()
                 
                 # 如果是脚本预设的错误提示，直接使用
                 if not error_tip:
@@ -878,6 +1715,139 @@ def start():
         return api_error(msg=combined_msg)
     else:
         return api_ok(msg=combined_msg)
+
+
+_upload_tasks = {}
+_upload_tasks_lock = threading.Lock()
+
+
+def _serialize_upload_task(task):
+    return {
+        'task_id': task.get('task_id'),
+        'record_id': task.get('record_id'),
+        'record_name': task.get('record_name'),
+        'status': task.get('status'),
+        'progress': task.get('progress', 0),
+        'message': task.get('message', ''),
+        'error': task.get('error'),
+        'created_at': task.get('created_at'),
+        'started_at': task.get('started_at'),
+        'finished_at': task.get('finished_at'),
+        'debug_report': task.get('debug_report'),
+    }
+
+
+def _run_upload_task(task_id: str, record_id=None):
+    with _upload_tasks_lock:
+        task = _upload_tasks.get(task_id)
+        if not task:
+            return
+        task['status'] = 'running'
+        task['progress'] = 10
+        task['message'] = '正在启动浏览器并准备上传'
+        task['started_at'] = datetime.now().isoformat()
+
+    try:
+        payload = {}
+        if record_id:
+            payload['record_id'] = record_id
+
+        with app.test_request_context('/start', method='POST', json=payload):
+            result = start()
+
+        success = bool(result.get('success'))
+        message = str(result.get('msg') or '')
+
+        with _upload_tasks_lock:
+            task = _upload_tasks.get(task_id)
+            if not task:
+                return
+            task['progress'] = 100
+            task['finished_at'] = datetime.now().isoformat()
+            if success:
+                task['status'] = 'success'
+                task['message'] = message or '上传完成'
+                task['error'] = None
+            else:
+                task['status'] = 'failed'
+                task['message'] = '上传失败'
+                task['error'] = message or '上传失败（未知原因）'
+                task['debug_report'] = _latest_browser_debug_error_after(task.get('started_at'))
+    except Exception as e:
+        traceback.print_exc()
+        with _upload_tasks_lock:
+            task = _upload_tasks.get(task_id)
+            if not task:
+                return
+            task['status'] = 'failed'
+            task['progress'] = 100
+            task['message'] = '上传失败'
+            task['error'] = str(e)
+            task['finished_at'] = datetime.now().isoformat()
+            task['debug_report'] = _latest_browser_debug_error_after(task.get('started_at'))
+
+
+@app.post('/api/upload/start')
+def upload_start():
+    data = request.get_json(silent=True) or {}
+    record_id = data.get('record_id')
+    record_name = '全部商品'
+
+    if record_id:
+        record = Record.get_or_none(Record.id == record_id)
+        if not record:
+            return api_error(msg='未找到要上传的商品')
+        record_name = record.name or f'商品{record_id}'
+
+    import uuid
+    task_id = str(uuid.uuid4())[:8]
+    task = {
+        'task_id': task_id,
+        'record_id': record_id,
+        'record_name': record_name,
+        'status': 'pending',
+        'progress': 0,
+        'message': '任务已创建',
+        'error': None,
+        'created_at': datetime.now().isoformat(),
+        'started_at': None,
+        'finished_at': None,
+        'debug_report': None,
+    }
+
+    with _upload_tasks_lock:
+        _upload_tasks[task_id] = task
+
+    worker = threading.Thread(target=_run_upload_task, args=(task_id, record_id), daemon=True)
+    worker.start()
+
+    return api_ok(msg='上传任务已启动', data={'task_id': task_id})
+
+
+@app.get('/api/upload/status/<task_id>')
+def upload_status(task_id):
+    with _upload_tasks_lock:
+        task = _upload_tasks.get(task_id)
+        if not task:
+            return api_error(msg='上传任务不存在')
+        return api_ok(msg='获取任务状态成功', data=_serialize_upload_task(task))
+
+
+@app.get('/api/upload/tasks')
+def upload_tasks():
+    with _upload_tasks_lock:
+        tasks = [_serialize_upload_task(item) for item in _upload_tasks.values()]
+
+    tasks.sort(key=lambda x: x.get('created_at') or '', reverse=True)
+    running_task = next((item for item in tasks if item.get('status') in ('pending', 'running')), None)
+    return api_ok(msg='获取任务列表成功', data={
+        'tasks': tasks,
+        'browser_status': {
+            'current_task': running_task.get('task_id') if running_task else None,
+            'has_browser': bool(gui.page),
+            'is_running': bool(running_task),
+        }
+    })
 
 
 
@@ -928,8 +1898,12 @@ def menu_delete():
         return api_error(msg=f'删除失败：{str(e)}')
 
 
-def _derive_sku_name(file_name: str, dir_name: str) -> str:
+def _derive_sku_name(file_name: str, dir_name: str, folder_name: str = '', sku_file_path: str = '') -> str:
     import re
+    if folder_name.upper().startswith('C-'):
+        normalized_path = sku_file_path.replace('\\', '/')
+        if '自选备注' in dir_name or '/自选备注/' in normalized_path:
+            return (dir_name or '自选备注').strip()
     arr = re.findall(r'\((.*?)\)', file_name)
     if arr:
         return str(arr[0]).strip()
@@ -1018,6 +1992,7 @@ def import_folders():
                     errors.append(f'{os.path.basename(dir_path)} 未找到有效的SKU图片')
                     continue
 
+                folder_name = os.path.basename(dir_path)
                 sku_list = []
                 seen_sku_path = set()
                 for sku_file in image_files:
@@ -1030,12 +2005,10 @@ def import_folders():
                     sku_list.append({
                         'file_name': file_name,
                         'dir_name': dir_name,
-                        'name': _derive_sku_name(file_name, dir_name),
+                        'name': _derive_sku_name(file_name, dir_name, folder_name, sku_file),
                         'path': sku_file,
                         'price': ''
                     })
-
-                folder_name = os.path.basename(dir_path)
                 duplicate_groups = _build_duplicate_groups(sku_list)
                 if duplicate_groups:
                     duplicate_sku_products.append({
@@ -1090,7 +2063,12 @@ def get_settings():
     """获取用户设置"""
     try:
         settings = settings_manager.get_settings()
+        automation_config = settings_manager.normalize_automation_config(settings.automation_config)
         return api_ok(msg='获取设置成功', data={'settings': {
+            'pricing_config': settings.pricing_config,
+            'cost_items': settings.cost_items,
+            'model_configs': settings.model_configs,
+            'automation_config': automation_config,
             'image_naming': {
                 'supported_formats': settings.image_naming.supported_formats,
                 'filename_filters': settings.image_naming.name_filters,
@@ -1140,6 +2118,31 @@ def update_settings():
                 'batch_processing_mode': data['processing'].get('batch_mode_enabled'),
                 'max_concurrent_tasks': data['processing'].get('max_concurrent_operations'),
             }
+
+        if 'pricing_config' in data:
+            backend_data['pricing_config'] = data.get('pricing_config')
+
+        if 'cost_items' in data:
+            backend_data['cost_items'] = data.get('cost_items')
+
+        if 'model_configs' in data:
+            backend_data['model_configs'] = data.get('model_configs')
+
+        if 'automation_config' in data:
+            automation_config = data.get('automation_config') or {}
+            material_compositions = automation_config.get('material_compositions') or []
+            if isinstance(material_compositions, list) and len(material_compositions) > 0:
+                total_percentage = 0
+                for item in material_compositions:
+                    if not isinstance(item, dict):
+                        continue
+                    try:
+                        total_percentage += int(float(item.get('percentage', 0) or 0))
+                    except Exception:
+                        continue
+                if total_percentage != 100:
+                    return api_error('材质面料含量总和必须等于100')
+            backend_data['automation_config'] = data.get('automation_config')
         
         if settings_manager.update_settings(backend_data):
             return api_ok(msg='设置保存成功')
@@ -1155,7 +2158,12 @@ def reset_settings():
     try:
         if settings_manager.reset_to_defaults():
             settings = settings_manager.get_settings()
+            automation_config = settings_manager.normalize_automation_config(settings.automation_config)
             return api_ok(msg='设置已重置为默认值', data={'settings': {
+                'pricing_config': settings.pricing_config,
+                'cost_items': settings.cost_items,
+                'model_configs': settings.model_configs,
+                'automation_config': automation_config,
                 'image_naming': {
                     'supported_formats': settings.image_naming.supported_formats,
                     'filename_filters': settings.image_naming.name_filters,
@@ -1471,117 +2479,96 @@ def toggle_drag_area():
 
 @app.post('/api/pricing/calculate_smart_prices')
 def calculate_smart_prices():
-    """智能价格计算API - 支持动态单价"""
+    """Runtime smart pricing with dynamic unit price."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         record_id = data.get('record_id')
-        unit_price = data.get('unit_price', 0)  # 获取单价参数
-        profit_margin = data.get('profit_margin', 0)  # 获取毛利率参数
-        
+
         if not record_id:
-            return jsonify({'success': False, 'error': '缺少产品ID参数'})
-        
-        # 获取产品信息
+            return jsonify({'success': False, 'error': 'missing record_id'})
+
         try:
-            record = Record.get_by_id(record_id)
-        except:
-            return jsonify({'success': False, 'error': '产品不存在'})
-        
-        # 解析SKU列表
+            unit_price = float(data.get('unit_price', 0) or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'invalid unit_price'})
+
+        if unit_price <= 0:
+            return jsonify({'success': False, 'error': 'unit_price must be greater than 0'})
+
+        try:
+            profit_margin = float(data.get('profit_margin', 0) or 0)
+        except (TypeError, ValueError):
+            profit_margin = 0.0
+
+        record = Record.get_or_none(Record.id == int(record_id))
+        if not record:
+            return jsonify({'success': False, 'error': 'record not found'})
+
         sku_list = json.loads(record.content) if record.content else []
-        
         if not sku_list:
-            return jsonify({'success': False, 'error': '该产品没有SKU信息'})
-        
-        # 导入智能定价引擎
+            return jsonify({'success': False, 'error': 'sku list is empty'})
+
+        default_cost_items = [
+            {'name': '??', 'cost_type': 'fixed', 'value': 3},
+            {'name': '???', 'cost_type': 'fixed', 'value': 0.5},
+            {'name': '????', 'cost_type': 'percentage', 'value': 5},
+        ]
+        default_pricing_config = {'target_gross_margin': 30}
+
+        pricing_config = dict(default_pricing_config)
+        cost_items = list(default_cost_items)
+
+        if settings_manager is not None:
+            try:
+                user_settings = settings_manager.get_settings()
+                if getattr(user_settings, 'pricing_config', None):
+                    pricing_config = dict(user_settings.pricing_config)
+                if getattr(user_settings, 'cost_items', None):
+                    cost_items = list(user_settings.cost_items)
+            except Exception as settings_error:
+                print(f'failed to load pricing settings, using defaults: {settings_error}')
+
+        if profit_margin > 0:
+            pricing_config['target_gross_margin'] = profit_margin if profit_margin > 1 else profit_margin * 100
+
         from src.smart_pricing_engine import SmartPricingEngine
-        
-        # 创建定价引擎实例
+
         config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
         engine = SmartPricingEngine(config_file)
-        
-        # 🔧 新增：成本验证逻辑
-        if unit_price <= 0:
-            return jsonify({
-                'success': False, 
-                'error': '袜子成本不能为0或负数！袜子成本是必不可少的产品成本，请输入正确的成本价格。'
-            })
-        
-        # 准备自定义配置（如果提供了单价或毛利率）
-        custom_config = {}
-        if unit_price > 0:
-            custom_config['base_cost_per_unit'] = unit_price
-            print(f"🎯 使用自定义单价: {unit_price}元")
-        if profit_margin > 0:
-            custom_config['target_profit_margin'] = profit_margin
-            print(f"🎯 使用自定义毛利率: {profit_margin*100:.1f}%")
-        
-        # 计算每个SKU的价格
-        pricing_results = []
-        for sku in sku_list:
-            sku_name = sku.get('name', '')
-            if sku_name:
-                try:
-                    # 使用自定义配置计算价格
-                    result = engine.calculate_price(sku_name, custom_config if custom_config else None)
-                    pricing_results.append({
-                        'sku_name': result.sku_name,
-                        'quantity': result.quantity,
-                        'base_cost': result.base_cost,
-                        'total_cost': result.total_cost,
-                        'suggested_price': result.suggested_price,
-                        'profit_margin': result.profit_margin,
-                        'confidence': result.confidence,
-                        'price_range': result.price_range,
-                        'notes': result.notes,
-                        'calculation_details': result.calculation_details
-                    })
-                except Exception as e:
-                    print(f"计算SKU '{sku_name}' 价格时出错: {e}")
-                    # 添加错误信息但继续处理其他SKU
-                    pricing_results.append({
-                        'sku_name': sku_name,
-                        'quantity': 1,
-                        'suggested_price': 0,
-                        'profit_margin': 0,
-                        'confidence': 0,
-                        'price_range': [0, 0],
-                        'notes': f'计算失败: {str(e)}',
-                        'calculation_details': {}
-                    })
-        
+        pricing_data = engine.calculate_runtime_pricing(
+            sku_list=sku_list,
+            unit_price=unit_price,
+            pricing_config=pricing_config,
+            cost_items=cost_items,
+        )
+
+        pricing_results = pricing_data.get('pricing_results', [])
         if not pricing_results:
-            return jsonify({'success': False, 'error': '没有成功计算任何SKU价格'})
-        
-        # 计算统计信息
-        successful_results = [r for r in pricing_results if r['suggested_price'] > 0]
-        avg_price = sum(r['suggested_price'] for r in successful_results) / len(successful_results) if successful_results else 0
-        avg_margin = sum(r['profit_margin'] for r in successful_results) / len(successful_results) if successful_results else 0
-        high_confidence_count = len([r for r in successful_results if r['confidence'] > 0.8])
-        
+            return jsonify({'success': False, 'error': 'no pricing results returned'})
+
+        statistics = pricing_data.get('statistics', {})
+        config_used = pricing_data.get('config_used', {})
+        print(
+            f"smart pricing finished: skus={statistics.get('total_skus', 0)}, "
+            f"unit_price={unit_price:.2f}, avg_price={statistics.get('average_price', 0):.2f}, "
+            f"avg_margin={statistics.get('average_margin', 0):.1f}%"
+        )
+        print(
+            f"pricing config used: target_margin={config_used.get('target_gross_margin', 0)}%, "
+            f"fixed={config_used.get('fixed_costs', 0)}, percentage={config_used.get('percentage_costs', 0)}%"
+        )
+
         return jsonify({
             'success': True,
-            'message': f'智能价格计算完成！成功计算 {len(successful_results)}/{len(pricing_results)} 个SKU',
-            'data': {
-                'pricing_results': pricing_results,
-                'statistics': {
-                    'total_skus': len(pricing_results),
-                    'successful_calculations': len(successful_results),
-                    'average_price': round(avg_price, 2),
-                    'average_margin': round(avg_margin * 100, 1),  # 转换为百分比
-                    'high_confidence_count': high_confidence_count,
-                    'high_confidence_rate': round(high_confidence_count / len(successful_results) * 100, 1) if successful_results else 0
-                }
-            }
+            'message': f"smart pricing finished for {len(pricing_results)} skus",
+            'data': pricing_data
         })
-        
     except Exception as e:
-        print(f"智能价格计算失败: {e}")
-        
+        print(f'smart pricing failed: {e}')
         traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': f'智能价格计算失败: {str(e)}'
+            'error': f'smart pricing failed: {str(e)}'
         })
 
 
@@ -3494,6 +4481,54 @@ def get_capture_status(task_id: str):
         'message': task['message'],
         'result': task.get('result'),
         'created_at': task['created_at']
+    })
+
+
+@app.route('/api/capture/history', methods=['GET'])
+def get_capture_history():
+    tasks = []
+    for task in capture_tasks.values():
+        tasks.append({
+            'task_id': task.get('task_id'),
+            'url': task.get('url', ''),
+            'status': task.get('status', 'pending'),
+            'progress': task.get('progress', 0),
+            'message': task.get('message', ''),
+            'created_at': task.get('created_at')
+        })
+    tasks.sort(key=lambda x: x.get('created_at') or '', reverse=True)
+    return jsonify({
+        'success': True,
+        'data': {
+            'tasks': tasks
+        }
+    })
+
+
+@app.route('/api/capture/cancel/<task_id>', methods=['POST'])
+def cancel_capture(task_id: str):
+    task = capture_tasks.get(task_id)
+    if not task:
+        return jsonify({
+            'success': False,
+            'message': '任务不存在'
+        }), 404
+
+    if task.get('status') in ('completed', 'failed'):
+        return jsonify({
+            'success': True,
+            'message': '任务已结束',
+            'task_id': task_id
+        })
+
+    task['status'] = 'failed'
+    task['progress'] = 0
+    task['message'] = '任务已取消'
+
+    return jsonify({
+        'success': True,
+        'message': '已取消采集任务',
+        'task_id': task_id
     })
 
 

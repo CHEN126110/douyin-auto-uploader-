@@ -1,0 +1,78 @@
+{
+  "元素模板": {
+    "商品标题输入框": {
+      "primary_locator": "xpath://input[@placeholder='请输入2-60个字符(1-30个汉字)']",
+      "backup_locators": [
+        "xpath://input[contains(@placeholder,'标题')]",
+        "xpath://input[contains(@class,'title-input')]",
+        "xpath://input[contains(@name,'title')]"
+      ],
+      "visual_features": {
+        "text_hint": "商品标题",
+        "element_type": "input",
+        "position": "top-center",
+        "context_elements": [
+          "商品信息",
+          "基础信息"
+        ]
+      },
+      "action_type": "input_text",
+      "retry_strategy": "ai_visual_locate",
+      "confidence_threshold": 0.8
+    },
+    "商品类目选择": {
+      "primary_locator": "xpath://span[text()='内衣裤袜']",
+      "backup_locators": [
+        "xpath://span[contains(text(),'内衣')]",
+        "xpath://div[contains(text(),'类目')]"
+      ],
+      "visual_features": {
+        "text_hint": "内衣裤袜",
+        "element_type": "span",
+        "context_elements": [
+          "类目选择",
+          "商品分类"
+        ]
+      },
+      "action_type": "click",
+      "retry_strategy": "backup_locators",
+      "confidence_threshold": 0.8
+    },
+    "发布按钮": {
+      "primary_locator": "xpath://span[text()='发布商品']/..",
+      "backup_locators": [
+        "xpath://button[contains(text(),'发布')]",
+        "xpath://span[text()='发布']/.."
+      ],
+      "visual_features": {
+        "text_hint": "发布商品",
+        "element_type": "button",
+        "position": "bottom-right"
+      },
+      "action_type": "click",
+      "retry_strategy": "backup_locators",
+      "confidence_threshold": 0.8
+    },
+    "测试元素": {
+      "primary_locator": "xpath://button[@id='test']",
+      "backup_locators": [
+        "xpath://button[text()='测试']"
+      ],
+      "visual_features": {
+        "text_hint": "测试",
+        "element_type": "button"
+      },
+      "action_type": "click",
+      "retry_strategy": "backup_locators",
+      "confidence_threshold": 0.8
+    },
+    "测试按钮": {
+      "primary_locator": "xpath://button[text()='测试']",
+      "backup_locators": [],
+      "visual_features": {},
+      "action_type": "click",
+      "retry_strategy": "backup_locators",
+      "confidence_threshold": 0.8
+    }
+  }
+}

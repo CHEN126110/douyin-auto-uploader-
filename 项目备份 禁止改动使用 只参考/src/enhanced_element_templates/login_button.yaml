@@ -1,0 +1,114 @@
+# 抖音小店登录按钮 - 完整元素指纹
+# 基于技术方案文档表2的模式设计
+
+# 在整个测试套件中唯一的逻辑元素标识符
+element_unique_id: "douyin_login_submit_button"
+
+# 对元素用途的人类可读描述
+description: "抖音小店登录页面的主提交按钮"
+
+# 使用此元素的测试用例或页面列表
+associated_tests:
+  - "test_douyin_shop_login"
+  - "test_automated_product_upload"
+  - "test_seller_dashboard_access"
+
+# 按优先级排序的定位器列表
+locators:
+  - type: "id"
+    value: "loginSubmitBtn"
+    priority: 1
+    last_used: "2024-12-02T16:24:00Z"
+    success_rate: 0.95
+  - type: "css"
+    value: "button[type='submit'].login-btn"
+    priority: 2
+    last_used: "2024-12-01T14:30:00Z"
+    success_rate: 0.85
+  - type: "xpath"
+    value: "//button[contains(text(), '登录') or contains(text(), '登錄')]"
+    priority: 3
+    last_used: "2024-11-30T11:00:00Z"
+    success_rate: 0.80
+  - type: "xpath"
+    value: "//button[contains(@class, 'login') and @type='submit']"
+    priority: 4
+    last_used: "2024-11-29T16:45:00Z"
+    success_rate: 0.75
+
+# 上次成功交互时元素所有属性的快照
+attribute_snapshot:
+  tag: "button"
+  id: "loginSubmitBtn"
+  class: "btn btn-primary login-btn submit-button"
+  text_content: "登录"
+  type: "submit"
+  name: "loginBtn"
+  aria_label: "提交登录信息"
+  data_testid: "login-submit"
+
+# 元素周围的结构上下文信息
+structural_context:
+  parent_tag: "form"
+  parent_id: "loginForm"
+  parent_class: "login-form-container"
+  siblings:
+    - tag: "input"
+      type: "text"
+      placeholder: "请输入用户名"
+    - tag: "input"
+      type: "password"
+      placeholder: "请输入密码"
+    - tag: "a"
+      text: "忘记密码?"
+      class: "forgot-password-link"
+
+# 视觉和位置数据
+visual_properties:
+  screenshot_path: "fingerprints/images/douyin_login_button.png"
+  bounding_box: 
+    x: 320
+    y: 280
+    width: 200
+    height: 45
+  background_color: "#1890ff"
+  text_color: "#ffffff"
+  font_size: "16px"
+
+# 交互后验证规则
+validation:
+  - type: "url_contains"
+    value: "/dashboard"
+    description: "登录成功后应跳转到仪表盘"
+  - type: "element_is_visible"
+    target_element_id: "xpath://div[contains(@class, 'user-info')]"
+    timeout: 5.0
+    description: "用户信息区域应该可见"
+  - type: "text_on_page"
+    value: "欢迎回来"
+    description: "页面应显示欢迎信息"
+  - type: "element_is_not_visible"
+    target_element_id: "xpath://div[contains(@class, 'login-error')]"
+    description: "不应显示登录错误信息"
+
+# 治愈过程的元数据
+healing_metadata:
+  last_successful_heal: "2024-12-02T16:24:00Z"
+  last_healed_from: 
+    type: "id"
+    value: "old-login-btn"
+  last_healed_to: 
+    type: "id"
+    value: "loginSubmitBtn"
+  confidence_of_last_heal: 0.98
+  total_heals: 3
+  heal_success_rate: 0.90
+  last_heal_reason: "原ID已更新,通过文本匹配找到新元素"
+
+# 自愈配置
+healing_config:
+  retry_strategy: "ai_visual_locate"
+  max_heal_attempts: 3
+  confidence_threshold: 0.75
+  enable_learning: true
+  auto_update_priority: true 

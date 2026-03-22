@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统设置</title>
+    <!-- 引入主页面的现代化按钮样式 -->
+    <link rel="stylesheet" href="../../admin/css/modern-glass.css">
+    <link rel="stylesheet" href="../../admin/css/performance-optimization.css">
+    <style>
+        /* 🔧 修复：移除modal容器，直接为layui弹窗提供内容样式 */
+        .settings-content {
+            padding: 30px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 50%, #fffbf0 100%);
+            min-height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .setting-group {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: none;
+            transition: box-shadow 0.2s ease;
+        }
+
+        .setting-group:hover {
+            box-shadow: none;
+        }
+        
+        .setting-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .setting-group-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(92, 124, 250, 0.1);
+        }
+
+        .setting-group-header .icon {
+            font-size: 20px;
+            margin-right: 10px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(92, 124, 250, 0.1);
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        
+        .setting-group-title {
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .refactoring-notice {
+            background: linear-gradient(135deg, #fff3cd 0%, #fff5d7 100%);
+            border: 2px solid #ffeaa7;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+        }
+        
+        .refactoring-notice h3 {
+            color: #8b5a00;
+            font-size: 16px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .refactoring-notice p {
+            color: #6c5700;
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 15px;
+        }
+        
+        .refactoring-phases {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .phase-item {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            text-align: center;
+        }
+        
+        .phase-item strong {
+            color: #8b5a00;
+            font-size: 11px;
+            display: block;
+            margin-bottom: 3px;
+        }
+        
+        .phase-item span {
+            color: #6c5700;
+            font-size: 10px;
+        }
+
+        /* 成本项目配置样式 */
+        .cost-items-container {
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .cost-items-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .cost-items-header h4 {
+            color: #374151;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* 已移除旧的按钮样式，现在使用主页面的modern-btn样式 */
+        /* .btn-add-cost-item 样式已被 modern-btn optimized-interactive 替代 */
+
+        .cost-items-list {
+            min-height: 200px;
+            margin-bottom: 20px;
+        }
+
+        .cost-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .cost-item:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+
+        .cost-item-info {
+            flex: 1;
+        }
+
+        .cost-item-name {
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .cost-item-details {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .cost-item-type {
+            background: #f3f4f6;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .cost-item-value {
+            font-weight: 600;
+            color: #059669;
+        }
+
+        .cost-item-actions {
+            display: flex;
+            gap: 12px;
+            margin-left: 16px;
+        }
+
+        /* 已移除旧的按钮样式，现在使用主页面的modern-btn样式 */
+        /* .btn-edit 样式已被 modern-btn modern-btn-warning optimized-interactive 替代 */
+        /* .btn-delete 样式已被 modern-btn modern-btn-danger optimized-interactive 替代 */
+        
+        /* 设置页面按钮的自定义布局样式 */
+        .cost-items-header .modern-btn {
+            margin-left: 12px;
+            min-width: 120px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+        }
+        
+        .cost-item-actions .modern-btn {
+            padding: 8px 16px;
+            font-size: 12px;
+            min-width: 60px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cost-summary {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-around;
+            border: 1px solid #e5e7eb;
+        }
+
+        .summary-item {
+            text-align: center;
+        }
+
+        .summary-item .label {
+            display: block;
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .summary-item .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6b7280;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state h4 {
+            margin: 0 0 8px 0;
+            color: #374151;
+        }
+
+        .empty-state p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        /* 🔧 修复：恢复layer控制按钮为相对容器的绝对定位，并为标题栏预留空间 */
+        .layui-layer-setwin {
+            position: absolute !important;
+            top: 12px !important;
+            right: 12px !important;
+        }
+        .layui-layer .layui-layer-setwin {
+            position: absolute !important;
+            top: 12px !important;
+            right: 12px !important;
+        }
+        .layui-layer-title {
+            position: relative !important;
+            height: 42px !important;
+            line-height: 42px !important;
+            padding-right: 60px !important; /* 为关闭/最大化/最小化预留空间 */
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .settings-content {
+                padding: 20px;
+            }
+            
+            .setting-group {
+                padding: 20px;
+            }
+            
+            .refactoring-phases {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+        <div class="settings-content">
+        <!-- 价格策略配置 -->
+        <div class="setting-group">
+            <div class="setting-group-header">
+                <div class="icon">💰</div>
+                <h2 class="setting-group-title">价格策略配置</h2>
+            </div>
+            
+            <div class="cost-items-container">
+                <div class="cost-items-header">
+                    <h4>成本项目配置</h4>
+                    <button class="modern-btn optimized-interactive" onclick="addCostItem()">
+                        <span class="icon">➕</span>
+                        添加成本项目
+                    </button>
+                </div>
+                
+
+                
+                <div id="cost-items-list" class="cost-items-list">
+                    <!-- 成本项目将通过JavaScript动态加载 -->
+                </div>
+                
+                <div class="cost-summary">
+                    <div class="summary-item">
+                        <span class="label">总成本项目数：</span>
+                        <span id="total-cost-items" class="value">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">固定成本总计：</span>
+                        <span id="total-fixed-cost" class="value">¥0.00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">目标毛利率：</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="target-profit-margin" placeholder="30" min="0" max="100" step="0.1" 
+                                   style="width: 80px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; text-align: center;">
+                            <span style="color: #374151; font-weight: 500;">%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 链接采集配置 -->
+        <div class="setting-group">
+            <div class="setting-group-header">
+                <div class="icon">🔗</div>
+                <h2 class="setting-group-title">链接采集配置</h2>
+            </div>
+            
+            <div class="cost-items-container">
+                <div class="cost-items-header">
+                    <h4>采集选项</h4>
+                </div>
+                
+                <div style="padding: 20px;">
+                    <!-- 自动下载图片 -->
+                    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 4px;">自动下载图片</label>
+                            <span style="font-size: 12px; color: #6b7280;">采集时自动下载商品主图和详情图片</span>
+                        </div>
+                        <input type="checkbox" id="capture-download-images" checked lay-skin="switch" lay-text="开启|关闭">
+                    </div>
+                    
+                    <!-- 提取SKU信息 -->
+                    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 4px;">提取SKU信息</label>
+                            <span style="font-size: 12px; color: #6b7280;">采集商品规格信息（颜色、尺寸等）</span>
+                        </div>
+                        <input type="checkbox" id="capture-extract-sku" checked lay-skin="switch" lay-text="开启|关闭">
+                    </div>
+                    
+                    <!-- 提取商品参数 -->
+                    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 4px;">提取商品参数</label>
+                            <span style="font-size: 12px; color: #6b7280;">采集商品详细参数信息</span>
+                        </div>
+                        <input type="checkbox" id="capture-extract-params" checked lay-skin="switch" lay-text="开启|关闭">
+                    </div>
+                    
+                    <!-- 默认库存 -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 8px;">默认库存数量</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="capture-default-stock" value="100" min="1" max="9999" 
+                                   style="width: 100px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;">
+                            <span style="color: #6b7280; font-size: 12px;">件</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 登录等待时间 -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 8px;">登录等待时间</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="capture-login-timeout" value="120" min="30" max="300" 
+                                   style="width: 100px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;">
+                            <span style="color: #6b7280; font-size: 12px;">秒（需要登录时的最长等待时间）</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 文件保存位置 -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-weight: 600; color: #374151; display: block; margin-bottom: 8px;">
+                            文件保存位置
+                            <span style="font-size: 12px; font-weight: normal; color: #f59e0b; margin-left: 8px;">⚠️ 重要配置</span>
+                        </label>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="text" id="capture-save-path" value="uploads/products" 
+                                       placeholder="uploads/products" 
+                                       style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; font-family: 'Consolas', monospace;">
+                                <button type="button" onclick="resetSavePath()" 
+                                        style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s;"
+                                        onmouseover="this.style.background='#4b5563'" 
+                                        onmouseout="this.style.background='#6b7280'">
+                                    重置
+                                </button>
+                            </div>
+                            <div style="font-size: 12px; color: #6b7280; line-height: 1.5;">
+                                <div style="margin-bottom: 4px;">💡 <strong>使用说明：</strong></div>
+                                <div style="padding-left: 20px;">
+                                    • 相对路径：从程序目录开始（推荐，便于打包）<br>
+                                    • 绝对路径：如 D:/MyFiles/products（不推荐打包使用）<br>
+                                    • 默认值：uploads/products（程序目录下的uploads文件夹）
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 保存按钮 -->
+                    <div style="margin-top: 30px; text-align: right;">
+                        <button class="modern-btn optimized-interactive" onclick="saveCaptureSettings()">
+                            <span class="icon">💾</span>
+                            保存采集配置
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- 界面设置部分已移除 -->
+                    
+    <script>
+        // 🔧 修复：完整的成本项目管理功能
+        // 移除重复定义，使用window.costItems统一管理
+        
+        // 全局函数定义（确保可以被onclick调用）
+        function addCostItem() {
+            // 使用layui的弹窗
+            if (typeof parent.layer !== 'undefined') {
+                parent.layer.prompt({
+                    formType: 0,
+                    title: '添加成本项目',
+                    area: ['400px', '300px'],
+                    content: `
+                        <div style="padding: 20px;">
+                            <div style="margin-bottom: 15px;">
+                                <label>项目名称：</label>
+                                <input type="text" id="cost-name" placeholder="如：包装费" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>成本类型：</label>
+                                <select id="cost-type" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="fixed">固定成本</option>
+                                    <option value="percentage">百分比成本(基于基础成本)</option>
+                                    <option value="platform_fee">平台扣点(基于销售金额)</option>
+                                    <option value="per_unit">单位成本</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>成本值：</label>
+                                <input type="number" id="cost-value" placeholder="如：2.5" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>描述：</label>
+                                <input type="text" id="cost-description" placeholder="可选" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                        </div>
+                    `,
+                    btn: ['确定', '取消'],
+                    yes: function(index) {
+                        const name = document.getElementById('cost-name').value.trim();
+                        const type = document.getElementById('cost-type').value;
+                        const value = parseFloat(document.getElementById('cost-value').value);
+                        const description = document.getElementById('cost-description').value.trim();
+                        
+                        if (!name || isNaN(value)) {
+                            parent.layer.msg('请填写完整信息', {icon: 2});
+                            return;
+                        }
+                        
+                        window.saveCostItem({name, cost_type: type, value, description}, index);
+                    }
+                });
+            } else {
+                // 降级处理
+                const name = prompt('请输入成本项目名称:');
+                if (name) {
+                    const value = parseFloat(prompt('请输入成本值:'));
+                    if (!isNaN(value)) {
+                        window.saveCostItem({name, cost_type: 'fixed', value, description: ''});
+                    }
+                }
+            }
+        };
+        
+        function editCostItem(itemName) {
+            const item = window.costItems.find(i => i.name === itemName);
+            if (!item) {
+                console.error('❌ 找不到成本项目:', itemName);
+                return;
+            }
+            console.log('✅ 找到成本项目:', item);
+            
+            if (typeof parent.layer !== 'undefined') {
+                parent.layer.prompt({
+                    formType: 0,
+                    title: '编辑成本项目',
+                    area: ['400px', '300px'],
+                    content: `
+                        <div style="padding: 20px;">
+                            <div style="margin-bottom: 15px;">
+                                <label>项目名称：</label>
+                                <input type="text" id="edit-cost-name" value="${item.name}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>成本类型：</label>
+                                <select id="edit-cost-type" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="fixed" ${item.cost_type === 'fixed' ? 'selected' : ''}>固定成本</option>
+                                    <option value="percentage" ${item.cost_type === 'percentage' ? 'selected' : ''}>百分比成本(基于基础成本)</option>
+                                    <option value="platform_fee" ${item.cost_type === 'platform_fee' ? 'selected' : ''}>平台扣点(基于销售金额)</option>
+                                    <option value="per_unit" ${item.cost_type === 'per_unit' ? 'selected' : ''}>单位成本</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>成本值：</label>
+                                <input type="number" id="edit-cost-value" value="${item.value}" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>描述：</label>
+                                <input type="text" id="edit-cost-description" value="${item.description || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                        </div>
+                    `,
+                    btn: ['确定', '取消'],
+                    yes: function(index) {
+                        const name = document.getElementById('edit-cost-name').value.trim();
+                        const type = document.getElementById('edit-cost-type').value;
+                        const value = parseFloat(document.getElementById('edit-cost-value').value);
+                        const description = document.getElementById('edit-cost-description').value.trim();
+                        
+                        if (!name || isNaN(value)) {
+                            parent.layer.msg('请填写完整信息', {icon: 2});
+                            return;
+                        }
+                        
+                        window.updateCostItem(itemName, {name, cost_type: type, value, description}, index);
+                    }
+                });
+            }
+        };
+        
+        function deleteCostItem(itemName) {
+            if (typeof parent.layer !== 'undefined') {
+                parent.layer.confirm(`确定要删除成本项目"${itemName}"吗？`, {
+                    btn: ['确定', '取消']
+                }, function(index) {
+                    window.removeCostItem(itemName, index);
+                });
+            } else {
+                if (confirm(`确定要删除成本项目"${itemName}"吗？`)) {
+                    window.removeCostItem(itemName);
+                }
+            }
+        };
+        
+        (function() {
+            'use strict';
+            
+            // 🔧 修复：声明全局变量
+            window.costItems = [];
+            
+            // 🔧 修复：将loadCostItems函数定义移到调用之前
+            // 加载成本项目
+            window.loadCostItems = async function loadCostItems() {
+                try {
+                    console.log('🔄 开始加载成本项目...');
+                    const response = await fetch('/api/pricing/cost-items');
+                    const data = await response.json();
+                    
+                    console.log('📦 API响应数据:', data);
+                    
+                    if (data.success) {
+                        // 修复：正确访问嵌套的数据结构
+                        window.costItems = (data.data && data.data.cost_items) || [];
+                        console.log('✅ 成功加载成本项目:', window.costItems.length, '个');
+                        window.renderCostItems();
+                        window.updateSummary();
+                    } else {
+                        console.error('❌ 加载成本项目失败:', data.error);
+                        window.showEmptyState();
+                    }
+                } catch (error) {
+                    console.error('❌ 加载成本项目出错:', error);
+                    window.showEmptyState();
+                }
+            }
+            
+            // 渲染成本项目列表
+            window.renderCostItems = function renderCostItems() {
+                const container = document.getElementById('cost-items-list');
+                if (!container) return;
+                console.log('🎨 开始渲染成本项目，数量:', window.costItems.length);
+                console.log('📋 成本项目详情:', window.costItems);
+                
+                if (!window.costItems || window.costItems.length === 0) {
+                    console.log('📭 没有成本项目，显示空状态');
+                    window.showEmptyState();
+                    return;
+                }
+                
+                const html = window.costItems.map(item => `
+                    <div class="cost-item" data-name="${item.name}">
+                        <div class="cost-item-info">
+                            <div class="cost-item-name">${item.name}</div>
+                            <div class="cost-item-details">
+                                <span class="cost-item-type">${window.getCostTypeText(item.cost_type)}</span>
+                                <span class="cost-item-value">${window.formatCostValue(item)}</span>
+                                <span class="cost-item-description">${item.description || '无描述'}</span>
+                            </div>
+                        </div>
+                        <div class="cost-item-actions">
+                            <button class="modern-btn modern-btn-warning optimized-interactive" onclick="editCostItem('${item.name}')">编辑</button>
+                            <button class="modern-btn modern-btn-danger optimized-interactive" onclick="deleteCostItem('${item.name}')">删除</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                console.log('🖼️ 生成的HTML长度:', html.length);
+                container.innerHTML = html;
+                console.log('✅ 成本项目渲染完成');
+            }
+            
+            // 显示空状态
+            window.showEmptyState = function showEmptyState() {
+                const container = document.getElementById('cost-items-list');
+                if (!container) return;
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📦</div>
+                        <h4>暂无成本项目</h4>
+                        <p>点击"添加成本项目"按钮开始配置</p>
+                    </div>
+                `;
+            }
+            
+            // 更新统计信息
+            window.updateSummary = function updateSummary() {
+                const totalItems = window.costItems.length;
+                const totalFixedCost = window.costItems
+                    .filter(item => item.cost_type === 'fixed')
+                    .reduce((sum, item) => sum + (item.value || 0), 0);
+                const totalEl = document.getElementById('total-cost-items');
+                const fixedEl = document.getElementById('total-fixed-cost');
+                if (totalEl) totalEl.textContent = totalItems;
+                if (fixedEl) fixedEl.textContent = `¥${totalFixedCost.toFixed(2)}`;
+            }
+            
+            // 获取成本类型文本
+            window.getCostTypeText = function getCostTypeText(type) {
+                const types = {
+                    'fixed': '固定成本',
+                    'percentage': '百分比成本(基础成本)',
+                    'platform_fee': '平台扣点(销售金额)',
+                    'per_unit': '单位成本'
+                };
+                return types[type] || type;
+            }
+            
+            // 格式化成本值
+            window.formatCostValue = function formatCostValue(item) {
+                switch (item.cost_type) {
+                    case 'fixed':
+                        return `¥${item.value.toFixed(2)}`;
+                    case 'percentage':
+                        return `${item.value}%`;
+                    case 'platform_fee':
+                        return `${item.value}%`;
+                    case 'per_unit':
+                        return `¥${item.value.toFixed(2)}/件`;
+                    default:
+                        return item.value;
+                }
+            }
+            
+            // 页面加载完成后初始化
+            document.addEventListener('DOMContentLoaded', function() {
+                const init = function() {
+                    if (document.getElementById('cost-items-list') && document.getElementById('target-profit-margin')) {
+                        window.loadCostItems();
+                        loadProfitMarginConfig();
+                    } else {
+                        setTimeout(init, 100);
+                    }
+                };
+                init();
+            });
+            
+            // 如果在layui环境中，也要确保初始化
+            if (typeof window.parent !== 'undefined') {
+                const initPopup = function() {
+                    if (document.getElementById('cost-items-list') && document.getElementById('target-profit-margin')) {
+                        window.loadCostItems();
+                        loadProfitMarginConfig();
+                    } else {
+                        setTimeout(initPopup, 100);
+                    }
+                };
+                initPopup();
+            }
+            
+            // 加载毛利率配置
+            async function loadProfitMarginConfig() {
+                try {
+                    console.log('🔄 开始加载毛利率配置...');
+                    const response = await fetch('/api/pricing/config');
+                    const data = await response.json();
+                    
+                    if (data.success && data.data && data.data.templates && data.data.templates['默认袜子模板']) {
+                        const template = data.data.templates['默认袜子模板'];
+                        
+                        // 设置目标毛利率
+                        const targetMargin = (template.profit_margin || 0.30) * 100;
+                        const el = document.getElementById('target-profit-margin');
+                        if (el) el.value = targetMargin.toFixed(1);
+                        
+                        console.log('✅ 毛利率配置加载成功:', {targetMargin});
+                    } else {
+                        console.log('⚠️ 使用默认毛利率配置');
+                        const el = document.getElementById('target-profit-margin');
+                        if (el) el.value = '30.0';
+                    }
+                } catch (error) {
+                    console.error('❌ 加载毛利率配置出错:', error);
+                    // 使用默认值
+                    const el = document.getElementById('target-profit-margin');
+                    if (el) el.value = '30.0';
+                }
+            }
+            
+            // 保存毛利率配置
+            async function saveProfitMarginConfig() {
+                try {
+                    const targetMargin = parseFloat(document.getElementById('target-profit-margin').value) / 100;
+                    
+                    // 验证输入
+                    if (isNaN(targetMargin) || targetMargin <= 0 || targetMargin >= 1) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg('请输入有效的毛利率（0-100%）', {icon: 2});
+                        } else {
+                            alert('请输入有效的毛利率（0-100%）');
+                        }
+                        return;
+                    }
+                    
+                    // 自动设置最小和最大毛利率
+                    const minMargin = Math.max(0.1, targetMargin - 0.1); // 最小毛利率为目标-10%，但不低于10%
+                    const maxMargin = Math.min(0.8, targetMargin + 0.1); // 最大毛利率为目标+10%，但不超过80%
+                    
+                    const configData = {
+                        templates: {
+                            '默认袜子模板': {
+                                profit_margin: targetMargin,
+                                min_profit_margin: minMargin,
+                                max_profit_margin: maxMargin
+                            }
+                        }
+                    };
+                    
+                    const response = await fetch('/api/pricing/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(configData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg('毛利率配置保存成功', {icon: 1});
+                        } else {
+                            alert('毛利率配置保存成功');
+                        }
+                    } else {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg(data.error || '保存失败', {icon: 2});
+                        } else {
+                            alert(data.error || '保存失败');
+                        }
+                    }
+                } catch (error) {
+                    console.error('保存毛利率配置出错:', error);
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('保存失败', {icon: 2});
+                    } else {
+                        alert('保存失败');
+                    }
+                }
+            }
+            
+
+            
+
+            
+            // 保存毛利率配置
+            async function saveProfitMarginConfig() {
+                try {
+                    const targetMargin = parseFloat(document.getElementById('target-profit-margin').value) / 100;
+                    
+                    // 验证输入
+                    if (isNaN(targetMargin) || targetMargin <= 0 || targetMargin >= 1) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg('请输入有效的毛利率（0-100%）', {icon: 2});
+                        } else {
+                            alert('请输入有效的毛利率（0-100%）');
+                        }
+                        return;
+                    }
+                    
+                    // 自动设置最小和最大毛利率
+                    const minMargin = Math.max(0.1, targetMargin - 0.1); // 最小毛利率为目标-10%，但不低于10%
+                    const maxMargin = Math.min(0.8, targetMargin + 0.1); // 最大毛利率为目标+10%，但不超过80%
+                    
+                    console.log('💾 保存毛利率配置:', {targetMargin, minMargin, maxMargin});
+                    
+                    const response = await fetch('/api/pricing/profit-margin-config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            profit_margin: value,  // 发送百分比形式的值（如30），后端会转换为小数
+                            target_profit_margin: targetMargin,
+                            min_profit_margin: minMargin,
+                            max_profit_margin: maxMargin
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg('毛利率配置保存成功', {icon: 1});
+                        } else {
+                            alert('毛利率配置保存成功');
+                        }
+                        console.log('✅ 毛利率配置保存成功');
+                    } else {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg(data.error || '保存失败', {icon: 2});
+                        } else {
+                            alert(data.error || '保存失败');
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ 保存毛利率配置出错:', error);
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('保存失败', {icon: 2});
+                    } else {
+                        alert('保存失败');
+                    }
+                }
+            }
+            
+            // 防抖函数
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+
+            // 实时保存毛利率配置（防抖）
+            const debouncedSaveProfitMargin = debounce(async function() {
+                const input = document.getElementById('target-profit-margin');
+                const value = parseFloat(input.value);
+                
+                // 验证输入
+                if (isNaN(value) || value <= 0 || value >= 100) {
+                    return; // 无效值不保存
+                }
+                
+                try {
+                    console.log('💾 自动保存毛利率配置:', value + '%');
+                    
+                    const targetMargin = value / 100;
+                    const minMargin = Math.max(0.1, targetMargin - 0.1);
+                    const maxMargin = Math.min(0.8, targetMargin + 0.1);
+                    
+                    const response = await fetch('/api/pricing/profit-margin-config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            profit_margin: value  // 直接发送百分比值，后端会转换为小数
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('✅ 毛利率配置自动保存成功');
+                        
+                        // 显示轻量级提示（不打断用户）
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg('毛利率已自动保存', {icon: 1, time: 1000});
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ 自动保存毛利率配置出错:', error);
+                }
+            }, 1000); // 1秒防抖
+
+            // 绑定实时保存事件 - 修复版本
+            function bindProfitMarginEvents() {
+                const profitMarginInput = document.getElementById('target-profit-margin');
+                
+                // 为毛利率输入框添加实时保存功能
+                if (profitMarginInput) {
+                    console.log('✅ 成功绑定毛利率输入框事件');
+                    profitMarginInput.addEventListener('input', debouncedSaveProfitMargin);
+                    profitMarginInput.addEventListener('change', debouncedSaveProfitMargin);
+                    profitMarginInput.addEventListener('blur', debouncedSaveProfitMargin);
+                } else {
+                    console.warn('⚠️ 未找到毛利率输入框，稍后重试');
+                    // 延迟重试
+                    setTimeout(bindProfitMarginEvents, 500);
+                }
+            }
+
+            // 页面加载完成后初始化
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('⚙️ 设置页面内容已加载（适配layui弹窗）');
+                window.loadCostItems();
+                loadProfitMarginConfig();
+                bindProfitMarginEvents();
+            });
+            
+            // 如果在layui环境中，也要确保初始化
+            if (typeof window.parent !== 'undefined') {
+                setTimeout(() => {
+                    window.loadCostItems();
+                    loadProfitMarginConfig();
+                    bindProfitMarginEvents();
+                }, 100);
+            }
+            
+            // 保存成本项目
+            window.saveCostItem = async function saveCostItem(itemData, layerIndex) {
+                try {
+                    const response = await fetch('/api/pricing/cost-item', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(itemData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.close(layerIndex);
+                            parent.layer.msg('添加成功', {icon: 1});
+                        }
+                        window.loadCostItems(); // 重新加载
+                    } else {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg(data.error || '添加失败', {icon: 2});
+                        } else {
+                            alert(data.error || '添加失败');
+                        }
+                    }
+                } catch (error) {
+                    console.error('保存成本项目出错:', error);
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('保存失败', {icon: 2});
+                    } else {
+                        alert('保存失败');
+                    }
+                }
+            }
+            
+            // 更新成本项目
+            window.updateCostItem = async function updateCostItem(oldName, itemData, layerIndex) {
+                try {
+                    const response = await fetch(`/api/pricing/cost-item/${encodeURIComponent(oldName)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(itemData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.close(layerIndex);
+                            parent.layer.msg('更新成功', {icon: 1});
+                        }
+                        window.loadCostItems(); // 重新加载
+                    } else {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg(data.error || '更新失败', {icon: 2});
+                        } else {
+                            alert(data.error || '更新失败');
+                        }
+                    }
+                } catch (error) {
+                    console.error('更新成本项目出错:', error);
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('更新失败', {icon: 2});
+                    } else {
+                        alert('更新失败');
+                    }
+                }
+            }
+            
+            // 删除成本项目
+            window.removeCostItem = async function removeCostItem(itemName, layerIndex) {
+                try {
+                    const response = await fetch(`/api/pricing/cost-item/${encodeURIComponent(itemName)}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.close(layerIndex);
+                            parent.layer.msg('删除成功', {icon: 1});
+                        }
+                        window.loadCostItems(); // 重新加载
+                    } else {
+                        if (typeof parent.layer !== 'undefined') {
+                            parent.layer.msg(data.error || '删除失败', {icon: 2});
+                        } else {
+                            alert(data.error || '删除失败');
+                        }
+                    }
+                } catch (error) {
+                    console.error('删除成本项目出错:', error);
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('删除失败', {icon: 2});
+                    } else {
+                        alert('删除失败');
+                    }
+                }
+            }
+            
+        })();
+        
+        // ========== 链接采集配置管理 ==========
+        
+        // 加载采集配置
+        async function loadCaptureSettings() {
+            try {
+                console.log('🔄 开始加载采集配置...');
+                
+                // 从localStorage读取配置
+                const savedSettings = localStorage.getItem('capture_settings');
+                
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+                    
+                    // 设置开关状态
+                    if (settings.download_images !== undefined) {
+                        document.getElementById('capture-download-images').checked = settings.download_images;
+                    }
+                    if (settings.extract_sku !== undefined) {
+                        document.getElementById('capture-extract-sku').checked = settings.extract_sku;
+                    }
+                    if (settings.extract_params !== undefined) {
+                        document.getElementById('capture-extract-params').checked = settings.extract_params;
+                    }
+                    
+                    // 设置数值
+                    if (settings.default_stock) {
+                        document.getElementById('capture-default-stock').value = settings.default_stock;
+                    }
+                    if (settings.login_timeout) {
+                        document.getElementById('capture-login-timeout').value = settings.login_timeout;
+                    }
+                    if (settings.save_path) {
+                        document.getElementById('capture-save-path').value = settings.save_path;
+                    }
+                    
+                    console.log('✅ 采集配置加载成功');
+                } else {
+                    console.log('ℹ️ 使用默认采集配置');
+                }
+                
+                // 重新渲染表单（LayUI需要）
+                if (typeof parent.layui !== 'undefined') {
+                    parent.layui.form.render();
+                }
+            } catch (error) {
+                console.error('❌ 加载采集配置失败:', error);
+            }
+        }
+        
+        // 保存采集配置
+        window.saveCaptureSettings = async function saveCaptureSettings() {
+            try {
+                const settings = {
+                    download_images: document.getElementById('capture-download-images').checked,
+                    extract_sku: document.getElementById('capture-extract-sku').checked,
+                    extract_params: document.getElementById('capture-extract-params').checked,
+                    default_stock: parseInt(document.getElementById('capture-default-stock').value) || 100,
+                    login_timeout: parseInt(document.getElementById('capture-login-timeout').value) || 120,
+                    save_path: document.getElementById('capture-save-path').value.trim() || 'uploads/products'
+                };
+                
+                // 验证数据
+                if (settings.default_stock < 1 || settings.default_stock > 9999) {
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('默认库存应在1-9999之间', {icon: 2});
+                    } else {
+                        alert('默认库存应在1-9999之间');
+                    }
+                    return;
+                }
+                
+                if (settings.login_timeout < 30 || settings.login_timeout > 300) {
+                    if (typeof parent.layer !== 'undefined') {
+                        parent.layer.msg('登录等待时间应在30-300秒之间', {icon: 2});
+                    } else {
+                        alert('登录等待时间应在30-300秒之间');
+                    }
+                    return;
+                }
+                
+                // 保存到localStorage
+                localStorage.setItem('capture_settings', JSON.stringify(settings));
+                
+                console.log('✅ 采集配置已保存:', settings);
+                
+                // 显示成功提示
+                if (typeof parent.layer !== 'undefined') {
+                    parent.layer.msg('采集配置保存成功', {icon: 1, time: 2000});
+                } else {
+                    alert('采集配置保存成功');
+                }
+            } catch (error) {
+                console.error('❌ 保存采集配置失败:', error);
+                if (typeof parent.layer !== 'undefined') {
+                    parent.layer.msg('保存失败', {icon: 2});
+                } else {
+                    alert('保存失败');
+                }
+            }
+        };
+        
+        // 重置保存路径为默认值
+        window.resetSavePath = function() {
+            document.getElementById('capture-save-path').value = 'uploads/products';
+            if (typeof parent.layer !== 'undefined') {
+                parent.layer.msg('已重置为默认路径', {icon: 1, time: 1000});
+            }
+            console.log('✅ 保存路径已重置为默认值');
+        };
+        
+        // ========== 链接采集配置管理结束 ==========
+        
+        // 页面初始化
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('🚀 设置页面初始化...');
+                
+                // 加载配置
+                window.loadCostItems();
+                loadCaptureSettings();
+                
+                console.log('✅ 设置页面初始化完成');
+            });
+        </script>
+    </body>
+</html>

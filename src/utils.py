@@ -236,44 +236,40 @@ def infer_sock_height_value(category_text: str, fallback=None) -> str:
 
 def click_field_action(new_tab, field_id: str, action_text: str, timeout: float = 1.0) -> bool:
     try:
-        area = new_tab.ele(f'xpath://div[@attr-field-id="{field_id}"]', timeout=timeout)
+        areas = new_tab.eles(f'xpath://div[@attr-field-id="{field_id}"]', timeout=timeout)
     except Exception:
-        area = None
-
-    if not area:
+        areas = []
+    if not areas:
         return False
 
-    try:
-        area.scroll.to_center()
-    except Exception:
-        pass
-    time.sleep(0.1)
-
     selectors = [
-        f'xpath:.//button[.//*[normalize-space(text())="{action_text}"]]',
-        f'xpath:.//*[normalize-space(text())="{action_text}"]/ancestor::button[1]',
-        f'xpath:.//*[normalize-space(text())="{action_text}"]/ancestor::div[contains(@class,"styles-module_wrapper__")][1]',
-        f'xpath:.//*[normalize-space(text())="{action_text}"]/ancestor::div[contains(@class,"style_modifyButton__")][1]',
-        f'xpath:.//*[normalize-space(text())="{action_text}"]',
+        f'xpath:.//button[.//*[contains(normalize-space(text()),"{action_text}")]]',
+        f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]/ancestor::button[1]',
+        f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]/ancestor::div[contains(@class,"styles-module_wrapper__")][1]',
+        f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]/ancestor::div[contains(@class,"style_modifyButton__")][1]',
+        f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]',
     ]
-
-    for selector in selectors:
+    for area in areas:
         try:
-            target = area.ele(selector, timeout=0.5)
+            area.scroll.to_center()
         except Exception:
-            target = None
-        if not target:
-            continue
-
-        class_name = (target.attr('class') or '').lower()
-        if 'disabled' in class_name:
-            continue
-
-        try:
-            target.click(by_js=True)
-            return True
-        except Exception:
-            continue
+            pass
+        time.sleep(0.05)
+        for selector in selectors:
+            try:
+                target = area.ele(selector, timeout=0.4)
+            except Exception:
+                target = None
+            if not target:
+                continue
+            class_name = (target.attr('class') or '').lower()
+            if 'disabled' in class_name:
+                continue
+            try:
+                target.click(by_js=True)
+                return True
+            except Exception:
+                continue
 
     return False
 
@@ -282,10 +278,19 @@ def set_material_composition(new_tab, materials) -> bool:
     if not materials:
         return True
 
+    area = None
     try:
-        area = new_tab.ele('xpath://div[@attr-field-id="面料材质"]', timeout=1)
+        areas = new_tab.eles('xpath://div[@attr-field-id="面料材质"]', timeout=1.2)
     except Exception:
-        area = None
+        areas = []
+    for candidate in areas:
+        try:
+            combobox = candidate.ele('xpath:.//input[@role="combobox"]', timeout=0.2)
+        except Exception:
+            combobox = None
+        if combobox:
+            area = candidate
+            break
 
     if not area:
         print('未找到面料材质区域')
@@ -309,18 +314,52 @@ def set_material_composition(new_tab, materials) -> bool:
             pass
 
     for idx in range(1, len(materials)):
-        try:
-            combo_count = len(area.eles('xpath:.//input[@role="combobox"]', timeout=0.3))
-        except Exception:
-            combo_count = 0
-        if combo_count >= idx + 1:
-            continue
-        if not click_field_action(new_tab, '面料材质', '添加材质'):
-            print(f'未找到第{idx + 1}组面料的添加材质按钮')
-            return False
-        time.sleep(0.1)
+        target_count = idx + 1
+        for _ in range(3):
+            try:
+                combo_count = len(new_tab.eles('xpath://div[@attr-field-id="面料材质"]//input[@role="combobox"]', timeout=0.6))
+            except Exception:
+                combo_count = 0
+            if combo_count >= target_count:
+                break
+            added = click_field_action(new_tab, '面料材质', '添加材质')
+            if not added:
+                fallback_selectors = [
+                    'xpath://div[@attr-field-id="面料材质"]//button[.//*[contains(normalize-space(text()),"添加材质")] or contains(normalize-space(.),"添加材质")]',
+                    'xpath://div[@attr-field-id="面料材质"]//*[contains(normalize-space(text()),"添加材质")]/ancestor::button[1]',
+                    'xpath://div[@attr-field-id="面料材质"]//*[contains(normalize-space(text()),"添加材质")]',
+                ]
+                for selector in fallback_selectors:
+                    try:
+                        btn = new_tab.ele(selector, timeout=0.6)
+                    except Exception:
+                        btn = None
+                    if not btn:
+                        continue
+                    try:
+                        btn.click(by_js=True)
+                        added = True
+                        break
+                    except Exception:
+                        continue
+            if not added:
+                time.sleep(0.15)
+                continue
+            time.sleep(0.25)
 
-    for idx, material in enumerate(materials):
+    try:
+        combo_count = len(new_tab.eles('xpath://div[@attr-field-id="面料材质"]//input[@role="combobox"]', timeout=0.8))
+    except Exception:
+        combo_count = 0
+    if combo_count < len(materials):
+        print(f'面料输入框数量不足，期望{len(materials)}，实际{combo_count}')
+        return False
+    if combo_count <= 0:
+        return False
+
+    materials_to_fill = list(materials[:len(materials)])
+
+    for idx, material in enumerate(materials_to_fill):
         name = str(material[0]).strip()
         ratio = '' if len(material) < 2 or material[1] is None else str(material[1]).strip()
         caizhi_select(new_tab, name, ratio, idx)
@@ -830,25 +869,48 @@ def caizhi_select(new_tab, key, value, index):
             pass
         try:
             combo.input(key)
-            _time.sleep(0.05)
+            _time.sleep(0.12)
         except Exception:
             pass
-        
-        # 点击下拉选项
-        try:
-            opt = new_tab.ele(
-                f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and normalize-space(text())="{key}"]',
-                timeout=0.8
-            )
-            if opt:
-                opt.click(by_js=True)
-        except Exception:
-            pass
+
+        option_selected = False
+        option_selectors = [
+            f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and normalize-space(text())="{key}"]',
+            f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and starts-with(normalize-space(text()),"{key}")]',
+            f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and contains(normalize-space(text()),"{key}")]',
+        ]
+
+        for _ in range(3):
+            for selector in option_selectors:
+                try:
+                    opt = new_tab.ele(selector, timeout=0.4)
+                except Exception:
+                    opt = None
+                if not opt:
+                    continue
+                try:
+                    opt.click(by_js=True)
+                    option_selected = True
+                    break
+                except Exception:
+                    continue
+            if option_selected:
+                break
+            _time.sleep(0.12)
+        if not option_selected:
+            try:
+                combo.input('\n')
+                _time.sleep(0.08)
+            except Exception:
+                pass
     
     # 2) 选择占比（可选）
     if value:
         try:
-            texts = new_tab.eles('xpath://div[@attr-field-id="面料材质"]//input[@class="ecom-g-input"]', timeout=0.6)
+            texts = new_tab.eles(
+                'xpath://div[@attr-field-id="面料材质"]//input[contains(@class,"ecom-g-input") and not(@role="combobox")]',
+                timeout=0.8
+            )
         except Exception:
             texts = []
         if texts and len(texts) > index:

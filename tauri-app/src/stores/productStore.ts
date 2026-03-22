@@ -46,11 +46,19 @@ export const useProductStore = defineStore("product", () => {
       return nextDetail;
     }
 
+    const isInvalidSkuUrl = (value: string | undefined) => {
+      if (!value) return true;
+      return (
+        value.startsWith("data:image/svg+xml;base64,") &&
+        (value.includes("Tm8gSW1hZ2U") || value.includes("TG9hZCBFcnJvcg"))
+      );
+    };
+
     return {
       ...nextDetail,
       content: nextDetail.content.map((sku) => ({
         ...sku,
-        url: sku.url || existingUrlMap.get(sku.path),
+        url: isInvalidSkuUrl(sku.url) ? existingUrlMap.get(sku.path) : sku.url,
       })),
     };
   }
@@ -102,12 +110,13 @@ export const useProductStore = defineStore("product", () => {
 
   async function initialize() {
     backendStatus.value = "checking";
-    const success = await initializeApi();
-    backendStatus.value = success ? "online" : "offline";
-
-    if (success) {
-      await fetchProducts();
+    const serviceReady = await initializeApi();
+    let loaded = await fetchProducts({ silent: !serviceReady });
+    for (let retry = 0; !loaded && retry < 6; retry += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      loaded = await fetchProducts({ silent: true });
     }
+    backendStatus.value = loaded ? "online" : "offline";
   }
 
   async function fetchProducts(options: { silent?: boolean } = {}) {

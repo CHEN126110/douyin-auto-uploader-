@@ -1,0 +1,390 @@
+/* ========================================
+   现代毛玻璃质感样式文件
+   Modern Glass UI Theme
+   ======================================== */
+
+/* 基础毛玻璃效果 */
+.glass-effect {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.glass-effect-dark {
+    background: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* 现代按钮样式 */
+.modern-btn {
+    position: relative;
+    padding: 12px 24px;
+    margin: 4px 8px;  /* 添加外边距确保按钮间距一致 */
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: none;
+    letter-spacing: 0.5px;
+    overflow: hidden;
+    display: inline-block;  /* 确保margin生效 */
+    vertical-align: middle;  /* 垂直对齐 */
+}
+
+.modern-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+}
+
+.modern-btn:hover::before {
+    transform: translateX(100%);
+}
+
+.modern-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.modern-btn:active {
+    transform: translateY(0);
+    transition: transform 0.1s;
+}
+
+/* 主要按钮 */
+.modern-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+}
+
+.modern-btn-primary:hover {
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.5);
+}
+
+/* 成功按钮 */
+.modern-btn-success {
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+    color: white;
+    box-shadow: 0 4px 16px rgba(86, 171, 47, 0.4);
+}
+
+.modern-btn-success:hover {
+    box-shadow: 0 8px 24px rgba(86, 171, 47, 0.5);
+}
+
+/* 警告按钮 */
+.modern-btn-warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    box-shadow: 0 4px 16px rgba(240, 147, 251, 0.4);
+}
+
+.modern-btn-warning:hover {
+    box-shadow: 0 8px 24px rgba(240, 147, 251, 0.5);
+}
+
+/* 危险按钮 */
+.modern-btn-danger {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    color: white;
+    box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4);
+}
+
+.modern-btn-danger:hover {
+    box-shadow: 0 8px 24px rgba(255, 107, 107, 0.5);
+}
+
+/* 现代输入框样式 */
+.modern-input {
+    position: relative;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.modern-input:focus {
+    border-color: rgba(102, 126, 234, 0.6);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.modern-input::placeholder {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+/* 现代选择框样式 */
+.modern-select {
+    position: relative;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.3s ease;
+    outline: none;
+    cursor: pointer;
+}
+
+.modern-select:focus {
+    border-color: rgba(102, 126, 234, 0.6);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 现代卡片样式 */
+.modern-card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.modern-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+}
+
+/* 现代面板样式 */
+.modern-panel {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* 现代表格样式 */
+.modern-table {
+    background: transparent;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.modern-table th,
+.modern-table td {
+    padding: 16px 20px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background-color 0.3s ease;
+}
+
+.modern-table th {
+    background: rgba(0, 0, 0, 0.1);
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.modern-table tbody tr:hover {
+    background: rgba(102, 126, 234, 0.05);
+    cursor: pointer;
+}
+
+.modern-table tbody tr:hover td {
+    color: #667eea;
+}
+
+/* 现代右键菜单 */
+.modern-context-menu {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 8px 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+}
+
+.modern-context-menu li {
+    padding: 12px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #333;
+    font-weight: 500;
+}
+
+.modern-context-menu li:hover {
+    background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
+}
+
+/* 现代滚动条 */
+.modern-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(102, 126, 234, 0.25);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(102, 126, 234, 0.35);
+}
+
+/* 现代加载动画 */
+.modern-loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(102, 126, 234, 0.3);
+    border-radius: 50%;
+    border-top-color: #667eea;
+    animation: spin 0.8s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 现代阴影等级 */
+.shadow-sm {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.shadow-md {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.shadow-lg {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+}
+
+.shadow-xl {
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+/* 现代渐变背景 */
+.gradient-bg-1 {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-bg-2 {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.gradient-bg-3 {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.gradient-bg-4 {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+/* 响应式适应 */
+@media (max-width: 768px) {
+    .modern-card {
+        padding: 16px;
+        border-radius: 16px;
+    }
+    
+    .modern-btn {
+        padding: 10px 20px;
+        font-size: 13px;
+    }
+    
+    .modern-input {
+        padding: 14px 16px;
+    }
+}
+
+/* 动画效果 */
+.fade-in {
+    animation: fadeIn 0.6s ease-out;
+}
+
+.scale-in {
+    animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-up {
+    animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* [启动] 性能优化 - 减少重排和重绘 */
+.setting-group,
+.cost-item,
+.modern-btn,
+.modern-input {
+    will-change: auto;
+    transform: translateZ(0); /* 启用硬件加速 */
+    backface-visibility: hidden; /* 防止闪烁 */
+}
+
+/* 优化过渡动画 */
+.setting-group * {
+    transition-property: transform, opacity;
+    transition-duration: 0.2s;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 减少不必要的动画 */
+.layui-layer-content {
+    animation: none !important;
+}
+
+/* 优化成本项动画 */
+.cost-item {
+    contain: layout style;
+}
+
+/* 防止页面抖动 */
+.settings-container {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+} 

@@ -1,0 +1,130 @@
+<link rel="stylesheet" href="../../admin/css/other/profile.css" />
+<style>
+    .layui-form-label {
+        width: 100px;
+    }
+    .layui-input-block {
+        margin-left: 130px;
+    }
+    label:has(+ div > input[required])::before {
+        content: '* ';
+        color: red;
+    }
+</style>
+<body>
+    <div class="pear-container">
+        <div class="layui-row layui-col-space10">
+            <div class="layui-col-md3">
+                <div class="layui-card">
+                    <div class="layui-card-body" style="padding: 25px;">
+                        <div class="text-center layui-text">
+                            <div class="user-info" id="userInfoHead">
+                                <img src="{{ payload.avatar }}" id="userAvatar" width="115px" height="115px" alt="">
+                            </div>
+                            <h2 class="user-name">{{ payload.name }}</h2>
+                            <p class="user-home">{{ payload.tel }}</p>
+                        </div>
+                    </div>
+                    <div class="user-desc">
+                        <span>{{ payload.role }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-md9">
+                <div class="layui-card">
+                    <div class="layui-card-header">
+                        基本资料
+                    </div>
+                    <div class="layui-card-body">
+                        <form class="layui-form" action="">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">姓名:</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="name" required lay-verify="required" value="{{ payload.name }}"
+                                           placeholder="请输入姓名" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">手机:</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="tel" required lay-verify="required" value="{{ payload.tel }}"
+                                           placeholder="请输入手机" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">旧密码:</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="old_pass" required lay-verify="required"
+                                           placeholder="输入旧密码进行验证" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">新密码:</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="new_pass" placeholder="留空则不修改" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">确认新密码:</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="confirm_pass" placeholder="再次输入新密码" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <div class="layui-input-block">
+                                    <button class="layui-btn" lay-submit="" lay-filter="formDemo">保存</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        layui.use(['jquery', 'layer', 'form', 'upload'], function () {
+            var layer = layui.layer,
+                dollar = layui.jquery,
+                form = layui.form,
+                upload = layui.upload;
+
+            upload.render({
+                elem: '#userAvatar',
+                url: '/upload',
+                accept: 'images',
+                done: function(res) {
+                    if (res.success) {
+                        layer.msg(res.msg, {icon: 1, time: 1000});
+                        dollar('#userAvatar').attr('src', res.data);
+                    } else {
+                        layer.msg(result.msg, {icon: 2, time: 1000});
+                    }
+                }
+            });
+
+            form.on('submit(formDemo)', function(data){
+                let loader = layer.load();
+                data.field.avatar = dollar('#userAvatar').attr('src');
+                dollar.ajax({
+                    data: JSON.stringify(data.field),
+                    url: '/updateInfo',
+                    type: 'put',
+                    dataType: 'json',
+                    contentType: 'application/json;charset=UTF-8',
+                    success: function (result) {
+                        layer.close(loader);
+                        if (result.success) {
+                            location.href = '/';
+                        } else {
+                            layer.msg(result.msg, {icon: 2, time: 1000});
+                        }
+                    }
+                });
+                return false;
+            });
+        });
+    </script>
+</body>
+
+</html>

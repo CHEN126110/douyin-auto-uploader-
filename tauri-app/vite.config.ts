@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { resolve } from "path";
+import { fileURLToPath, URL } from "node:url";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
@@ -22,7 +22,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src"),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   css: {
@@ -43,6 +43,22 @@ export default defineConfig({
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**"],
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("element-plus")) return "vendor-element-plus";
+          if (id.includes("@element-plus/icons-vue")) return "vendor-element-icons";
+          if (id.includes("vue-router")) return "vendor-vue-router";
+          if (id.includes("pinia")) return "vendor-pinia";
+          if (id.includes("axios")) return "vendor-axios";
+          if (id.includes("vue")) return "vendor-vue";
+        },
+      },
     },
   },
 });

@@ -1,0 +1,2749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>SKU 管理</title>
+    
+    <!-- 🔧 防闪烁和防花屏CSS -->
+    <style>
+        /* 防止页面闪烁 */
+        html {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        html.loaded {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* 防止下拉菜单重复渲染 */
+        .layui-form-select {
+            transition: none !important;
+        }
+        
+        /* 防止表单元素闪烁 */
+        .layui-form-item {
+            opacity: 1 !important;
+            transition: none !important;
+        }
+        
+        /* 防止智能下拉菜单重复 */
+        .smart-dropdown-menu {
+            z-index: 9999 !important;
+        }
+        
+        /* 确保只显示一个智能下拉菜单 */
+        .smart-dropdown-menu:not(:first-of-type) {
+            display: none !important;
+        }
+    </style>
+    
+    <!-- 引入CSS文件 -->
+    <link rel="stylesheet" href="../component/pear/css/pear.css" />
+    <link rel="stylesheet" href="../admin/css/admin.css" />
+    <link rel="stylesheet" href="../admin/css/admin.dark.css" />
+    <link rel="stylesheet" href="../admin/css/variables.css" />
+    <link rel="stylesheet" href="../admin/css/reset.css" />
+    <link rel="stylesheet" href="../admin/css/public.css" />
+    <link rel="stylesheet" href="../admin/css/modern-glass.css" />
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 50%, #fffbf0 100%) !important;
+            background-attachment: fixed;
+            font-family: 'Microsoft YaHei UI', sans-serif;
+        }
+
+        .pear-container {
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+            padding: 20px;
+            position: relative;
+        }
+
+        .left-panel {
+            width: 395px;
+            background: rgba(255, 255, 255, 0.85) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.95) !important;
+            border-radius: 20px;
+            box-sizing: border-box;
+            overflow: hidden;
+            position: absolute; 
+            top: 130px;
+            left: 20px;
+            bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
+            transition: all 0.3s ease;
+        }
+
+        .left-panel:hover {
+            background: rgba(255, 255, 255, 0.92) !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .table_box {
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            box-sizing: border-box;
+            padding: 20px 10px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(92, 124, 250, 0.3) transparent;
+        }
+
+        /* 统一的表格滚动条样式 */
+        .table_box::-webkit-scrollbar {
+            width: 6px !important;
+            background: transparent !important;
+        }
+
+        .table_box::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.03) !important;
+            border-radius: 3px !important;
+        }
+
+        .table_box::-webkit-scrollbar-thumb {
+            background: rgba(92, 124, 250, 0.3) !important;
+            border-radius: 3px !important;
+            transition: background 0.3s ease !important;
+        }
+
+        .table_box::-webkit-scrollbar-thumb:hover {
+            background: rgba(92, 124, 250, 0.5) !important;
+        }
+
+        .table_box h2 {
+            text-align: center;
+            font-weight: 700;
+            padding-bottom: 15px;
+            margin: 0;
+            color: #2c3e50 !important;
+            font-size: 18px;
+            letter-spacing: 1px;
+            position: relative;
+        }
+
+        .table_box h2::after {
+            content: '';
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 2px;
+            background: linear-gradient(90deg, #5c7cfa, #748ffc) !important;
+            border-radius: 1px;
+        }
+
+        .layui-table {
+            width: 100%;
+            background: transparent;
+            border-collapse: collapse;
+        }
+
+        .layui-table tbody tr td {
+            font-size: 13px !important;
+            padding: 16px 12px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            color: #2c3e50 !important;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .layui-table tbody tr td:last-child {
+            text-align: right;
+            color: #6c757d !important;
+            font-size: 12px;
+        }
+
+        .layui-table tbody tr:not(:first-child) {
+            border-top: none;
+        }
+
+        .tubiao_line {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 2px 0;
+        }
+
+        .tubiao_line:hover {
+            background: rgba(92, 124, 250, 0.08) !important;
+            transform: translateX(6px);
+            box-shadow: 0 2px 8px rgba(92, 124, 250, 0.15) !important;
+        }
+
+        .tubiao_line:hover td {
+            color: #5c7cfa !important;
+        }
+
+        .tubiao {
+            width: 16px;
+            height: 16px;
+            vertical-align: middle;
+            margin-right: 8px;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1)) !important;
+        }
+
+        form {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.75) !important;
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 20px;
+            margin-left: 435px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 24px;
+            color: #2c3e50 !important;
+            font-weight: 700;
+            font-size: 24px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+            letter-spacing: 1px;
+            position: relative;
+            padding-bottom: 15px;
+        }
+
+        h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(90deg, #5c7cfa, #748ffc) !important;
+            border-radius: 1px;
+        }
+
+        .layui-input-inline {
+            margin-bottom: 20px;
+            width: 100%;
+            position: relative;
+        }
+
+        .box {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        #attr_box {
+            flex: 1 !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            margin-bottom: 20px !important;
+            position: relative !important;
+            padding: 0 !important;
+            padding-right: 8px !important;
+            max-height: calc(100vh - 400px) !important;
+            z-index: 1 !important;
+            border-radius: 12px !important;
+            background: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            contain: layout style !important;
+            box-sizing: border-box !important;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(92, 124, 250, 0.3) transparent;
+        }
+
+        /* 现代化输入框样式 */
+        .layui-input, .layui-select {
+            background: rgba(255, 255, 255, 0.9) !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border-radius: 12px !important;
+            padding: 16px 20px !important;
+            font-size: 14px !important;
+            color: #2c3e50 !important;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .layui-input:focus, .layui-select:focus {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+
+        .layui-input::placeholder {
+            color: rgba(44, 62, 80, 0.5) !important;
+            font-weight: 400;
+        }
+
+        /* 现代化按钮样式 */
+        .layui-btn {
+            position: relative;
+            padding: 14px 24px !important;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            text-transform: none;
+            letter-spacing: 0.5px;
+            overflow: hidden;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            vertical-align: middle !important;
+            line-height: 1 !important;
+        }
+
+        .layui-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+        }
+
+        .layui-btn:hover::before {
+            transform: translateX(100%);
+        }
+
+        .layui-btn:hover {
+            transform: translateY(-2px) !important;
+        }
+
+        .layui-btn:active {
+            transform: translateY(0) !important;
+            transition: transform 0.1s !important;
+        }
+
+        /* 按钮颜色主题 */
+        .layui-btn {
+            background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+            color: white !important;
+            box-shadow: 0 4px 16px rgba(92, 124, 250, 0.3) !important;
+        }
+
+        .layui-btn:hover {
+            box-shadow: 0 8px 24px rgba(92, 124, 250, 0.4) !important;
+        }
+
+        .layui-btn-warm {
+            background: linear-gradient(135deg, #ff8cc8 0%, #ff6b9d 100%) !important;
+            box-shadow: 0 4px 16px rgba(255, 140, 200, 0.3) !important;
+        }
+
+        .layui-btn-warm:hover {
+            box-shadow: 0 8px 24px rgba(255, 140, 200, 0.4) !important;
+        }
+
+        .layui-btn-normal {
+            background: linear-gradient(135deg, #69db7c 0%, #51cf66 100%) !important;
+            box-shadow: 0 4px 16px rgba(105, 219, 124, 0.3) !important;
+        }
+
+        .layui-btn-normal:hover {
+            box-shadow: 0 8px 24px rgba(105, 219, 124, 0.4) !important;
+        }
+
+        .layui-btn-danger {
+            background: linear-gradient(135deg, #ff8a80 0%, #ff7043 100%) !important;
+            box-shadow: 0 4px 16px rgba(255, 138, 128, 0.3) !important;
+        }
+
+        .layui-btn-danger:hover {
+            box-shadow: 0 8px 24px rgba(255, 138, 128, 0.4) !important;
+        }
+
+        .ipt_box {
+            display: flex !important;
+            align-items: center !important;
+            margin: 8px 12px 12px 12px !important;
+            width: calc(100% - 32px) !important;
+            padding: 12px 16px !important;
+            background: rgba(255, 255, 255, 0.7) !important;
+            backdrop-filter: blur(15px) !important;
+            -webkit-backdrop-filter: blur(15px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 12px !important;
+            transition: all 0.3s ease !important;
+            will-change: transform !important;
+            box-sizing: border-box !important;
+        }
+
+        .ipt_box:hover {
+            background: rgba(255, 255, 255, 0.85) !important;
+            transform: translateX(5px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        .ipt_box > * {
+            margin-right: 12px;
+        }
+
+        .sku-thumbnail {
+            width: 50px;
+            height: 50px;
+            flex-shrink: 0;
+            object-fit: cover;
+            border: 2px solid rgba(0, 0, 0, 0.1) !important;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .sku-thumbnail:hover {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(92, 124, 250, 0.2) !important;
+        }
+
+        .sku-selected {
+            border-color: #5c7cfa !important;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(92, 124, 250, 0.4) !important;
+        }
+
+        /* SKU 名称输入框可伸缩 */
+        .ipt_box > input.layui-input[name^="attr_name_"] {
+            flex: 1;
+            min-width: 100px;
+        }
+
+        /* SKU 价格输入框固定宽度 */
+        .ipt_box > input[name^="attr_price_"] {
+            flex: none;
+            width: 80px;
+            min-width: 80px;
+        }
+
+        .ipt_box > .delete-sku-btn {
+            margin-left: auto;
+            padding: 8px 16px !important;
+            font-size: 12px !important;
+        }
+
+        /* 统一的attr_box滚动条样式 */
+        #attr_box::-webkit-scrollbar {
+            width: 6px !important;
+            background: transparent !important;
+        }
+
+        #attr_box::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.03) !important;
+            border-radius: 3px !important;
+        }
+
+        #attr_box::-webkit-scrollbar-thumb {
+            background: rgba(92, 124, 250, 0.3) !important;
+            border-radius: 3px !important;
+            transition: background 0.3s ease !important;
+        }
+
+        #attr_box::-webkit-scrollbar-thumb:hover {
+            background: rgba(92, 124, 250, 0.5) !important;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.03) !important;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(92, 124, 250, 0.3) !important;
+            border-radius: 3px;
+            transition: background 0.3s ease;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(92, 124, 250, 0.5) !important;
+        }
+
+        /* 现代化滚动条类 */
+        .modern-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(92, 124, 250, 0.3) transparent;
+        }
+        
+        .modern-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+            background: transparent;
+        }
+        
+        .modern-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: 3px;
+        }
+        
+        .modern-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(92, 124, 250, 0.3);
+            border-radius: 3px;
+            transition: background 0.3s ease;
+        }
+        
+        .modern-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(92, 124, 250, 0.5);
+        }
+
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        #wordCount {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(44, 62, 80, 0.6) !important;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* 现代化右键菜单 */
+        #context-menu {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.95) !important;
+            border-radius: 12px;
+            padding: 8px 0;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        #context-menu ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #context-menu li {
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #2c3e50 !important;
+            font-weight: 500;
+        }
+
+        #context-menu li:hover {
+            background: rgba(92, 124, 250, 0.08) !important;
+            color: #5c7cfa !important;
+        }
+
+        #context-menu li:first-child {
+            border-top: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .pear-container, form {
+            min-height: 500px;
+        }
+
+        #large-image {
+            position: absolute;
+            display: none;
+            z-index: 1001;
+            border: 2px solid #5c7cfa !important;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(92, 124, 250, 0.3) !important;
+            max-width: 300px;
+            max-height: 300px;
+            object-fit: cover;
+        }
+        
+        /* 🔧 确保layui关闭按钮样式正确 */
+        .layui-layer .layui-layer-setwin .layui-layer-close {
+            cursor: pointer !important;
+        }
+        
+        .layui-layer .layui-layer-setwin .layui-layer-close:hover {
+            opacity: 0.7 !important;
+        }
+
+        /* 标题行样式 */
+        .ipt_box_header {
+            position: sticky !important;
+            top: 0 !important;
+            background: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(30px) !important;
+            -webkit-backdrop-filter: blur(30px) !important;
+            color: #2c3e50 !important;
+            z-index: 500 !important;
+            padding: 18px 16px 18px 16px !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            border-bottom: 1px solid rgba(92, 124, 250, 0.1) !important;
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .ipt_box_header h3 {
+            margin: 0 !important;
+            color: #2c3e50 !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
+            letter-spacing: 0.5px !important;
+        }
+
+        /* 动画效果 */
+        .fade-in {
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .pear-container {
+                flex-direction: column;
+                padding: 10px;
+            }
+            
+            .left-panel {
+                position: relative;
+                width: 100%;
+                height: 200px;
+                top: auto;
+                left: auto;
+                bottom: auto;
+                margin-bottom: 10px;
+            }
+            
+            form {
+                margin-left: 0;
+            }
+        }
+
+        /* 🎨 亮色系主题修复 */
+        html, body {
+            background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 50%, #fffbf0 100%) !important;
+        }
+
+        .left-panel {
+            background: rgba(255, 255, 255, 0.85) !important;
+            border: 1px solid rgba(255, 255, 255, 0.95) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        .left-panel:hover {
+            background: rgba(255, 255, 255, 0.92) !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .table_box h2 {
+            color: #2c3e50 !important;
+        }
+
+        .table_box h2::after {
+            background: linear-gradient(90deg, #5c7cfa, #748ffc) !important;
+        }
+
+        .layui-table tbody tr td {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            color: #2c3e50 !important;
+        }
+
+        .layui-table tbody tr td:last-child {
+            color: #6c757d !important;
+        }
+
+        .tubiao_line:hover {
+            background: rgba(92, 124, 250, 0.08) !important;
+            box-shadow: 0 2px 8px rgba(92, 124, 250, 0.15) !important;
+        }
+
+        .tubiao_line:hover td {
+            color: #5c7cfa !important;
+        }
+
+        .tubiao {
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1)) !important;
+        }
+
+        form {
+            background: rgba(255, 255, 255, 0.75) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        h1 {
+            color: #2c3e50 !important;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        h1::after {
+            background: linear-gradient(90deg, #5c7cfa, #748ffc) !important;
+        }
+
+        #attr_box {
+            background: rgba(255, 255, 255, 0.65) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .layui-input, .layui-select {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            color: #2c3e50 !important;
+        }
+
+        .layui-input:focus, .layui-select:focus {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+
+        .layui-input::placeholder {
+            color: rgba(44, 62, 80, 0.5) !important;
+        }
+
+        .layui-btn {
+            background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+            box-shadow: 0 4px 16px rgba(92, 124, 250, 0.3) !important;
+        }
+
+        .layui-btn:hover {
+            box-shadow: 0 8px 24px rgba(92, 124, 250, 0.4) !important;
+        }
+
+        .layui-btn-warm {
+            background: linear-gradient(135deg, #ff8cc8 0%, #ff6b9d 100%) !important;
+            box-shadow: 0 4px 16px rgba(255, 140, 200, 0.3) !important;
+        }
+
+        .layui-btn-warm:hover {
+            box-shadow: 0 8px 24px rgba(255, 140, 200, 0.4) !important;
+        }
+
+        .layui-btn-normal {
+            background: linear-gradient(135deg, #69db7c 0%, #51cf66 100%) !important;
+            box-shadow: 0 4px 16px rgba(105, 219, 124, 0.3) !important;
+        }
+
+        .layui-btn-normal:hover {
+            box-shadow: 0 8px 24px rgba(105, 219, 124, 0.4) !important;
+        }
+
+        .layui-btn-danger {
+            background: linear-gradient(135deg, #ff8a80 0%, #ff7043 100%) !important;
+            box-shadow: 0 4px 16px rgba(255, 138, 128, 0.3) !important;
+        }
+
+        .layui-btn-danger:hover {
+            box-shadow: 0 8px 24px rgba(255, 138, 128, 0.4) !important;
+        }
+
+        .ipt_box {
+            background: rgba(255, 255, 255, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+        }
+
+        .ipt_box:hover {
+            background: rgba(255, 255, 255, 0.85) !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        .sku-thumbnail {
+            border: 2px solid rgba(0, 0, 0, 0.1) !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .sku-thumbnail:hover {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            box-shadow: 0 8px 20px rgba(92, 124, 250, 0.2) !important;
+        }
+
+        .sku-selected {
+            border-color: #5c7cfa !important;
+            box-shadow: 0 0 20px rgba(92, 124, 250, 0.4) !important;
+        }
+
+        #wordCount {
+            color: rgba(44, 62, 80, 0.6) !important;
+        }
+
+        #context-menu {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(255, 255, 255, 0.95) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        #context-menu li {
+            color: #2c3e50 !important;
+        }
+
+        #context-menu li:hover {
+            background: rgba(92, 124, 250, 0.08) !important;
+            color: #5c7cfa !important;
+        }
+
+        #large-image {
+            border: 2px solid #5c7cfa !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15) !important;
+        }
+
+        /* 🎨 Layui 组件亮色系样式 */
+        .layui-layer {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .layui-layer-title {
+            background: transparent !important;
+            color: #2c3e50 !important;
+            font-weight: 600 !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .layui-layer-content {
+            color: #2c3e50 !important;
+            background: transparent !important;
+        }
+
+        .layui-layer-btn {
+            background: transparent !important;
+            border-top: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .layui-layer-btn a {
+            background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 8px !important;
+            margin: 8px 4px !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .layui-layer-btn a:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 12px rgba(92, 124, 250, 0.3) !important;
+        }
+
+        .layui-layer-msg {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: none !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+            color: #2c3e50 !important;
+        }
+
+        .layui-layer-ico {
+            background-image: none !important;
+        }
+
+        .layui-layer-ico1 {
+            color: #69db7c !important;
+        }
+
+        .layui-layer-ico2 {
+            color: #ff8a80 !important;
+        }
+
+        .layui-layer-ico3 {
+            color: #ff8cc8 !important;
+        }
+
+        .layui-layer-load {
+            background: rgba(255, 255, 255, 0.9) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-radius: 12px !important;
+            border: none !important;
+        }
+
+        .layui-layer-loading {
+            border-color: #5c7cfa transparent transparent transparent !important;
+        }
+
+        /* 🔧 重新设计下拉选择框，与其他输入框保持完全一致 */
+        .layui-form-select {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+
+        /* 🔧 彻底修复下拉选择框的多重边框问题 */
+        
+        /* 1. 移除外层容器的所有样式 */
+        .layui-form-select {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        /* 2. 移除内层title的边框，让input承担边框显示 */
+        .layui-form-select .layui-select-title {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            position: relative !important;
+        }
+
+        /* 3. 只在input元素上应用边框样式 */
+        .layui-form-select .layui-select-title input {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border-radius: 8px !important;
+            padding: 12px 16px !important;
+            font-size: 14px !important;
+            color: #2c3e50 !important;
+            transition: all 0.3s ease !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            box-sizing: border-box !important;
+            width: 100% !important;
+            height: auto !important;
+            line-height: normal !important;
+            outline: none !important;
+        }
+
+        /* 4. 加强CSS权重，确保样式生效 */
+        .layui-form .layui-form-select .layui-select-title,
+        div.layui-form-select div.layui-select-title {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        .layui-form .layui-form-select .layui-select-title input,
+        div.layui-form-select div.layui-select-title input {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border-radius: 8px !important;
+            padding: 12px 16px !important;
+            font-size: 14px !important;
+            color: #2c3e50 !important;
+            transition: all 0.3s ease !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            box-sizing: border-box !important;
+            width: 100% !important;
+            outline: none !important;
+        }
+
+        /* 5. 悬停和焦点状态只作用于input元素 */
+        .layui-form-select .layui-select-title input:hover {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+
+        .layui-form-selected .layui-select-title input {
+            border-color: rgba(92, 124, 250, 0.6) !important;
+            box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+
+        /* 占位符文字样式 */
+        .layui-form-select .layui-select-title .layui-select-tips {
+            color: rgba(44, 62, 80, 0.5) !important;
+            font-weight: 400 !important;
+        }
+
+        /* 下拉箭头 */
+        .layui-form-select .layui-edge {
+            border-top-color: rgba(44, 62, 80, 0.6) !important;
+        }
+
+        .layui-form-selected .layui-edge {
+            border-top-color: #5c7cfa !important;
+            transform: rotate(180deg) !important;
+        }
+
+        /* 隐藏占位符选项 */
+        .layui-form-select dl dd[lay-value=""] {
+            display: none !important;
+        }
+
+        /* 🔧 修复：隐藏原生select元素，避免双边框 */
+        .layui-form-select select {
+            display: none !important;
+        }
+
+        /* 下拉选项列表样式 */
+        .layui-form-select .layui-anim {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+            margin-top: 4px !important;
+        }
+
+        .layui-form-select dl dd {
+            padding: 12px 20px !important;
+            color: #2c3e50 !important;
+            font-weight: 500 !important;
+            font-size: 14px !important;
+            transition: all 0.3s ease !important;
+            cursor: pointer !important;
+        }
+
+        .layui-form-select dl dd:hover {
+            background: rgba(92, 124, 250, 0.08) !important;
+            color: #5c7cfa !important;
+        }
+
+        .layui-form-select dl dd.layui-this {
+            background: rgba(92, 124, 250, 0.15) !important;
+            color: #5c7cfa !important;
+            font-weight: 600 !important;
+        }
+
+        /* 🔧 完整修复样式 */
+        
+        /* 修复：SKU标题行 - 移除阴影，简化样式 */
+        .ipt_box_header {
+            position: sticky !important;
+            top: 0 !important;
+            background: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(30px) !important;
+            -webkit-backdrop-filter: blur(30px) !important;
+            color: #2c3e50 !important;
+            z-index: 500 !important;
+            padding: 18px 16px 18px 16px !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            border-bottom: 1px solid rgba(92, 124, 250, 0.1) !important;
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .ipt_box_header h3 {
+            margin: 0 !important;
+            color: #2c3e50 !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
+            letter-spacing: 0.5px !important;
+        }
+
+        /* 修复：滚动区域调整，为滚动条预留空间 */
+        #attr_box {
+            padding-right: 8px !important;
+            box-sizing: border-box !important;
+        }
+
+        /* 修复：ipt_box宽度调整，避免与滚动条重叠 */
+        .ipt_box {
+            width: calc(100% - 32px) !important;
+            box-sizing: border-box !important;
+        }
+
+        /* 🎨 Layui 弹窗和消息组件样式 */
+        .layui-layer {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .layui-layer-title {
+            background: transparent !important;
+            color: #2c3e50 !important;
+            font-weight: 600 !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .layui-layer-content {
+            color: #2c3e50 !important;
+            background: transparent !important;
+        }
+
+        .layui-layer-btn {
+            background: transparent !important;
+            border-top: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .layui-layer-btn a {
+            background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 8px !important;
+            margin: 8px 4px !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .layui-layer-btn a:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 12px rgba(92, 124, 250, 0.3) !important;
+        }
+
+        .layui-layer-msg {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: none !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+            color: #2c3e50 !important;
+        }
+
+        /* 🔧 确保下拉菜单正常点击 */
+        .layui-form-select {
+            position: relative !important;
+        }
+
+        .layui-form-select .layui-select-title {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+
+        /* ✨ 智能标题生成按钮专门样式 */
+        #smart-title-btn {
+            position: relative;
+            overflow: hidden;
+            color: #ffffff !important;
+        }
+
+        #smart-title-btn:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4) !important;
+            background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+            color: #ffffff !important;
+        }
+
+        #smart-title-btn:active {
+            transform: translateY(0) !important;
+            color: #ffffff !important;
+        }
+
+        #smart-title-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        #smart-title-btn:hover::before {
+            left: 100%;
+        }
+    </style>
+    <script>
+        document.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        document.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    </script>
+</head>
+<body>
+    <div class="pear-container fade-in">
+        <div class="left-panel">
+            <div class="table_box modern-scrollbar">
+                <h2>待上传目录</h2>
+                <table class="layui-table modern-table" lay-skin="nob">
+                    <colgroup>
+                        <col>
+                        <col width="150">
+                    </colgroup>
+                    <tbody>
+                    {% for item in record_list %}
+                        <tr class="tubiao_line">
+                            <td>
+                                <img class="tubiao" src="../../admin/images/dir.png" alt="{{ item.id }}">
+                                {{ item.name }}
+                            </td>
+                            <td>{{ item.update_time }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- 表单默认action留空，layui事件中已return false防止整页跳转 -->
+        <form class="layui-form" action="">
+            <h1 id="shop_title">XXX的配置</h1>
+            <input type="hidden" name="_id" id="_id">
+            <div class="layui-input-inline">
+                <select name="clazz" lay-filter="clazz" class="modern-select">
+                    <option value="" disabled selected>请选择类目</option>
+                    <option value="0">船袜</option>
+                    <option value="1">短袜</option>
+                    <option value="2">中筒袜</option>
+                    <option value="3">长筒袜</option>
+                </select>
+            </div>
+            <div class="layui-input-inline">
+                <div class="box" style="gap: 24px;">
+                    <div style="flex: 1; position: relative;">
+                        <input type="text" placeholder="商品标题" name="title" autocomplete="off" class="layui-input modern-input" style="padding-right: 50px;">
+                        <span id="wordCount" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#6c757d;font-size:12px;font-weight:500;">0/60</span>
+            </div>
+                    <!-- 🔥 智能生成按钮组 -->
+                    <div class="smart-btn-group" style="position: relative; margin-left: 4px;">
+                        <button type="button" id="smart-title-btn" class="layui-btn layui-btn-primary" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#ffffff !important;border-radius:8px 0 0 8px;font-size:12px;padding:6px 10px;border:none;box-shadow:0 2px 8px rgba(102,126,234,0.3);transition:all 0.3s ease;white-space:nowrap;min-width:auto;width:auto;">
+                            智能生成
+                        </button>
+                        <button type="button" id="smart-dropdown-btn" class="layui-btn layui-btn-primary" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#ffffff !important;border-radius:0 8px 8px 0;font-size:10px;padding:6px 6px;border:none;box-shadow:0 2px 8px rgba(102,126,234,0.3);transition:all 0.3s ease;margin-left:-1px;min-width:auto;width:auto;">
+                            ▼
+                        </button>
+                        <!-- 下拉菜单 -->
+                        <div id="smart-dropdown-menu" class="smart-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;right:0;background:rgba(255,255,255,0.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.9);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.1);z-index:1000;margin-top:4px;">
+                            <div class="dropdown-item" data-mode="standard" style="padding:12px 16px;cursor:pointer;color:#2c3e50;font-size:13px;transition:all 0.3s ease;border-bottom:1px solid rgba(0,0,0,0.05);">
+                                <div style="font-weight:600;margin-bottom:2px;">📝 标准版</div>
+                                <div style="font-size:11px;color:#6c757d;">基础AI标题生成</div>
+                            </div>
+                            <div class="dropdown-item" data-mode="enhanced" style="padding:12px 16px;cursor:pointer;color:#2c3e50;font-size:13px;transition:all 0.3s ease;">
+                                <div style="font-weight:600;margin-bottom:2px;">🔥 增强版</div>
+                                <div style="font-size:11px;color:#6c757d;">融入热门词 + 稳定网络</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="layui-input-inline">
+                <input type="text" placeholder="卖点添加/备注说明" name="remark" autocomplete="off" class="layui-input modern-input">
+            </div>
+            <div class="layui-input-inline">
+                <div class="box">
+                    <input type="number" placeholder="设置库存" name="repo" autocomplete="off" class="layui-input modern-input" style="margin-right:12px;width:103px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" placeholder="单价" name="price" autocomplete="off" class="layui-input modern-input" style="width:80px; text-align:center;" step="0.1" min="0">
+                        <div class="price-btn-group" style="display: flex; gap: 6px;">
+                            <!-- 智能填充按钮 -->
+                            <button type="button" class="layui-btn layui-btn-normal modern-btn smart-fill-btn" 
+                                    style="padding: 8px 12px; font-size: 12px; border-radius: 6px;" 
+                                    title="基于成本项目智能计算SKU价格">
+                                📊 智能填充
+                            </button>
+                            <!-- 简单填充按钮 -->
+                            <button type="button" class="layui-btn layui-btn-warm modern-btn simple-fill-btn" 
+                                    style="padding: 8px 12px; font-size: 12px; border-radius: 6px;" 
+                                    title="简单填充相同价格到所有SKU">
+                                📝 简单填充
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="layui-btn layui-btn-normal modern-btn" lay-submit lay-filter="save-btn">保存</button>
+                </div>
+            </div>
+            <div id="attr_box" class="modern-scrollbar"></div>
+            <div class="layui-input-inline" style="margin-top:20px;">
+                <button type="submit" class="layui-btn modern-btn" lay-submit lay-filter="run-btn">开始上传</button>
+                <button type="submit" class="layui-btn layui-btn-warm modern-btn" lay-submit lay-filter="cancel-btn">取消勾选</button>
+                <button type="submit" class="layui-btn layui-btn-danger modern-btn" lay-submit lay-filter="delete-btn">清空全部</button>
+                <button type="button" class="layui-btn layui-btn-normal modern-btn" id="settings-btn" style="margin-left:10px;">🛠️ 设置</button>
+            </div>
+        </form>
+    </div>
+    <div id="context-menu" class="hidden modern-context-menu">
+        <ul>
+            <li>打开</li>
+            <li>删除</li>
+        </ul>
+    </div>
+    <img id="large-image" src="" alt="大图">
+
+    <!-- 引入layui和pear.js -->
+    <script src="../component/layui/layui.js"></script>
+    <script src="../component/pear/pear.js"></script>
+    <script>
+        layui.use(['jquery', 'layer', 'form'], function () {
+            const $ = layui.jquery;
+            const layer = layui.layer;
+            const form = layui.form;
+            
+            // 🔧 防止重复渲染下拉菜单
+            if (window.dropdownInitialized) {
+                console.log('下拉菜单已初始化，跳过重复初始化');
+                return;
+            }
+            window.dropdownInitialized = true;
+            
+            // 清理可能存在的重复元素
+            $('.smart-dropdown-menu').not(':first').remove();
+            $('#smart-dropdown-menu').not(':first').remove();
+            
+            console.log('🔧 下拉菜单重复检查完成');
+            
+            // 🔧 新增：全局事件管理和重新绑定机制
+            window.mainPageEventManager = {
+                initialized: false,
+                
+                // 初始化所有事件绑定
+                initAllEvents: function() {
+                    if (this.initialized) {
+                        console.log('主页面事件已初始化，跳过重复初始化');
+                        return;
+                    }
+                    
+                    console.log('🔧 初始化主页面所有事件绑定...');
+                    this.bindFormEvents();
+                    this.bindCustomEvents();
+                    this.initialized = true;
+                    console.log('✅ 主页面事件绑定完成');
+                },
+                
+                // 重新绑定所有事件（用于配置更新后）
+                rebindAllEvents: function() {
+                    console.log('🔄 重新绑定主页面所有事件...');
+                    
+                    // 🔧 修复：检查是否有正在进行的操作，避免干扰
+                    if (window.savingInProgress || window.settingsSavingInProgress) {
+                        console.log('⚠️ 检测到正在进行的操作，延迟重新绑定事件');
+                        setTimeout(() => {
+                            this.rebindAllEvents();
+                        }, 1000);
+                        return;
+                    }
+                    
+                    // 重新渲染layui组件
+                    try {
+                        form.render();
+                        console.log('✅ layui form组件重新渲染成功');
+                    } catch (e) {
+                        console.warn('⚠️ layui form重新渲染失败:', e);
+                    }
+                    
+                    // 🔧 修复：谨慎地重新绑定自定义事件，不影响基础表单事件
+                    console.log('✅ 主页面事件重新绑定完成（轻量级）');
+                },
+                
+                // 绑定表单提交事件
+                bindFormEvents: function() {
+                    // 保存按钮事件
+                    form.on('submit(save-btn)', function (data) {
+                        let loader = layer.load();
+                        $.ajax({
+                            data: JSON.stringify(data.field),
+                            url: '/save_info',
+                            type: 'post',
+                            dataType: 'json',
+                            contentType: 'application/json;charset=UTF-8',
+                            success: function (result) {
+                                layer.close(loader);
+                                if (result.success) {
+                                    $('img[alt="' + result.data.id + '"]')
+                                        .closest('.tubiao_line')
+                                        .find('td:last')
+                                        .text(result.data.update_time);
+                                } else {
+                                    layer.msg(result.msg, {icon: 2, time: 1000});
+                                }
+                            }
+                        });
+                        return false;
+                    });
+
+                    // 删除按钮事件
+                    form.on('submit(delete-btn)', function (data) {
+                        layer.confirm('是否确定清空全部？', {icon: 3, shade: [0], title:'提示'}, function(index){
+                            let loader = layer.load();
+                            $.ajax({
+                                url: '/delete_all',
+                                type: 'delete',
+                                dataType: 'json',
+                                contentType: 'application/json;charset=UTF-8',
+                                success: function (result) {
+                                    layer.close(loader);
+                                    layer.close(index);
+                                    if (result.success) {
+                                        location.reload();
+                                    } else {
+                                        layer.msg(result.msg, {icon: 2, time: 1000});
+                                    }
+                                }
+                            });
+                        });
+                        return false;
+                    });
+
+                    // 取消选择按钮事件
+                    form.on('submit(cancel-btn)', function (data) {
+                        $('#attr_box .sku-thumbnail.sku-selected').removeClass('sku-selected');
+                        return false;
+                    });
+
+                    // 运行按钮事件
+                    form.on('submit(run-btn)', function (data) {
+                        const selectedSkus = [];
+                        $('#attr_box .ipt_box').each(function() {
+                            if ($(this).find('.sku-thumbnail').hasClass('sku-selected')) {
+                                const skuPath = $(this).find('input[name^=\"attr_path_\"]').val();
+                                selectedSkus.push(skuPath);
+                            }
+                        });
+
+                        let loader = layer.load();
+                        $.ajax({
+                            data: JSON.stringify({ skus: selectedSkus, ...data.field }),
+                            url: '/start',
+                            type: 'post',
+                            dataType: 'json',
+                            contentType: 'application/json;charset=UTF-8',
+                            success: function (result) {
+                                layer.close(loader);
+                                if (result.success) {
+                                    layer.confirm(result.msg, {
+                                        title: '提示',
+                                        icon: 1,
+                                        btn: ['知道了'],
+                                        btnAlign: 'r',
+                                    }, function(index, layero){
+                                        layer.close(index);
+                                    });
+                                } else {
+                                    layer.msg(result.msg, {icon: 2, time: 1000});
+                                }
+                            }
+                        });
+                        return false;
+                    });
+                },
+                
+                // 绑定自定义事件
+                bindCustomEvents: function() {
+                    // 🔧 简单填充按钮点击事件（修复：使用class选择器）
+                    $(document).off('click', '.simple-fill-btn').on('click', '.simple-fill-btn', function(e) {
+                        console.log('简单填充按钮被点击');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const price = $('input[name=\"price\"]').val().trim();
+                        if (price === '') {
+                            layer.msg('请输入价格', {icon: 2, time: 2000});
+                            return false;
+                        }
+
+                        // 检查是否有选中的SKU
+                        const selectedSkus = $('#attr_box .sku-thumbnail.sku-selected');
+                        if (selectedSkus.length > 0) {
+                            // 若有选中的，则仅填充选中的SKU
+                            selectedSkus.each(function() {
+                                $(this).siblings('input[name^=\"attr_price_\"]').val(price);
+                            });
+                        } else {
+                            // 若无选中，则填充全部SKU
+                            $('input[name^=\"attr_price_\"]').val(price);
+                        }
+                        
+                        layer.msg('价格填充完成', {icon: 1, time: 1000});
+                        return false;
+                    });
+
+                    // 📊 智能填充按钮点击事件
+                    $(document).off('click', '.smart-fill-btn').on('click', '.smart-fill-btn', function(e) {
+                        console.log('智能填充按钮被点击');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const recordId = $('#_id').val();
+                        if (!recordId) {
+                            layer.msg('请先选择一个产品记录', {icon: 2, time: 2000});
+                            return false;
+                        }
+
+                        // 显示加载提示
+                        const loadingIndex = layer.load(1, {
+                            shade: [0.3, '#000'],
+                            content: '正在智能计算价格...',
+                            success: function(layero) {
+                                layero.find('.layui-layer-content').css({
+                                    'padding-top': '40px',
+                                    'width': '200px'
+                                });
+                            }
+                        });
+
+                        // 获取单价输入值
+                        const unitPriceInput = $('input[name="price"]');
+                        const unitPrice = unitPriceInput.length > 0 ? parseFloat(unitPriceInput.val()) || 0 : 0;
+                        
+                        // 调用智能价格计算API
+                        $.ajax({
+                            url: '/api/pricing/calculate_smart_prices',
+                            type: 'POST',
+                            data: JSON.stringify({
+                                record_id: recordId,
+                                unit_price: unitPrice
+                            }),
+                            dataType: 'json',
+                            contentType: 'application/json;charset=UTF-8',
+                            success: function(result) {
+                                layer.close(loadingIndex);
+                                
+                                if (result.success) {
+                                    const pricingResults = result.data.pricing_results;
+                                    const stats = result.data.statistics;
+                                    
+                                    // 检查是否有选中的SKU
+                                    const selectedSkus = $('#attr_box .sku-thumbnail.sku-selected');
+                                    let targetSkus = selectedSkus.length > 0 ? selectedSkus : $('#attr_box .sku-thumbnail');
+                                    
+                                    let filledCount = 0;
+                                    
+                                    // 为每个SKU填充智能计算的价格
+                                    targetSkus.each(function() {
+                                        const skuContainer = $(this).closest('.ipt_box');
+                                        const skuNameInput = skuContainer.find('input[name^="attr_name_"]');
+                                        const skuPriceInput = skuContainer.find('input[name^="attr_price_"]');
+                                        
+                                        if (skuNameInput.length && skuPriceInput.length) {
+                                            const skuName = skuNameInput.val();
+                                            
+                                            // 在结果中查找匹配的SKU
+                                            const matchedResult = pricingResults.find(r => r.sku_name === skuName);
+                                            if (matchedResult && (matchedResult.suggested_price || 0) > 0) {
+                                                skuPriceInput.val((matchedResult.suggested_price || 0).toFixed(2));
+                                                filledCount++;
+                                                
+                                                // 添加视觉反馈
+                                                skuPriceInput.css('background-color', '#e8f5e8');
+                                                setTimeout(() => {
+                                                    skuPriceInput.css('background-color', '');
+                                                }, 2000);
+                                            }
+                                        }
+                                    });
+                                    
+                                    // 计算价格区间
+                                    const validPrices = pricingResults.filter(r => r.suggested_price > 0).map(r => r.suggested_price);
+                                    const minPrice = validPrices.length > 0 ? Math.min(...validPrices) : 0;
+                                    const maxPrice = validPrices.length > 0 ? Math.max(...validPrices) : 0;
+                                    
+                                    // 收集所有成本项目名称，用于动态生成表头
+                                    const allCostItems = new Set();
+                                    pricingResults.forEach(result => {
+                                        if (result.calculation_details && result.calculation_details.cost_breakdown && result.calculation_details.cost_breakdown.custom_costs) {
+                                            result.calculation_details.cost_breakdown.custom_costs.forEach(item => {
+                                                if (item.total_cost > 0) {
+                                                    allCostItems.add(item.name);
+                                                }
+                                            });
+                                        }
+                                    });
+                                    
+                                    const costItemsArray = Array.from(allCostItems);
+                                    
+                                    // 生成详细的价格表格
+                                    let tableHtml = `
+                                        <div style="text-align: left; line-height: 1.6;">
+                                            <div style="font-weight: bold; margin-bottom: 12px; color: #2c3e50;">📊 智能填充完成</div>
+                                            <div style="margin-bottom: 12px;">
+                                                <span style="color: #27ae60;">✅ 成功填充: ${filledCount} 个SKU</span> | 
+                                                <span style="color: #3498db;">📊 平均价格: ¥${(stats.average_price || 0).toFixed(2)}</span>
+                                            </div>
+                                            <div style="margin-bottom: 15px;">
+                                                <span style="color: #e67e22;">📈 价格区间: ¥${minPrice.toFixed(2)} - ¥${maxPrice.toFixed(2)}</span> | 
+                                                <span style="color: #9b59b6;">🎯 平均利润率: ${(stats.average_margin || 0).toFixed(1)}%</span>
+                                            </div>
+                                            
+                                            <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+                                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                                    <thead style="position: sticky; top: 0; background-color: #f8f9fa; z-index: 10;">
+                                                        <tr style="border-bottom: 2px solid #dee2e6;">
+                                                            <th style="padding: 12px 8px; text-align: left; border-right: 1px solid #dee2e6; font-weight: bold; min-width: 120px;">SKU名称</th>
+                                                            <th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 60px;">数量</th>
+                                                            <th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 80px;">袜子成本</th>`;
+                                    
+                                    // 动态生成成本项目列头
+                                    costItemsArray.forEach(costName => {
+                                        tableHtml += `<th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 80px;">${costName}</th>`;
+                                    });
+                                    
+                                    tableHtml += `
+                                                            <th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 80px;">总成本</th>
+                                                            <th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 80px;">售价</th>
+                                                            <th style="padding: 12px 8px; text-align: center; border-right: 1px solid #dee2e6; font-weight: bold; width: 70px;">毛利率</th>
+                                                            <th style="padding: 12px 8px; text-align: center; font-weight: bold; width: 80px;">利润</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                    `;
+                                    
+                                    // 添加每个SKU的详细信息
+                                    pricingResults.forEach((result, index) => {
+                                        if ((result.suggested_price || 0) > 0) {
+                                            const rowBg = index % 2 === 0 ? '#ffffff' : '#f8f9fa';
+                                            const profitMargin = result.profit_margin || 0;
+                                            
+                                            // 🔧 修复：使用API返回的正确基础成本，而不是用户输入的单价
+                                            // 基础成本应该来自配置文件中的base_cost_per_unit，而不是用户输入的单价
+                                            const sockCostPerPair = result.base_cost ? (result.base_cost / (result.quantity || 1)) : 0;
+                                            const totalSockCost = sockCostPerPair * (result.quantity || 0);
+                                            
+                                            // 🔧 修复利润计算：获取用户实际设置的售价，而不是系统建议价格
+                                            let actualSellingPrice = result.suggested_price || 0; // 默认使用建议价格
+                                            
+                                            // 尝试从页面获取用户实际设置的售价
+                                            const skuNameToFind = result.sku_name;
+                                            $('#attr_box .ipt_box').each(function() {
+                                                const skuNameInput = $(this).find('input[name^="attr_name_"]');
+                                                const skuPriceInput = $(this).find('input[name^="attr_price_"]');
+                                                
+                                                if (skuNameInput.val() === skuNameToFind && skuPriceInput.val()) {
+                                                    const userPrice = parseFloat(skuPriceInput.val());
+                                                    if (!isNaN(userPrice) && userPrice > 0) {
+                                                        actualSellingPrice = userPrice;
+                                                    }
+                                                }
+                                            });
+                                            
+                                            // 计算利润（基于用户实际售价）
+                                            // 🔧 修复：售价已经是整单价格，不需要再乘以数量
+                                            const profit = actualSellingPrice - (result.total_cost || 0);
+                                            
+                                            // 重新计算实际利润率（基于用户售价）
+                                            // 🔧 修复：与后端保持一致，使用总成本计算毛利率 = (售价 - 总成本) / 售价
+                                            const totalCostForSku = (result.total_cost || 0);
+                                            const actualProfitMargin = actualSellingPrice > 0 ? (actualSellingPrice - totalCostForSku) / actualSellingPrice : 0;
+                                            
+                                            // 🔧 修复：使用实际利润率计算颜色（移到变量声明之后）
+                                            const profitColor = actualProfitMargin >= 0.3 ? '#27ae60' :
+                                                actualProfitMargin >= 0.2 ? '#f39c12' : '#e74c3c';
+                                            
+                                            // 🔧 新增：收集当前SKU的成本项目数据
+                                            const skuCostItems = {};
+                                            if (result.calculation_details && result.calculation_details.cost_breakdown && result.calculation_details.cost_breakdown.custom_costs) {
+                                                result.calculation_details.cost_breakdown.custom_costs.forEach(item => {
+                                                    if (item.total_cost > 0) {
+                                                        skuCostItems[item.name] = item.total_cost;
+                                                    }
+                                                });
+                                            }
+                                            
+                                            tableHtml += `
+                                                <tr style="background-color: ${rowBg};">
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${result.sku_name || ''}">
+                                                        <strong>${(result.sku_name || '').length > 15 ? (result.sku_name || '').substring(0, 15) + '...' : (result.sku_name || '')}</strong>
+                                                    </td>
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                        <span style="color: #6c757d; font-weight: bold;">${result.quantity || 0}</span>
+                                                    </td>
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                        <span style="color: #3498db; font-weight: bold;">¥${sockCostPerPair.toFixed(2)}</span>
+                                                    </td>`;
+                                            
+                                            // 动态生成成本项目列数据
+                                            costItemsArray.forEach(costName => {
+                                                const costValue = skuCostItems[costName] || 0;
+                                                tableHtml += `<td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                    <span style="color: #28a745; font-weight: bold;">¥${costValue.toFixed(2)}</span>
+                                                </td>`;
+                                            });
+                                            
+                                            tableHtml += `
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                        <span style="color: #7f8c8d; font-weight: bold;">¥${(result.total_cost || 0).toFixed(2)}</span>
+                                                    </td>
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                        <span style="color: #e67e22; font-weight: bold;">¥${actualSellingPrice.toFixed(2)}</span>
+                                                    </td>
+                                                    <td style="padding: 10px 8px; border-right: 1px solid #dee2e6; text-align: center;">
+                                                        <span style="color: ${profitColor}; font-weight: bold;">${(actualProfitMargin * 100).toFixed(1)}%</span>
+                                                    </td>
+                                                    <td style="padding: 10px 8px; text-align: center;">
+                                                        <span style="color: ${profit >= 0 ? '#27ae60' : '#e74c3c'}; font-weight: bold;">¥${profit.toFixed(2)}</span>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }
+                                    });
+                                    
+                                    tableHtml += `
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            
+                                            <div style="margin-top: 15px; padding: 12px; background-color: #e8f5e8; border-radius: 6px; font-size: 12px; color: #2d5a2d; line-height: 1.5;">
+                                                💡 <strong>成本分析说明：</strong><br>
+                                                • <strong>成本项目列</strong>：每个成本项目（如抖音、运费成本等）都有独立的列显示具体金额<br>
+                                                • <strong>售价显示</strong>：显示用户设置的实际售价，如未设置则显示系统建议价格<br>
+                                                • <strong>毛利率颜色</strong>：绿色表示良好(≥30%)，黄色表示一般(≥20%)，红色表示偏低(<20%)<br>
+                                                • <strong>成本验证</strong>：袜子成本为0时系统将拒绝计算，因为这是必不可少的产品成本
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                                    layer.alert(tableHtml, {
+                                        icon: 1,
+                                        title: '智能填充成本分析结果',
+                                        area: ['950px', '700px'],
+                                        btn: ['知道了'],
+                                        yes: function(index) {
+                                            layer.close(index);
+                                        }
+                                    });
+                                    
+                                } else {
+                                    layer.msg(result.error || '智能价格计算失败', {icon: 2, time: 3000});
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                layer.close(loadingIndex);
+                                console.error('智能价格计算请求失败:', error);
+                                layer.msg('网络错误，智能价格计算失败', {icon: 2, time: 3000});
+                            }
+                        });
+                        
+                        return false;
+                    });
+
+                    // 🧹 智能计算按钮事件已移除 - 准备重构
+
+                    // SKU删除按钮事件
+                    $('#attr_box').off('click', '.delete-sku-btn').on('click', '.delete-sku-btn', function () {
+                        const index = $(this).data('index');
+                        const skuId = 'attr_path_' + (parseInt(index) + 1);
+                        layer.confirm('确定删除该 SKU 吗？', {icon: 3, title:'提示'}, function(confirmIndex){
+                            $.ajax({
+                                url: '/delete_sku',
+                                type: 'post',
+                                data: JSON.stringify({
+                                    sku_path: $('input[name="' + skuId + '"]').val(),
+                                    record_id: $('#_id').val()
+                                }),
+                                dataType: 'json',
+                                contentType: 'application/json;charset=UTF-8',
+                                success: function (result) {
+                                    layer.close(confirmIndex);
+                                    if (result.success) {
+                                        // 删除对应的DOM元素
+                                        $('input[name="' + skuId + '"]').closest('.ipt_box').remove();
+                                        layer.msg('SKU删除成功', {icon: 1, time: 2000});
+                                    } else {
+                                        layer.msg(result.msg || '删除失败', {icon: 2, time: 3000});
+                                    }
+                                },
+                                error: function() {
+                                    layer.close(confirmIndex);
+                                    layer.msg('网络错误，删除失败', {icon: 2, time: 3000});
+                                }
+                            });
+                        });
+                    });
+                    
+                    // 🔧 防止Enter键意外触发表单提交的事件
+                    $(document).off('keydown', 'input[name="price"], input[name^="attr_price_"]').on('keydown', 'input[name="price"], input[name^="attr_price_"]', function(e) {
+                        if (e.keyCode === 13) { // Enter key
+                            e.preventDefault();
+                            e.stopPropagation();
+                            $(this).blur(); // Lose focus, complete input
+                            return false;
+                        }
+                    });
+                }
+            };
+            
+            // 🔧 重写reloadPricingConfig函数，确保主页面事件不受影响
+            window.reloadPricingConfig = function() {
+                console.log('🔄 主页面：重新加载价格计算器配置...');
+                
+                // 🔧 新增：防止重复调用
+                if (window.reloadPricingConfigInProgress) {
+                    console.log('配置重新加载正在进行中，跳过重复调用');
+                    return;
+                }
+                
+                window.reloadPricingConfigInProgress = true;
+                
+                // 发送重新加载配置的请求
+                $.ajax({
+                    url: '/api/pricing/reload-config',
+                    type: 'POST',
+                    dataType: 'json',
+                    success: function(result) {
+                        if (result.success) {
+                            console.log('✅ 价格计算器配置重新加载成功');
+                            
+                            // 🔧 清除缓存状态
+                            if (window.pricingCalculatorCache) {
+                                window.pricingCalculatorCache = null;
+                            }
+                            
+                            // 🔧 确保主页面事件绑定不受影响
+                            if (window.mainPageEventManager) {
+                                window.mainPageEventManager.rebindAllEvents();
+                            }
+                            
+                            // 🎯 显示配置更新提示
+                            if (typeof layui !== 'undefined' && layui.layer) {
+                                layui.layer.msg('✅ 价格计算器配置已更新！', {
+                                    icon: 1,
+                                    time: 2000,
+                                    offset: 't'
+                                });
+                            }
+                            
+                            console.log('🎯 主页面：价格计算器状态已刷新');
+                        } else {
+                            console.warn('⚠️ 价格计算器配置重新加载失败:', result.error);
+                            if (typeof layui !== 'undefined' && layui.layer) {
+                                layui.layer.msg('⚠️ 配置更新失败', {
+                                    icon: 2,
+                                    time: 3000
+                                });
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('❌ 重新加载配置请求失败:', error);
+                        if (typeof layui !== 'undefined' && layui.layer) {
+                            layui.layer.msg('❌ 网络错误，配置更新失败', {
+                                icon: 2,
+                                time: 3000
+                            });
+                        }
+                    },
+                    complete: function() {
+                        // 🔧 重置进行中标志
+                        window.reloadPricingConfigInProgress = false;
+                    }
+                });
+            };
+
+            // 🔧 确保表单组件只渲染一次
+            if (!window.formRendered) {
+                form.render('select');
+                form.render();
+                window.formRendered = true;
+                console.log('✅ 表单组件渲染完成');
+                
+                // 隐藏空选项
+                $('.layui-form-select dl dd[lay-value=""]').hide();
+            }
+
+            function countLength(str) {
+                let length = 0;
+                for (let i = 0; i < str.length; i++) {
+                    let code = str.charCodeAt(i);
+                    // 中文/全角字符按2个字节算
+                    if ((code >= 0x4e00 && code <= 0x9fff) || (code >= 0xff00 && code <= 0xffff)) {
+                        length += 2;
+                    } else {
+                        length += 1;
+                    }
+                }
+                return length;
+            }
+
+            let curr_id = null;
+            let isComposing = false;
+
+            $(document).on('contextmenu', '.tubiao_line', function (e) {
+                e.preventDefault();
+                curr_id = $(this).find('img').attr('alt');
+                const contextMenu = document.getElementById('context-menu');
+                contextMenu.style.left = e.pageX + 'px';
+                contextMenu.style.top = e.pageY + 'px';
+                contextMenu.classList.remove('hidden');
+                $(document).on('click.contextMenu', function() {
+                    contextMenu.classList.add('hidden');
+                    curr_id = null;
+                    $(document).off('click.contextMenu');
+                });
+            });
+
+            $('#context-menu li').on('click', function () {
+                const text = $(this).text();
+                if (text === '打开') {
+                    let loader = layer.load();
+                    $.ajax({
+                        url: '/menu_open?_id=' + curr_id,
+                        type: 'get',
+                        dataType: 'json',
+                        contentType: 'application/json;charset=UTF-8',
+                        success: function (result) {
+                            layer.close(loader);
+                            if (result.success) {
+                                layer.msg(result.msg, {icon: 1, time: 1000});
+                            } else {
+                                layer.msg(result.msg, {icon: 2, time: 1000});
+                            }
+                        }
+                    });
+                }
+                if (text === '删除') {
+                    let loader = layer.load();
+                    $.ajax({
+                        url: '/menu_delete?_id=' + curr_id,
+                        type: 'get',
+                        dataType: 'json',
+                        contentType: 'application/json;charset=UTF-8',
+                        success: function (result) {
+                            layer.close(loader);
+                            if (result.success) {
+                                location.reload();
+                            } else {
+                                layer.msg(result.msg, {icon: 2, time: 1000});
+                            }
+                        }
+                    });
+                }
+            });
+
+            $('[name="title"]').on('input', function () {
+                if (isComposing) return;
+                title_listen();
+            });
+
+            $('[name="title"]').on('compositionstart', function () {
+                isComposing = true;
+            });
+
+            $('[name="title"]').on('compositionend', function () {
+                isComposing = false;
+                title_listen();
+            });
+
+            // ***修改*** 去掉强制截断 & 弹窗提示，改为红字显示
+            function title_listen() {
+                const content = $('[name="title"]').val();
+                const len = countLength(content);
+                const maxLen = 60;
+                const wordCountElement = $('#wordCount');
+
+                wordCountElement.text(len + '/' + maxLen);
+                // 如果超过 60，文字变红；否则保持原颜色
+                if (len > maxLen) {
+                    wordCountElement.css('color', 'red');
+                } else {
+                    wordCountElement.css('color', '#999');
+                }
+            }
+
+            $(document).on('click', '.tubiao_line', function () {
+                render_detail($(this).find('.tubiao').attr("alt"));
+            });
+
+            // 自动点击第一个目录项
+            $('.tubiao_line:first').click();
+
+            // 🧠 智能标题生成功能
+            $('#smart-title-btn').on('click', function() {
+                const currentId = $('input[id="_id"]').val();
+                if (!currentId) {
+                    layer.msg('请先选择产品', {icon: 2, time: 2000});
+                    return;
+                }
+                
+                generateSmartTitle(currentId, 'standard');
+            });
+
+            // 🔧 优化下拉菜单事件绑定，防止重复
+            $('#smart-dropdown-btn').off('click.dropdown').on('click.dropdown', function(e) {
+                e.stopPropagation();
+                $('.smart-dropdown-menu').not('#smart-dropdown-menu').hide(); // 隐藏其他可能的重复菜单
+                $('#smart-dropdown-menu').toggle();
+            });
+            
+            // 点击其他地方关闭下拉菜单
+            $(document).off('click.dropdown').on('click.dropdown', function(e) {
+                if (!$(e.target).closest('.smart-btn-group').length) {
+                    $('#smart-dropdown-menu').hide();
+                }
+            });
+            
+            $('#smart-dropdown-menu').off('click.dropdown').on('click.dropdown', function(e) {
+                e.stopPropagation();
+            });
+
+            // 🔥 下拉菜单项点击事件
+            $('.dropdown-item').on('click', function() {
+                const mode = $(this).data('mode');
+                const currentId = $('input[id="_id"]').val();
+                
+                if (!currentId) {
+                    layer.msg('请先选择产品', {icon: 2, time: 2000});
+                    return;
+                }
+
+                $('#smart-dropdown-menu').hide();
+                
+                if (mode === 'enhanced') {
+                    generateSmartTitleEnhanced(currentId);
+                } else {
+                    generateSmartTitle(currentId, 'standard');
+                }
+            });
+
+            // 悬停效果
+            $('.dropdown-item').on('mouseenter', function() {
+                $(this).css('background', 'rgba(92, 124, 250, 0.08)');
+            }).on('mouseleave', function() {
+                $(this).css('background', 'transparent');
+            });
+
+            // 🔧 获取类目名称函数
+            function getCategoryName(categoryId) {
+                const categoryMap = {
+                    1: "船袜",
+                    2: "短袜", 
+                    3: "中筒袜",
+                    4: "长筒袜"
+                };
+                return categoryMap[categoryId] || "短袜";
+            }
+
+            // 📝 标准版智能标题生成函数
+            function generateSmartTitle(recordId, mode = 'standard') {
+                let loader = layer.load();
+                
+                $.ajax({
+                    url: '/api/generate_smart_title',
+                    type: 'post',
+                    dataType: 'json',
+                    contentType: 'application/json;charset=UTF-8',
+                    data: JSON.stringify({
+                        record_id: recordId
+                    }),
+                    success: function(result) {
+                        layer.close(loader);
+                        if (result.success) {
+                            showTitleSuggestions(result.data.suggestions, result.data.product_info, mode);
+                        } else {
+                            layer.msg(result.msg, {icon: 2, time: 3000});
+                        }
+                    },
+                    error: function() {
+                        layer.close(loader);
+                        layer.msg('标题生成失败，请重试', {icon: 2, time: 3000});
+                    }
+                });
+            }
+
+            // 🔥 增强版智能标题生成函数
+            function generateSmartTitleEnhanced(recordId) {
+                    let loader = layer.load();
+                
+                    $.ajax({
+                    url: '/api/generate_smart_title_enhanced',
+                    type: 'post',
+                        dataType: 'json',
+                        contentType: 'application/json;charset=UTF-8',
+                    data: JSON.stringify({
+                        record_id: recordId,
+                        use_trending: true
+                    }),
+                    success: function(result) {
+                            layer.close(loader);
+                            if (result.success) {
+                            showTitleSuggestionsEnhanced(result.data.suggestions, result.data.product_info, result.data);
+                            } else {
+                            layer.msg(result.msg, {icon: 2, time: 3000});
+                        }
+                    },
+                    error: function() {
+                        layer.close(loader);
+                        layer.msg('增强版生成失败，已降级到标准版', {icon: 3, time: 3000});
+                        // 降级到标准版
+                        generateSmartTitle(recordId, 'fallback');
+                    }
+                });
+            }
+
+            // 显示标题建议弹窗 (标准版)
+            function showTitleSuggestions(suggestions, productInfo, mode = 'standard') {
+                let content = `
+                    <div style="padding: 20px; max-height: 500px; overflow-y: auto;">
+                        <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 100%); border-radius: 8px; border-left: 4px solid #667eea;">
+                            <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 16px;">🎯 产品分析</h4>
+                            <p style="margin: 0; color: #6c757d; font-size: 13px;">
+                                产品：${productInfo.name} | 类目：${getCategoryName(productInfo.category)} | SKU数量：${productInfo.sku_count}个
+                            </p>
+                        </div>
+                        <h3 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 17px;">💡 智能标题建议 ${mode === 'fallback' ? '(备用模式)' : ''}</h3>
+                        <div class="title-suggestions">
+                `;
+                
+                suggestions.forEach((suggestion, index) => {
+                    const confidenceColor = suggestion.confidence >= 0.9 ? '#52c41a' : 
+                                          suggestion.confidence >= 0.8 ? '#faad14' : '#ff7875';
+                    const confidenceText = suggestion.confidence >= 0.9 ? '优秀' : 
+                                         suggestion.confidence >= 0.8 ? '良好' : '可用';
+                    
+                    content += `
+                        <div class="title-option" data-title="${suggestion.title}" style="
+                            margin-bottom: 12px; 
+                            padding: 15px; 
+                            border: 2px solid #f0f0f0; 
+                            border-radius: 8px; 
+                            cursor: pointer; 
+                            transition: all 0.3s ease;
+                            background: white;
+                        " onmouseover="this.style.borderColor='#667eea'; this.style.background='#f8f9ff';" 
+                           onmouseout="this.style.borderColor='#f0f0f0'; this.style.background='white';">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="background: ${confidenceColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                    ${confidenceText} ${Math.round(suggestion.confidence * 100)}%
+                                </span>
+                                <span style="color: #999; font-size: 12px;">${suggestion.character_count} 字符</span>
+                            </div>
+                            <div style="font-size: 14px; color: #2c3e50; margin-bottom: 8px; font-weight: 500; line-height: 1.4;">
+                                ${suggestion.title}
+                            </div>
+                            <div style="font-size: 12px; color: #6c757d; margin-bottom: 6px;">
+                                💡 ${suggestion.reasoning}
+                            </div>
+                            <div>
+                                ${suggestion.tags.map(tag => `<span style="background: #e6f7ff; color: #1890ff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px;">${tag}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                content += `
+                        </div>
+                        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #f0f0f0; text-align: center;">
+                            <p style="color: #999; font-size: 12px; margin: 0;">💡 点击任意标题即可应用到输入框</p>
+                        </div>
+                    </div>
+                `;
+                
+                layer.open({
+                    type: 1,
+                    title: '✨ 智能产品标题生成',
+                    content: content,
+                    area: ['600px', '580px'],
+                    btn: ['关闭'],
+                    btnAlign: 'c',
+                    skin: 'layui-layer-rim',
+                    success: function(layero) {
+                        // 添加点击选择标题事件
+                        layero.find('.title-option').on('click', function() {
+                            const selectedTitle = $(this).data('title');
+                            $('[name="title"]').val(selectedTitle);
+                            title_listen(); // 更新字符计数
+                            layer.closeAll();
+                            layer.msg('标题已应用！', {icon: 1, time: 2000});
+                        });
+                    }
+                });
+            }
+
+            // 🔥 显示增强版标题建议弹窗
+            function showTitleSuggestionsEnhanced(suggestions, productInfo, enhancedData) {
+                let content = `
+                    <div style="padding: 20px; max-height: 600px; overflow-y: auto;">
+                        <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 100%); border-radius: 8px; border-left: 4px solid #ff6b9d;">
+                            <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 16px;">🔥 产品分析 (增强版)</h4>
+                            <p style="margin: 0; color: #6c757d; font-size: 13px;">
+                                产品：${productInfo.name} | 类目：${getCategoryName(productInfo.category)} | SKU数量：${productInfo.sku_count}个
+                            </p>
+                                </div>
+                `;
+
+                // 🔥 显示热门关键词信息
+                if (enhancedData.trending_keywords && enhancedData.trending_keywords.length > 0) {
+                    content += `
+                        <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #fff2e6 0%, #ffeaa7 30%); border-radius: 8px; border-left: 4px solid #fdcb6e;">
+                            <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 14px;">🔥 实时热门关键词</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${enhancedData.trending_keywords.map(kw => 
+                                    `<span style="background: #fd79a8; color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;">
+                                        ${kw.keyword} <small style="opacity: 0.8;">(${Math.round(kw.trend_score * 100)}%)</small>
+                                    </span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // 🌐 显示网络状态
+                if (enhancedData.network_status) {
+                    const networkColor = enhancedData.network_status.network_status === 'excellent' ? '#00b894' : 
+                                       enhancedData.network_status.network_status === 'good' ? '#fdcb6e' : '#e17055';
+                    const networkText = enhancedData.network_status.network_status === 'excellent' ? '优秀' : 
+                                      enhancedData.network_status.network_status === 'good' ? '良好' : '一般';
+                    
+                    content += `
+                        <div style="margin-bottom: 20px; padding: 10px 15px; background: rgba(255,255,255,0.7); border-radius: 6px; border-left: 4px solid ${networkColor};">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="color: #2c3e50; font-size: 12px; font-weight: 500;">🌐 网络状态: <span style="color: ${networkColor};">${networkText}</span></span>
+                                <span style="color: #6c757d; font-size: 11px;">缓存: ${enhancedData.network_status.cache_size || 0}条</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                content += `
+                        <h3 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 17px;">💡 智能标题建议 (增强版)</h3>
+                        <div class="title-suggestions">
+                `;
+                
+                suggestions.forEach((suggestion, index) => {
+                    const confidenceColor = suggestion.confidence >= 0.9 ? '#52c41a' : 
+                                          suggestion.confidence >= 0.8 ? '#faad14' : '#ff7875';
+                    const confidenceText = suggestion.confidence >= 0.9 ? '优秀' : 
+                                         suggestion.confidence >= 0.8 ? '良好' : '可用';
+                    
+                    content += `
+                        <div class="title-option" data-title="${suggestion.title}" style="
+                            margin-bottom: 12px; 
+                            padding: 15px; 
+                            border: 2px solid #f0f0f0; 
+                            border-radius: 8px; 
+                            cursor: pointer; 
+                            transition: all 0.3s ease;
+                            background: white;
+                        " onmouseover="this.style.borderColor='#ff6b9d'; this.style.background='#ffeaa7';" 
+                           onmouseout="this.style.borderColor='#f0f0f0'; this.style.background='white';">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="background: ${confidenceColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                    ${confidenceText} ${Math.round(suggestion.confidence * 100)}%
+                                </span>
+                                <span style="color: #999; font-size: 12px;">${suggestion.character_count} 字符</span>
+                            </div>
+                            <div style="font-size: 14px; color: #2c3e50; margin-bottom: 8px; font-weight: 500; line-height: 1.4;">
+                                ${suggestion.title}
+                            </div>
+                            <div style="font-size: 12px; color: #6c757d; margin-bottom: 6px;">
+                                💡 ${suggestion.reasoning}
+                            </div>
+                            <div>
+                                ${suggestion.tags.map(tag => {
+                                    const isHotTag = enhancedData.trending_keywords.some(kw => kw.keyword === tag);
+                                    const tagColor = isHotTag ? '#fd79a8' : '#1890ff';
+                                    const tagBg = isHotTag ? '#ffe6f1' : '#e6f7ff';
+                                    return `<span style="background: ${tagBg}; color: ${tagColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px;">${isHotTag ? '🔥' : ''}${tag}</span>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                content += `
+                        </div>
+                        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #f0f0f0; text-align: center;">
+                            <p style="color: #999; font-size: 12px; margin: 0;">💡 点击任意标题即可应用到输入框 | 🔥标记表示热门关键词</p>
+                        </div>
+                    </div>
+                `;
+                
+                layer.open({
+                    type: 1,
+                    title: '🔥 增强版智能产品标题生成',
+                    content: content,
+                    area: ['650px', '680px'],
+                    btn: ['关闭', '刷新热门词'],
+                    btnAlign: 'c',
+                    skin: 'layui-layer-rim',
+                    btn2: function(index, layero) {
+                        // 刷新热门关键词
+                        refreshTrendingKeywords(productInfo.category);
+                        return false;
+                    },
+                    success: function(layero) {
+                        // 添加点击选择标题事件
+                        layero.find('.title-option').on('click', function() {
+                            const selectedTitle = $(this).data('title');
+                            $('[name="title"]').val(selectedTitle);
+                            title_listen(); // 更新字符计数
+                            layer.closeAll();
+                            layer.msg('标题已应用！', {icon: 1, time: 2000});
+                        });
+                    }
+                });
+            }
+
+            // 🔄 刷新热门关键词
+            function refreshTrendingKeywords(categoryId) {
+                layer.msg('正在刷新热门关键词...', {icon: 16, time: 2000});
+                
+                    $.ajax({
+                    url: '/api/refresh_trending_keywords',
+                        type: 'post',
+                        dataType: 'json',
+                        contentType: 'application/json;charset=UTF-8',
+                    data: JSON.stringify({
+                        category_id: categoryId
+                    }),
+                    success: function(result) {
+                            if (result.success) {
+                            layer.msg(result.msg, {icon: 1, time: 3000});
+                            } else {
+                            layer.msg(result.msg, {icon: 2, time: 3000});
+                        }
+                    },
+                    error: function() {
+                        layer.msg('刷新失败，请重试', {icon: 2, time: 3000});
+                    }
+                });
+            }
+
+            // 🔧 设置按钮点击事件 - 修复双层窗口问题
+            $('#settings-btn').on('click', function() {
+                console.log('设置按钮被点击');
+                
+                // 🚫 防止重复打开 - 检查是否已有设置窗口
+                if ($('.layui-layer[data-settings-window="true"]').length > 0) {
+                    console.log('设置窗口已存在，忽略重复点击');
+                    layer.msg('设置窗口已打开', {icon: 3, time: 1000});
+                    return;
+                }
+                
+                console.log('打开设置弹窗');
+                
+                // 🔧 隐藏GUI拖拽区域
+                $.ajax({
+                    url: '/gui/toggle_drag_area',
+                    type: 'POST',
+                    data: JSON.stringify({show: false}),
+                    contentType: 'application/json',
+                    success: function(result) {
+                        console.log('GUI拖拽区域已隐藏');
+                    },
+                    error: function(xhr, status, error) {
+                        console.log('隐藏GUI拖拽区域失败:', error);
+                    }
+                });
+                
+                // 🎨 使用统一的弹窗样式
+                layer.config({
+                    zIndex: 2147483647
+                });
+                
+                // 🔧 修复：使用type: 1直接加载内容，避免iframe双层窗口
+                // 先加载设置页面内容
+                $.ajax({
+                    url: '/settings/page',
+                    type: 'GET',
+                    success: function(htmlContent) {
+                        // 提取body内容，移除html和head标签
+                        var bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+                        var contentHtml = bodyMatch ? bodyMatch[1] : htmlContent;
+                        
+                        // 提取style标签内容
+                        var styleMatch = htmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+                        var allStyles = '';
+                        if (styleMatch) {
+                            styleMatch.forEach(function(style) {
+                                allStyles += style;
+                            });
+                        }
+                        
+                        // 🔧 简化：不提取脚本，让设置页面自己处理JavaScript
+                        // 创建完整的内容，包含样式和脚本
+                        var fullContent = allStyles + contentHtml;
+                
+                var settingsIndex = layer.open({
+                            type: 1,  // 🔧 改为type: 1，直接内容模式
+                    title: '🛠️ 系统设置',
+                    shadeClose: true,
+                    shade: [0.8, '#000'],
+                    maxmin: true,
+                    zIndex: 2147483647,
+                    fixed: true,
+                    moveType: 1,
+                    area: function(){
+                        var winWidth = $(window).width();
+                        var winHeight = $(window).height();
+                        if(winWidth <= 1200) {
+                            return ['95%', '90%'];
+                        } else {
+                            return ['1200px', '800px'];
+                        }
+                    }(),
+                    offset: 'auto',
+                            content: fullContent,  // 🔧 直接使用HTML内容
+                    success: function(layero, index) {
+                        // 🏷️ 标记为设置窗口
+                        $(layero).attr('data-settings-window', 'true');
+                        
+                        // 🎨 应用统一的自定义样式
+                        $(layero).find('.layui-layer-title').css({
+                            'background': 'linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%)',
+                            'color': 'white',
+                            'font-weight': '600',
+                            'border': 'none',
+                                    'font-family': 'Microsoft YaHei UI, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        });
+                        
+                        // 自定义弹窗边框和阴影
+                        $(layero).css({
+                            'border-radius': '8px',
+                            'overflow': 'hidden',
+                            'box-shadow': '0 8px 32px rgba(0, 0, 0, 0.15)',
+                            'border': 'none'
+                        });
+                        
+                        // 自定义内容区域样式
+                        $(layero).find('.layui-layer-content').css({
+                            'background': '#f8f9fa',
+                                    'padding': '0',
+                                    'overflow': 'auto'  // 🔧 添加滚动支持
+                        });
+                        
+                                // 🔧 修复：安全地执行设置页面的JavaScript代码
+                                try {
+                                    // 🔧 简化：直接初始化必要功能，不执行复杂脚本
+                                    setTimeout(function() {
+                                        // 🔧 手动初始化成本项目加载
+                                        var defaultItems = [
+                                            {name: '原材料成本', cost_type: 'fixed', value: 5.0, description: '袜子面料、纱线等原材料成本'},
+                                            {name: '人工成本', cost_type: 'fixed', value: 2.0, description: '生产加工人工费用'},
+                                            {name: '包装成本', cost_type: 'fixed', value: 0.5, description: '包装材料费用'},
+                                            {name: '运费成本', cost_type: 'fixed', value: 1.5, description: '物流运输费用'},
+                                            {name: '平台费用', cost_type: 'percentage', value: 0.08, description: '平台抽佣8%'},
+                                            {name: '营销推广费', cost_type: 'percentage', value: 0.05, description: '广告推广费用5%'}
+                                        ];
+                                        
+                                        var html = '';
+                                        defaultItems.forEach(function(item) {
+                                            var unit = item.cost_type === 'percentage' ? '%' : '元';
+                                            var displayValue = item.cost_type === 'percentage' ? (item.value * 100) : item.value;
+                                            html += `
+                                                <div class="cost-item" data-cost-type="${item.cost_type}">
+                                                    <div class="cost-item-info">
+                                                        <div class="cost-item-name">${item.name}</div>
+                                                        <div class="cost-item-description">${item.description}</div>
+                                                    </div>
+                                                    <div class="cost-item-controls">
+                                                        <div class="cost-input-group">
+                                                            <input type="number" value="${displayValue}" min="0" step="0.1" class="cost-input" data-name="${item.name}">
+                                                            <span class="cost-unit">${unit}</span>
+                                                        </div>
+                                                        <button type="button" class="modern-btn modern-btn-danger" style="padding: 8px 12px; font-size: 12px;">
+                                                            <span>🗑️</span>
+                                                            删除
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        });
+                                        
+                                        $(layero).find('#cost-items-container').html(html);
+                                        
+                                        // 🔧 修复：确保删除按钮事件绑定
+                                        $(layero).find('.modern-btn-danger').on('click', function() {
+                                            console.log('删除按钮被点击（内联绑定）');
+                                            var $item = $(this).closest('.cost-item');
+                                            // 简单的删除逻辑，不使用layer确认
+                                            $item.fadeOut(200, function() {
+                                                $(this).remove();
+                                            });
+                                        });
+                                        
+                                        // 🔧 修复：移除重复的添加成本项逻辑，使用设置页面原生功能
+                                        // 不再重复绑定添加成本项按钮，让设置页面自己处理
+                                    }, 100);
+                                } catch (e) {
+                                    console.error('初始化设置页面失败:', e);
+                                }
+                        
+                                console.log('设置窗口已打开（直接内容模式）');
+                        layer.msg('设置窗口已打开', {icon: 1, time: 1000});
+                    },
+                    end: function() {
+                        console.log('设置窗口已关闭');
+                        
+                        // 🔧 恢复显示GUI拖拽区域
+                        $.ajax({
+                            url: '/gui/toggle_drag_area',
+                            type: 'POST',
+                            data: JSON.stringify({show: true}),
+                            contentType: 'application/json',
+                            success: function(result) {
+                                console.log('GUI拖拽区域已恢复显示');
+                            },
+                            error: function(xhr, status, error) {
+                                console.log('恢复GUI拖拽区域失败:', error);
+                            }
+                        });
+                        
+                        // 🔧 新增：延迟清除设置保存标志，确保主页面操作不受干扰
+                        setTimeout(() => {
+                            if (window.settingsSavingInProgress) {
+                                console.log('设置窗口关闭，清除保存状态标志');
+                                window.settingsSavingInProgress = false;
+                            }
+                        }, 2000);
+                            }
+                        });
+                    },
+                    error: function() {
+                        layer.msg('加载设置页面失败', {icon: 2, time: 2000});
+                    }
+                });
+            });
+            
+            // 🔧 设置按钮点击事件 - 修复双层窗口问题
+            window.openSettings = function() {
+                console.log('打开设置页面...');
+                const settingsIndex = layer.open({
+                    type: 2,
+                    title: '⚙️ 智能价格计算配置',
+                    content: '/view/settings/index.html',
+                    area: ['90%', '90%'],
+                    maxmin: true,
+                    shade: 0.3,
+                    zIndex: layer.zIndex,
+                    success: function(layero, index) {
+                        console.log('设置页面加载成功');
+                        layer.setTop(layero);
+                    },
+                    end: function() {
+                        console.log('设置页面关闭');
+                    }
+                });
+            };
+
+            // 🔧 新增：完整的render_detail函数
+            function render_detail(_id) {
+                let loader = layer.load();
+                $.ajax({
+                    url: '/load_detail?_id=' + _id,
+                    type: 'get',
+                    dataType: 'json',
+                    contentType: 'application/json;charset=UTF-8',
+                    success: function (result) {
+                        layer.close(loader);
+                        if (result.success) {
+                            $('#shop_title').text(result.data['name'] + '的配置');
+                            $('input[name="remark"]').val(result.data['remark']);
+                            $('input[name="title"]').val(result.data['title']);
+                            $('input[id="_id"]').val(result.data['id']);
+                            $('input[name="repo"]').val(result.data['repo']);
+                            $('[lay-filter="clazz"] + div dd[lay-value="' + result.data['clazz'] + '"]').click();
+                            $('#attr_box').html('<input type="hidden" name="attr_size" value="' + result.data['content'].length + '">');
+
+                            // 仅有一行标题 "SKU名称"
+                            $('#attr_box').append(`
+                                <div class="ipt_box_header">
+                                    <div style="width:50px;"></div>
+                                    <h3 style="margin:0;color:#2c3e50;font-weight:600;font-size:14px;">SKU名称</h3>
+                                    <div style="flex:1;"></div>
+                                    <span style="color:#6c757d;font-size:12px;font-weight:500;">价格</span>
+                                    <div style="width:48px;"></div>
+                                </div>
+                            `);
+
+                            const fragment = document.createDocumentFragment();
+                            for (var i = 0; i < result.data['content'].length; i++) {
+                                const item = result.data['content'][i];
+                                if (!item['url'] || typeof item['url'] !== 'string') {
+                                    console.error('SKU URL is undefined or not a string for item:', item);
+                                    continue;
+                                }
+
+                                const skuItem = $(
+                                    '<div class="ipt_box" data-index="' + i + '">' +
+                                        '<img src="' + item['url'] + '" class="sku-thumbnail" data-sku-path="' + item['path'] + '">' +
+                                        '<input type="hidden" name="attr_path_' + (i + 1) + '" value="' + item['path'] + '">' +
+                                        '<input type="text" name="attr_name_' + (i + 1) + '" placeholder="SKU名称" autocomplete="off" class="layui-input" value="' + item['name'] + '">' +
+                                        '<input type="number" name="attr_price_' + (i + 1) + '" placeholder="价格" autocomplete="off" class="layui-input" step="0.01" value="' + item['price'] + '">' +
+                                        '<button type="button" class="layui-btn layui-btn-danger layui-btn-sm delete-sku-btn" data-index="' + i + '">删除</button>' +
+                                    '</div>'
+                                )[0];
+                                fragment.appendChild(skuItem);
+                            }
+                            $('#attr_box').append(fragment);
+
+                            title_listen();
+                            form.render('checkbox');
+                            
+                            // 🔧 确保表单组件只渲染一次
+                            if (!window.formRendered) {
+                                form.render('select');
+                                form.render();
+                                window.formRendered = true;
+                                console.log('✅ 表单组件渲染完成');
+                                
+                                // 隐藏空选项
+                                $('.layui-form-select dl dd[lay-value=""]').hide();
+                            }
+                            
+                            // 🔧 重新绑定自定义事件
+                            if (window.mainPageEventManager) {
+                                window.mainPageEventManager.bindCustomEvents();
+                            }
+                        } else {
+                            layer.msg(result.msg, {icon: 2, time: 1000});
+                        }
+                    }
+                });
+            }
+
+            // 🔧 新增：SKU交互事件绑定
+            function bindSkuInteractionEvents() {
+                // 点击 SKU 缩略图，切换选中状态
+                $('#attr_box').off('click', '.sku-thumbnail').on('click', '.sku-thumbnail', function (e) {
+                    $(this).toggleClass('sku-selected');
+                });
+
+                // 鼠标悬浮显示大图
+                $('#attr_box').off('mouseenter', '.sku-thumbnail').on('mouseenter', '.sku-thumbnail', function (e) {
+                    const largeImageSrc = $(this).attr('src');
+                    $('#large-image').attr('src', largeImageSrc);
+                    const mouseX = e.pageX;
+                    const mouseY = e.pageY;
+                    let left = mouseX + 15;
+                    let top = mouseY + 15;
+
+                    const windowWidth = $(window).width();
+                    const windowHeight = $(window).height();
+                    const largeImageWidth = 200;
+                    const largeImageHeight = 200;
+
+                    if (left + largeImageWidth > windowWidth) {
+                        left = mouseX - largeImageWidth - 15;
+                    }
+                    if (top + largeImageHeight > windowHeight) {
+                        top = mouseY - largeImageHeight - 15;
+                    }
+
+                    $('#large-image').css({
+                        left: left + 'px',
+                        top: top + 'px',
+                        width: largeImageWidth + 'px',
+                        height: largeImageHeight + 'px',
+                        display: 'block'
+                    });
+                });
+
+                $('#attr_box').off('mouseleave', '.sku-thumbnail').on('mouseleave', '.sku-thumbnail', function () {
+                    $('#large-image').css('display', 'none');
+                });
+
+                $('#large-image').off('mouseenter mouseleave').on('mouseenter', function () {
+                    $(this).css('display', 'block');
+                }).on('mouseleave', function () {
+                    $(this).css('display', 'none');
+                });
+            }
+
+                         // 🔧 初始化所有事件管理
+             window.mainPageEventManager.initAllEvents();
+             bindSkuInteractionEvents();
+
+            // 🔧 确保GUI拖拽区域显示（避免上次隐藏后未恢复）
+            try {
+                $.ajax({
+                    url: '/gui/toggle_drag_area',
+                    type: 'POST',
+                    data: JSON.stringify({ show: true }),
+                    contentType: 'application/json'
+                });
+            } catch (e) {
+                console.warn('初始化时尝试显示GUI拖拽区域失败:', e);
+            }
+
+        });
+    </script>
+    
+    <!-- 🔧 防闪烁JavaScript -->
+    <script>
+        // 页面加载完成后显示内容
+        document.addEventListener('DOMContentLoaded', function() {
+            // 确保所有资源加载完成
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    document.documentElement.classList.add('loaded');
+                    console.log('✅ 页面加载完成，防闪烁处理完毕');
+                }, 100);
+            });
+        });
+        
+        // 防止重复下拉菜单
+        document.addEventListener('DOMContentLoaded', function() {
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'childList') {
+                        // 移除重复的智能下拉菜单
+                        const smartDropdowns = document.querySelectorAll('.smart-dropdown-menu');
+                        if (smartDropdowns.length > 1) {
+                            for (let i = 1; i < smartDropdowns.length; i++) {
+                                smartDropdowns[i].remove();
+                            }
+                        }
+                        
+                        // 移除重复的layui下拉菜单
+                        const layuiSelects = document.querySelectorAll('.layui-form-select');
+                        const seenSelects = new Set();
+                        layuiSelects.forEach(function(select) {
+                            const selectName = select.querySelector('input')?.name;
+                            if (selectName && seenSelects.has(selectName)) {
+                                select.remove();
+                            } else if (selectName) {
+                                seenSelects.add(selectName);
+                            }
+                        });
+                    }
+                });
+            });
+            
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        });
+    </script>
+    
+            <!-- 🧹 智能价格计算功能已移除 - 准备重构 -->
+        <!-- <script src="/admin/js/smart_pricing.js"></script> -->
+</body>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>采集历史记录 - 淘宝商品信息采集系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/layui-src@2.8.12/dist/css/layui.css">
+    <link rel="stylesheet" href="../css/capture.css">
+    <style>
+        .history-container {
+            padding: 20px;
+        }
+        
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .history-search {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .history-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .stat-number {
+            font-weight: bold;
+            color: #1890ff;
+        }
+        
+        .history-table-container {
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .product-title-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .product-link-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .price-cell {
+            color: #ff4d4f;
+            font-weight: bold;
+        }
+        
+        .status-cell {
+            text-align: center;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+        
+        .action-btn {
+            padding: 2px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+        }
+        
+        .empty-history {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        .empty-history i {
+            font-size: 48px;
+            color: #ddd;
+            margin-bottom: 15px;
+        }
+        
+        .batch-actions {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .date-filter {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        @media (max-width: 768px) {
+            .history-header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .history-search {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .history-stats {
+                width: 100%;
+                justify-content: space-around;
+            }
+            
+            .product-title-cell {
+                max-width: 200px;
+            }
+            
+            .product-link-cell {
+                max-width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="history-container">
+        <!-- 历史记录头部 -->
+        <div class="history-header">
+            <div>
+                <h2><i class="layui-icon layui-icon-time"></i> 采集历史记录</h2>
+                <p style="color: #666; margin-top: 5px;">查看和管理您的商品采集历史</p>
+            </div>
+            
+            <div class="history-stats">
+                <div class="stat-item">
+                    <i class="layui-icon layui-icon-chart"></i>
+                    <span>总采集次数:</span>
+                    <span class="stat-number" id="total-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <i class="layui-icon layui-icon-ok-circle"></i>
+                    <span>成功次数:</span>
+                    <span class="stat-number" id="success-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <i class="layui-icon layui-icon-close-circle"></i>
+                    <span>失败次数:</span>
+                    <span class="stat-number" id="failed-count">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 搜索和筛选区域 -->
+        <div class="history-search">
+            <div class="date-filter">
+                <input type="text" class="layui-input" id="start-date" placeholder="开始日期" style="width: 120px;">
+                <span>至</span>
+                <input type="text" class="layui-input" id="end-date" placeholder="结束日期" style="width: 120px;">
+                <button class="layui-btn layui-btn-sm layui-btn-primary" id="filter-date">
+                    <i class="layui-icon layui-icon-search"></i>
+                    筛选
+                </button>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="text" class="layui-input" id="search-keyword" placeholder="搜索商品标题或链接" style="width: 200px;">
+                <button class="layui-btn layui-btn-sm layui-btn-normal" id="search-btn">
+                    <i class="layui-icon layui-icon-search"></i>
+                    搜索
+                </button>
+            </div>
+        </div>
+        
+        <!-- 批量操作 -->
+        <div class="batch-actions">
+            <button class="layui-btn layui-btn-sm layui-btn-danger" id="batch-delete">
+                <i class="layui-icon layui-icon-delete"></i>
+                批量删除
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-primary" id="export-data">
+                <i class="layui-icon layui-icon-export"></i>
+                导出数据
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-warm" id="clear-all">
+                <i class="layui-icon layui-icon-refresh"></i>
+                清空历史
+            </button>
+        </div>
+        
+        <!-- 历史记录表格 -->
+        <div class="history-table-container">
+            <table class="layui-table" id="history-table" lay-filter="history-table">
+                <thead>
+                    <tr>
+                        <th lay-data="{type:'checkbox'}"></th>
+                        <th lay-data="{field:'task_id', width:120, sort:true}">任务ID</th>
+                        <th lay-data="{field:'title', minWidth:200, templet:'#title-tpl'}">商品标题</th>
+                        <th lay-data="{field:'url', minWidth:200, templet:'#url-tpl'}">商品链接</th>
+                        <th lay-data="{field:'price', width:100, sort:true, templet:'#price-tpl'}">价格</th>
+                        <th lay-data="{field:'status', width:80, templet:'#status-tpl'}">状态</th>
+                        <th lay-data="{field:'created_at', width:150, sort:true, templet:'#date-tpl'}">采集时间</th>
+                        <th lay-data="{width:120, toolbar:'#action-tpl'}">操作</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+        
+        <!-- 空状态 -->
+        <div class="empty-history" id="empty-history" style="display: none;">
+            <i class="layui-icon layui-icon-time"></i>
+            <h3>暂无采集历史</h3>
+            <p>您还没有进行过任何商品采集操作</p>
+            <button class="layui-btn layui-btn-normal" onclick="goToCapture()">
+                <i class="layui-icon layui-icon-upload-drag"></i>
+                开始采集
+            </button>
+        </div>
+    </div>
+    
+    <!-- 模板定义 -->
+    <script type="text/html" id="title-tpl">
+        <div class="product-title-cell" title="{{ d.title }}">
+            {{ d.title }}
+        </div>
+    </script>
+    
+    <script type="text/html" id="url-tpl">
+        <div class="product-link-cell" title="{{ d.url }}">
+            <a href="{{ d.url }}" target="_blank" style="color: #1890ff;">
+                {{ d.url }}
+            </a>
+        </div>
+    </script>
+    
+    <script type="text/html" id="price-tpl">
+        <div class="price-cell">
+            ¥{{ d.price }}
+        </div>
+    </script>
+    
+    <script type="text/html" id="status-tpl">
+        <div class="status-cell">
+            {{# if(d.status === 'completed'){ }}
+                <span class="layui-badge layui-bg-green">成功</span>
+            {{# } else if(d.status === 'failed'){ }}
+                <span class="layui-badge layui-bg-red">失败</span>
+            {{# } else { }}
+                <span class="layui-badge layui-bg-blue">{{ d.status }}</span>
+            {{# } }}
+        </div>
+    </script>
+    
+    <script type="text/html" id="date-tpl">
+        <div style="font-size: 12px; color: #666;">
+            {{ layui.util.toDateString(d.created_at, 'yyyy-MM-dd HH:mm') }}
+        </div>
+    </script>
+    
+    <script type="text/html" id="action-tpl">
+        <div class="action-buttons">
+            <button class="layui-btn layui-btn-xs layui-btn-normal action-btn" lay-event="view">
+                <i class="layui-icon layui-icon-eye"></i>
+                查看
+            </button>
+            <button class="layui-btn layui-btn-xs layui-btn-primary action-btn" lay-event="reuse">
+                <i class="layui-icon layui-icon-link"></i>
+                重用
+            </button>
+            <button class="layui-btn layui-btn-xs layui-btn-danger action-btn" lay-event="delete">
+                <i class="layui-icon layui-icon-delete"></i>
+                删除
+            </button>
+        </div>
+    </script>
+    
+    <!-- 脚本文件 -->
+    <script src="https://cdn.jsdelivr.net/npm/layui-src@2.8.12/dist/layui.js"></script>
+    <script src="../js/history.js"></script>
+</body>
+</html>

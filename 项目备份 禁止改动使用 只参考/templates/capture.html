@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>淘宝商品信息采集系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/layui-src@2.8.12/dist/css/layui.css">
+    <link rel="stylesheet" href="static/css/capture.css">
+</head>
+<body>
+    <div class="layui-layout layui-layout-admin">
+        <div class="layui-header">
+            <div class="layui-logo layui-hide-xs layui-bg-black">商品采集系统</div>
+            <ul class="layui-nav layui-layout-right">
+                <li class="layui-nav-item layui-hide-xs">
+                    <a href="javascript:;" id="view-history">
+                        <i class="layui-icon layui-icon-time"></i>
+                        采集历史
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="layui-side layui-bg-black">
+            <div class="layui-side-scroll">
+                <ul class="layui-nav layui-nav-tree" lay-filter="side-nav">
+                    <li class="layui-nav-item layui-nav-itemed">
+                        <a class="" href="javascript:;">
+                            <i class="layui-icon layui-icon-upload-drag"></i>
+                            商品采集
+                        </a>
+                        <dl class="layui-nav-child">
+                            <dd><a href="javascript:;" id="nav-capture">采集控制台</a></dd>
+                            <dd><a href="javascript:;" id="nav-history">历史记录</a></dd>
+                        </dl>
+                    </li>
+                    <li class="layui-nav-item">
+                        <a href="javascript:;">
+                            <i class="layui-icon layui-icon-set"></i>
+                            系统设置
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="layui-body">
+            <div class="layui-container" style="padding: 20px;">
+                <!-- 页面标题 -->
+                <div class="layui-row">
+                    <div class="layui-col-md12">
+                        <div class="layui-card">
+                            <div class="layui-card-header">
+                                <h2><i class="layui-icon layui-icon-upload-drag"></i> 淘宝商品信息采集</h2>
+                                <p style="color: #666; margin-top: 10px;">输入淘宝/天猫商品链接，自动采集商品信息和图片</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 采集输入区域 -->
+                <div class="layui-row" style="margin-top: 20px;">
+                    <div class="layui-col-md12">
+                        <div class="layui-card">
+                            <div class="layui-card-header">
+                                <strong>采集配置</strong>
+                            </div>
+                            <div class="layui-card-body">
+                                <form class="layui-form">
+                                    <div class="layui-form-item">
+                                        <label class="layui-form-label">商品链接</label>
+                                        <div class="layui-input-block">
+                                            <input type="text" id="product-url" 
+                                                   placeholder="请输入淘宝/天猫商品链接，如：https://detail.tmall.com/item.htm?id=123456" 
+                                                   class="layui-input" autocomplete="off">
+                                            <div class="layui-form-mid layui-text-em">支持淘宝、天猫商品链接</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="layui-form-item">
+                                        <label class="layui-form-label">采集选项</label>
+                                        <div class="layui-input-block">
+                                            <input type="checkbox" name="download-images" lay-skin="primary" title="下载图片" checked>
+                                            <input type="checkbox" name="extract-sku" lay-skin="primary" title="提取SKU信息" checked>
+                                            <input type="checkbox" name="extract-params" lay-skin="primary" title="提取商品参数" checked>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="layui-form-item">
+                                        <div class="layui-input-block">
+                                            <button type="button" class="layui-btn layui-btn-normal" id="start-capture">
+                                                <i class="layui-icon layui-icon-loading"></i>
+                                                开始采集
+                                            </button>
+                                            <button type="button" class="layui-btn layui-btn-primary" id="clear-input">
+                                                <i class="layui-icon layui-icon-refresh"></i>
+                                                清空
+                                            </button>
+                                            <button type="button" class="layui-btn layui-btn-warm" id="view-history-btn">
+                                                <i class="layui-icon layui-icon-time"></i>
+                                                历史记录
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 采集状态区域 -->
+                <div class="layui-row" style="margin-top: 20px; display: none;" id="capture-status-container">
+                    <div class="layui-col-md12">
+                        <div class="layui-card">
+                            <div class="layui-card-header">
+                                <strong>采集进度</strong>
+                                <span class="layui-badge layui-bg-blue" id="current-task-id" style="margin-left: 10px;"></span>
+                            </div>
+                            <div class="layui-card-body">
+                                <div class="capture-progress-container">
+                                    <div class="layui-progress layui-progress-big" lay-showpercent="true" lay-filter="capture-progress">
+                                        <div class="layui-progress-bar layui-bg-blue" lay-percent="0%"></div>
+                                    </div>
+                                    <div class="status-text" id="status-message">准备采集...</div>
+                                </div>
+                                
+                                <div class="capture-actions" style="margin-top: 15px;">
+                                    <button type="button" class="layui-btn layui-btn-sm layui-btn-danger" id="cancel-capture">
+                                        <i class="layui-icon layui-icon-close"></i>
+                                        取消采集
+                                    </button>
+                                    <button type="button" class="layui-btn layui-btn-sm layui-btn-primary" id="minimize-status">
+                                        <i class="layui-icon layui-icon-down"></i>
+                                        最小化
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 采集结果展示区域 -->
+                <div class="layui-row" style="margin-top: 20px; display: none;" id="capture-results-container">
+                    <div class="layui-col-md12">
+                        <div class="layui-card">
+                            <div class="layui-card-header">
+                                <strong>采集结果</strong>
+                                <div class="result-actions" style="float: right;">
+                                    <button type="button" class="layui-btn layui-btn-sm layui-btn-success" id="import-results">
+                                        <i class="layui-icon layui-icon-release"></i>
+                                        导入数据
+                                    </button>
+                                    <button type="button" class="layui-btn layui-btn-sm layui-btn-primary" id="edit-results">
+                                        <i class="layui-icon layui-icon-edit"></i>
+                                        编辑
+                                    </button>
+                                    <button type="button" class="layui-btn layui-btn-sm layui-btn-normal" id="download-images">
+                                        <i class="layui-icon layui-icon-download-circle"></i>
+                                        下载图片
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="layui-card-body">
+                                <!-- 商品基本信息 -->
+                                <div class="product-basic-info">
+                                    <div class="main-image-preview">
+                                        <img id="result-main-image" src="" alt="商品主图" style="max-width: 200px; max-height: 200px;">
+                                    </div>
+                                    <div class="product-details">
+                                        <div class="detail-item">
+                                            <label>商品标题：</label>
+                                            <span id="result-title"></span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>商品价格：</label>
+                                            <span id="result-price" class="price-text"></span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>商品链接：</label>
+                                            <a id="result-url" href="" target="_blank" class="product-link"></a>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>下载目录：</label>
+                                            <span id="result-download-path" class="path-text"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 详细信息标签页 -->
+                                <div class="layui-tab layui-tab-brief" lay-filter="capture-results-tab" style="margin-top: 20px;">
+                                    <ul class="layui-tab-title">
+                                        <li class="layui-this">SKU信息</li>
+                                        <li>商品参数</li>
+                                        <li>详情图片</li>
+                                        <li>原始数据</li>
+                                    </ul>
+                                    <div class="layui-tab-content">
+                                        <div class="layui-tab-item layui-show">
+                                            <div id="sku-info-container">
+                                                <!-- SKU信息将在这里动态加载 -->
+                                            </div>
+                                        </div>
+                                        <div class="layui-tab-item">
+                                            <div id="params-container">
+                                                <!-- 商品参数将在这里动态加载 -->
+                                            </div>
+                                        </div>
+                                        <div class="layui-tab-item">
+                                            <div id="detail-images-container" class="image-gallery">
+                                                <!-- 详情图片将在这里动态加载 -->
+                                            </div>
+                                        </div>
+                                        <div class="layui-tab-item">
+                                            <pre id="raw-data-container" class="raw-data-viewer"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="layui-footer">
+            © 2024 淘宝商品信息采集系统 - 基于Playwright自动化技术
+        </div>
+    </div>
+    
+    <!-- 登录提示模态框 -->
+    <div id="login-prompt-modal" style="display: none; padding: 20px;">
+        <div class="login-prompt-content">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <i class="layui-icon layui-icon-face-smile" style="font-size: 48px; color: #ff9800;"></i>
+            </div>
+            <h3 style="text-align: center; margin-bottom: 15px;">需要登录淘宝账号</h3>
+            <p style="color: #666; text-align: center; margin-bottom: 20px;">
+                检测到需要登录淘宝账号，请在打开的浏览器窗口中完成登录。<br>
+                登录成功后，系统会自动继续采集流程。
+            </p>
+            <div style="text-align: center;">
+                <button type="button" class="layui-btn layui-btn-normal" id="confirm-login-complete">
+                    <i class="layui-icon layui-icon-ok"></i>
+                    我已登录完成
+                </button>
+                <button type="button" class="layui-btn layui-btn-primary" id="cancel-login-prompt">
+                    <i class="layui-icon layui-icon-close"></i>
+                    取消采集
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 脚本文件 -->
+    <script src="https://cdn.jsdelivr.net/npm/layui-src@2.8.12/dist/layui.js"></script>
+    <script src="static/js/capture.js"></script>
+</body>
+</html>

@@ -1769,6 +1769,204 @@ function registerCoreTools(server) {
 
   registerTool(
     server,
+    "debug_browser_ensure",
+    {
+      description:
+        "Ensure the shared Douyin browser session exists. Optionally launch the browser, start a new debug session, or navigate to a specific URL.",
+      inputSchema: {
+        label: z.string().optional().describe("Optional label for the debug session."),
+        newSession: z.boolean().optional().describe("Create a fresh debug session before continuing."),
+        createBrowser: z.boolean().optional().describe("Launch the browser if it is not already running."),
+        navigate: z.boolean().optional().describe("Navigate the current tab to the provided URL."),
+        url: z.string().url().optional().describe("Optional URL to open in the current debug tab."),
+        includeHtml: z.boolean().optional().describe("Include a short HTML excerpt in the returned snapshot."),
+        limit: z.number().int().min(1).max(20).optional().describe("How many visible fields/controls to summarize."),
+      },
+    },
+    async ({ label, newSession, createBrowser, navigate, url, includeHtml, limit }) =>
+      backendRequest("/api/debug/browser/ensure", {
+        method: "POST",
+        body: {
+          label,
+          new_session: newSession ?? false,
+          create_browser: createBrowser ?? true,
+          navigate: navigate ?? false,
+          url,
+          include_html: includeHtml ?? false,
+          limit: limit ?? 5,
+        },
+      })
+  );
+
+  registerTool(
+    server,
+    "get_browser_debug_session",
+    {
+      description:
+        "Read the current browser debug session, including recent debug events and the latest error report if one exists.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => backendRequest("/api/debug/browser/session")
+  );
+
+  registerTool(
+    server,
+    "debug_browser_snapshot",
+    {
+      description:
+        "Inspect the current browser page without mutating it. Returns URL, title, visible attr-field-id sections, visible controls, and optional locator matches.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        locator: z.string().optional().describe("Optional locator to query on the current page."),
+        locatorType: z
+          .enum(["raw", "css", "xpath"])
+          .optional()
+          .describe("How to interpret locator. raw accepts DrissionPage locators such as xpath://..."),
+        includeHtml: z.boolean().optional().describe("Include a short HTML excerpt in the snapshot."),
+        limit: z.number().int().min(1).max(20).optional().describe("Maximum number of locator matches to include."),
+      },
+    },
+    async ({ locator, locatorType, includeHtml, limit }) =>
+      backendRequest("/api/debug/browser/context", {
+        query: {
+          locator,
+          locator_type: locatorType ?? "raw",
+          include_html: includeHtml ?? false,
+          limit: limit ?? 5,
+        },
+      })
+  );
+
+  registerTool(
+    server,
+    "debug_browser_find_elements",
+    {
+      description:
+        "Query the current browser page for matching elements. Useful after hover/click actions when dynamic popovers or menus appear.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        locator: z.string().min(1).describe("Locator to search for on the current page."),
+        locatorType: z
+          .enum(["raw", "css", "xpath"])
+          .optional()
+          .describe("How to interpret locator. raw accepts DrissionPage locators."),
+        timeout: z.number().min(0.1).max(5).optional().describe("Element lookup timeout in seconds."),
+        limit: z.number().int().min(1).max(50).optional().describe("Maximum number of matches to return."),
+        includeHtml: z.boolean().optional().describe("Include outerHTML excerpts for each match."),
+        onlyVisible: z.boolean().optional().describe("Restrict results to visible elements."),
+        createBrowser: z.boolean().optional().describe("Launch the browser if it is not already running."),
+      },
+    },
+    async ({ locator, locatorType, timeout, limit, includeHtml, onlyVisible, createBrowser }) =>
+      backendRequest("/api/debug/browser/query", {
+        method: "POST",
+        body: {
+          locator,
+          locator_type: locatorType ?? "raw",
+          timeout: timeout ?? 1,
+          limit: limit ?? 10,
+          include_html: includeHtml ?? false,
+          only_visible: onlyVisible ?? true,
+          create_browser: createBrowser ?? false,
+        },
+      })
+  );
+
+  registerTool(
+    server,
+    "debug_browser_action",
+    {
+      description:
+        "Perform a simple browser debugging action on the shared tab: navigate, click, hover, scroll, clear, or input text.",
+      inputSchema: {
+        action: z
+          .enum(["navigate", "click", "hover", "scroll", "clear", "input"])
+          .describe("The browser action to perform."),
+        locator: z.string().optional().describe("Element locator for non-navigate actions."),
+        locatorType: z
+          .enum(["raw", "css", "xpath"])
+          .optional()
+          .describe("How to interpret locator. raw accepts DrissionPage locators."),
+        index: z.number().int().min(0).max(50).optional().describe("Which matching element to operate on."),
+        timeout: z.number().min(0.1).max(5).optional().describe("Element lookup timeout in seconds."),
+        onlyVisible: z.boolean().optional().describe("Only consider visible elements when resolving locator."),
+        byJs: z.boolean().optional().describe("Use JS click for click actions."),
+        clear: z.boolean().optional().describe("Clear existing input content before typing."),
+        value: z.string().optional().describe("Input text for the input action."),
+        url: z.string().url().optional().describe("Target URL for navigate."),
+        navigate: z.boolean().optional().describe("If true, navigate to url before resolving the locator."),
+        createBrowser: z.boolean().optional().describe("Launch the browser if it is not already running."),
+      },
+    },
+    async ({
+      action,
+      locator,
+      locatorType,
+      index,
+      timeout,
+      onlyVisible,
+      byJs,
+      clear,
+      value,
+      url,
+      navigate,
+      createBrowser,
+    }) =>
+      backendRequest("/api/debug/browser/action", {
+        method: "POST",
+        body: {
+          action,
+          locator,
+          locator_type: locatorType ?? "raw",
+          index: index ?? 0,
+          timeout: timeout ?? 1,
+          only_visible: onlyVisible ?? true,
+          by_js: byJs ?? true,
+          clear: clear ?? true,
+          value,
+          url,
+          navigate: navigate ?? false,
+          create_browser: createBrowser ?? false,
+        },
+      })
+  );
+
+  registerTool(
+    server,
+    "debug_browser_capture_artifacts",
+    {
+      description:
+        "Capture a screenshot, context JSON, and optional HTML snapshot from the current browser tab for offline debugging.",
+      inputSchema: {
+        label: z.string().optional().describe("Optional label used in the artifact filenames."),
+        includeHtml: z.boolean().optional().describe("Also persist the current page HTML."),
+        sessionLabel: z.string().optional().describe("Optional session label if a debug session must be created."),
+      },
+    },
+    async ({ label, includeHtml, sessionLabel }) =>
+      backendRequest("/api/debug/browser/capture", {
+        method: "POST",
+        body: {
+          label,
+          include_html: includeHtml ?? true,
+          session_label: sessionLabel,
+        },
+      })
+  );
+
+  registerTool(
+    server,
+    "get_last_browser_debug_report",
+    {
+      description:
+        "Load the most recent automatic browser error report captured from the upload automation flow.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => backendRequest("/api/debug/browser/last-error")
+  );
+
+  registerTool(
+    server,
     "get_settings",
     {
       description: "Read the current automation, pricing, and model settings from the local app.",
@@ -1785,7 +1983,23 @@ function registerCoreTools(server) {
         "Persist settings changes to the local app. Pass only the top-level settings keys you want to update.",
       inputSchema: {
         settings: z
-          .record(z.string(), z.unknown())
+          .object({
+            automation_config: z
+              .object({
+                shipping_template: z.string().optional(),
+                shipping_templates: z.array(z.string()).optional(),
+                material_compositions: z
+                  .array(
+                    z.object({
+                      material: z.string().min(1),
+                      percentage: z.number().positive(),
+                    })
+                  )
+                  .optional(),
+              })
+              .optional(),
+          })
+          .passthrough()
           .describe("Partial settings object to merge into the local settings file."),
       },
     },
@@ -2470,7 +2684,7 @@ function registerCoreTools(server) {
 export function createDouyinPublisherServer() {
   const server = new McpServer({
     name: "douyin-publisher",
-    version: "1.2.0",
+    version: "1.3.0",
   });
 
   registerCoreTools(server);

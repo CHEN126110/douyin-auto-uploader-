@@ -1,0 +1,23 @@
+{
+  "product_title_input": {
+    "original_xpath": "//input[@placeholder='请输入商品标题']",
+    "original_selector": "",
+    "element_purpose": "商品标题输入框",
+    "element_text": "",
+    "nearby_text": [
+      "商品信息",
+      "基本信息"
+    ],
+    "position": {},
+    "size": {},
+    "visual_features": {},
+    "parent_structure": "",
+    "siblings": [],
+    "dom_path": "",
+    "action_type": "input",
+    "expected_result": "",
+    "last_success": "",
+    "confidence": 0.0,
+    "alternatives": []
+  }
+}

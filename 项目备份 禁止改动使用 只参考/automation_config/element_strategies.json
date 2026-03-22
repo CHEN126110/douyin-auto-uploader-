@@ -1,0 +1,58 @@
+{
+  "product_title_input": [
+    {
+      "strategy_id": "title_input_v1",
+      "priority": 10,
+      "selector_type": "xpath",
+      "selector_value": "//input[@placeholder='请输入2-60个字符(1-30个汉字)']",
+      "backup_selectors": [
+        "//input[contains(@placeholder, '标题')]",
+        "//input[@name='title']"
+      ],
+      "success_rate": 0.95,
+      "last_success": "2024-01-01T12:00:00",
+      "conditions": {}
+    },
+    {
+      "strategy_id": "title_strategy_v1",
+      "priority": 10,
+      "selector_type": "xpath",
+      "selector_value": "//input[@placeholder='请输入商品标题']",
+      "backup_selectors": [
+        "//input[contains(@placeholder, '标题')]",
+        "//input[@name='title']"
+      ],
+      "success_rate": 0.95,
+      "last_success": "2024-01-01T12:00:00",
+      "conditions": {}
+    },
+    {
+      "strategy_id": "title_strategy_v1",
+      "priority": 10,
+      "selector_type": "xpath",
+      "selector_value": "//input[@placeholder='请输入商品标题']",
+      "backup_selectors": [
+        "//input[contains(@placeholder, '标题')]",
+        "//input[@name='title']"
+      ],
+      "success_rate": 0.95,
+      "last_success": "2024-01-01T12:00:00",
+      "conditions": {}
+    }
+  ],
+  "republish_button": [
+    {
+      "strategy_id": "republish_btn_v1",
+      "priority": 10,
+      "selector_type": "xpath",
+      "selector_value": "//span[text()='重新发布']/../..",
+      "backup_selectors": [
+        "//button[contains(text(), '重新发布')]",
+        "//*[contains(@class, 'republish')]"
+      ],
+      "success_rate": 0.9,
+      "last_success": "2024-01-01T12:00:00",
+      "conditions": {}
+    }
+  ]
+}

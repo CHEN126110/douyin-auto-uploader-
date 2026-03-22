@@ -80,7 +80,6 @@ export const tauriCommands = {
     try {
       return await invoke("check_backend_status");
     } catch (error) {
-      console.error("检查后端状态失败:", error);
       return { success: false, status: "error", message: String(error) };
     }
   },
@@ -112,6 +111,22 @@ export const tauriCommands = {
     platform: string;
     arch: string;
     backend_url: string;
+    runtime_mode: "development" | "packaged";
+    app_dir: string;
+    workspace_root: string;
+    resource_root: string | null;
+    mcp_server_dir: string;
+    mcp_server_entry: string;
+    mcp_readme_path: string;
+    skill_dir: string;
+    mcp_http_endpoint: string;
+    mcp_executable_path: string | null;
+    mcp_server_exists: boolean;
+    mcp_server_entry_exists: boolean;
+    mcp_readme_exists: boolean;
+    skill_dir_exists: boolean;
+    mcp_executable_exists: boolean;
+    preferred_mcp_launch_mode: "node" | "exe";
   }> {
     try {
       return await invoke("get_app_info");
@@ -450,35 +465,13 @@ export const api = {
  */
 export async function initializeApi(): Promise<boolean> {
   console.log("🔄 正在初始化API服务...");
-
-  // 优先通过 Tauri 原生命令检查，避免前端刚启动时的跨域/时序误判
-  const nativeStatus = await tauriCommands.checkBackendStatus();
-  if (nativeStatus?.success && nativeStatus.status === "ok") {
-    console.log("✅ 后端服务正常运行（Tauri）");
-    return true;
-  }
-
-  // 再通过 HTTP 健康检查确认
-  const health = await api.healthCheck();
-
-  if (health.success) {
-    console.log("✅ 后端服务正常运行");
-    return true;
-  }
-
-  console.log("⏳ 等待桌面壳层自动拉起后端...");
-  for (let retry = 0; retry < 5; retry += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const retryNativeStatus = await tauriCommands.checkBackendStatus();
-    if (retryNativeStatus?.success && retryNativeStatus.status === "ok") {
-      console.log("✅ 后端服务已就绪（Tauri）");
+  for (let retry = 0; retry < 12; retry += 1) {
+    const health = await api.healthCheck();
+    if (health.success) {
+      console.log("✅ 后端服务已就绪");
       return true;
     }
-    const retryHealth = await api.healthCheck();
-    if (retryHealth.success) {
-      console.log("✅ 后端服务启动成功");
-      return true;
-    }
+    await new Promise((resolve) => setTimeout(resolve, 800));
   }
 
   console.warn("⚠️ 后端服务未就绪，请通过唯一入口 start_frontend.bat 启动");

@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 # mypy: ignore-errors
 import logging
+import os
 from peewee import *  # type: ignore
-database = SqliteDatabase('sqlite.db')
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_database_path = os.path.join(_project_root, 'sqlite.db')
+database = SqliteDatabase(_database_path)
 
 
 class BaseModel(Model):

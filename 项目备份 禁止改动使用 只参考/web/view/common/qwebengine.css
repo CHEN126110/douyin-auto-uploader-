@@ -1,0 +1,100 @@
+/* ============================================================
+   统一渲染稳定样式
+   目的：确保GUI和浏览器显示一致，避免棋盘格和闪烁
+   ============================================================ */
+
+/* === 1. 根元素可见性（防止白屏） === */
+html.qwebengine,
+body.qwebengine {
+    opacity: 1 !important;
+    visibility: visible !important;
+    background-color: #f8f9fa !important;
+}
+
+/* === 2. 禁用不稳定的滤镜效果 === */
+.qwebengine * {
+    /* 禁用毛玻璃 - 由safe-glass.css用渐变替代 */
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    /* 禁用可能导致合成问题的滤镜 */
+    filter: none !important;
+}
+
+/* === 3. 简化动画（可选：如需动画可注释此段） === */
+.qwebengine *,
+.qwebengine *::before,
+.qwebengine *::after {
+    /* 禁用过渡动画，提高响应速度 */
+    transition-duration: 0.15s !important;
+    transition-timing-function: ease-out !important;
+    /* 禁用复杂动画 */
+    animation-duration: 0.2s !important;
+}
+
+/* === 4. SKU区域始终可见 === */
+.qwebengine #attr_box,
+.qwebengine .ipt_box {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* === 5. 弹窗层稳定化 === */
+.qwebengine .layui-layer {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* === 6. 右键菜单定位 === */
+.qwebengine #context-menu {
+    position: fixed !important;
+    z-index: 2147483647 !important;
+    pointer-events: auto !important;
+}
+
+/* === 7. 大图预览 === */
+.qwebengine #large-image {
+    position: fixed !important;
+    z-index: 9999 !important;
+    pointer-events: none !important;
+}
+
+/* === 8. 表格行交互 === */
+.qwebengine .tubiao_line {
+    cursor: pointer;
+}
+
+.qwebengine .tubiao_line:hover {
+    background-color: rgba(92, 124, 250, 0.08) !important;
+}
+
+.qwebengine .tubiao_line.active {
+    background: linear-gradient(90deg, rgba(92, 124, 250, 0.15) 0%, rgba(92, 124, 250, 0.05) 100%) !important;
+    border-left: 3px solid #5c7cfa;
+}
+
+/* === 9. 滚动条统一样式 === */
+.qwebengine ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.qwebengine ::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
+}
+
+.qwebengine ::-webkit-scrollbar-thumb {
+    background: rgba(92, 124, 250, 0.2);
+    border-radius: 4px;
+}
+
+.qwebengine ::-webkit-scrollbar-thumb:hover {
+    background: rgba(92, 124, 250, 0.35);
+}
+
+/* === 10. 性能监控面板隐藏 === */
+.qwebengine .performance-monitor-panel {
+    display: none !important;
+}

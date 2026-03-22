@@ -96,10 +96,16 @@ class AutomationConfig:
     """自动化配置"""
     shipping_template: str = "中通包邮"  # 当前选中的运费模板
     shipping_templates: Optional[List[str]] = None  # 运费模板列表
+    material_compositions: Optional[List[Dict[str, Any]]] = None
     
     def __post_init__(self):
         if self.shipping_templates is None:
             self.shipping_templates = ["中通包邮"]
+        if self.material_compositions is None:
+            self.material_compositions = [
+                {"material": "棉", "percentage": 75},
+                {"material": "氨纶", "percentage": 25},
+            ]
 
 
 @dataclass
@@ -132,7 +138,14 @@ class UserSettings:
         if self.model_configs is None:
             self.model_configs = []
         if self.automation_config is None:
-            self.automation_config = {'shipping_template': '中通包邮'}
+            self.automation_config = {
+                'shipping_template': '中通包邮',
+                'shipping_templates': ['中通包邮'],
+                'material_compositions': [
+                    {'material': '棉', 'percentage': 75},
+                    {'material': '氨纶', 'percentage': 25}
+                ]
+            }
 
 
 class SettingsManager:
@@ -141,6 +154,54 @@ class SettingsManager:
     def __init__(self, settings_file='user_settings.json'):
         self.settings_file = settings_file
         self.settings = self.load_settings()
+
+    @staticmethod
+    def normalize_automation_config(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        default_config = {
+            'shipping_template': '中通包邮',
+            'shipping_templates': ['中通包邮'],
+            'material_compositions': [
+                {'material': '棉', 'percentage': 75},
+                {'material': '氨纶', 'percentage': 25}
+            ]
+        }
+        if not isinstance(data, dict):
+            return default_config
+
+        shipping_templates = data.get('shipping_templates')
+        if not isinstance(shipping_templates, list) or len(shipping_templates) == 0:
+            shipping_templates = default_config['shipping_templates']
+        shipping_templates = [str(item).strip() for item in shipping_templates if str(item).strip()]
+        if len(shipping_templates) == 0:
+            shipping_templates = default_config['shipping_templates']
+
+        shipping_template = str(data.get('shipping_template') or '').strip()
+        if not shipping_template:
+            shipping_template = shipping_templates[0]
+        if shipping_template not in shipping_templates:
+            shipping_templates.append(shipping_template)
+
+        materials = data.get('material_compositions')
+        normalized_materials = []
+        if isinstance(materials, list):
+            for item in materials:
+                if not isinstance(item, dict):
+                    continue
+                material = str(item.get('material') or '').strip()
+                try:
+                    percentage = int(float(item.get('percentage')))
+                except Exception:
+                    percentage = 0
+                if material and percentage > 0:
+                    normalized_materials.append({'material': material, 'percentage': percentage})
+        if len(normalized_materials) == 0:
+            normalized_materials = default_config['material_compositions']
+
+        return {
+            'shipping_template': shipping_template,
+            'shipping_templates': shipping_templates,
+            'material_compositions': normalized_materials
+        }
     
     def load_settings(self) -> UserSettings:
         """加载设置"""
@@ -159,6 +220,7 @@ class SettingsManager:
                 cost_items = data.get('cost_items')
                 model_configs = data.get('model_configs')
                 automation_config = data.get('automation_config')
+                automation_config = self.normalize_automation_config(automation_config)
                 
                 print(f"[Config] 加载设置 - pricing_config: {pricing_config}, cost_items: {len(cost_items) if cost_items else 0}个")
                 
@@ -243,7 +305,7 @@ class SettingsManager:
             
             # 更新自动化配置
             if 'automation_config' in settings_dict:
-                self.settings.automation_config = settings_dict['automation_config']
+                self.settings.automation_config = self.normalize_automation_config(settings_dict['automation_config'])
                 print(f"[Config] 更新自动化配置: {self.settings.automation_config}")
             
             return self.save_settings()

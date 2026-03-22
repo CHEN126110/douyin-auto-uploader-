@@ -1,0 +1,249 @@
+/* ========================================
+   安全毛玻璃效果 - 无backdrop-filter版本
+   兼容所有环境，无棋盘格风险
+   ======================================== */
+
+/* 
+ * 原理：使用半透明背景+阴影+边框模拟毛玻璃效果
+ * 优点：无GPU合成层问题，性能稳定
+ * 效果：接近真实毛玻璃，但更轻量
+ */
+
+/* === 基础安全毛玻璃 === */
+.safe-glass,
+.glass-effect,
+.modern-glass {
+    background: linear-gradient(
+        135deg, 
+        rgba(255, 255, 255, 0.95) 0%, 
+        rgba(255, 255, 255, 0.88) 100%
+    ) !important;
+    /* 不使用 backdrop-filter */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    /* 用阴影模拟深度 */
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.08),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.9),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.6) !important;
+    border-radius: 12px;
+}
+
+/* === 输入框安全样式 === */
+.layui-input,
+.layui-select,
+.layui-textarea,
+.modern-input {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(250, 250, 252, 0.95) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 
+        inset 0 1px 2px rgba(0, 0, 0, 0.04),
+        0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    border-radius: 10px !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.layui-input:focus,
+.layui-select:focus,
+.layui-textarea:focus,
+.modern-input:focus {
+    border-color: rgba(92, 124, 250, 0.5) !important;
+    box-shadow: 
+        inset 0 1px 2px rgba(0, 0, 0, 0.04),
+        0 0 0 3px rgba(92, 124, 250, 0.1) !important;
+}
+
+/* === 弹窗安全样式 === */
+.layui-layer {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(252, 252, 255, 0.96) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow: 
+        0 24px 80px rgba(0, 0, 0, 0.15),
+        0 8px 24px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border-radius: 16px !important;
+}
+
+.layui-layer-title {
+    background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+    border-radius: 16px 16px 0 0 !important;
+    border: none !important;
+}
+
+/* === 消息提示安全样式 === */
+.layui-layer-msg {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(250, 252, 255, 0.95) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.12),
+        0 4px 12px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    border-radius: 12px !important;
+}
+
+/* === 下拉菜单安全样式 === */
+.layui-form-select .layui-anim,
+.smart-dropdown-menu {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.99) 0%,
+        rgba(252, 252, 255, 0.97) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.12),
+        0 2px 8px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    border-radius: 10px !important;
+}
+
+/* === Sticky表头安全样式 === */
+.ipt_box_header {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.99) 0%,
+        rgba(250, 250, 252, 0.97) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+/* === 右键菜单安全样式 === */
+#context-menu {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(252, 252, 255, 0.96) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.15),
+        0 2px 8px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 10px !important;
+}
+
+/* === 卡片安全样式 === */
+.modern-card,
+.glass-card {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.96) 0%,
+        rgba(250, 252, 255, 0.92) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.08),
+        0 2px 8px rgba(0, 0, 0, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    border-radius: 16px !important;
+}
+
+/* === 面板安全样式 === */
+.modern-panel,
+.left-panel,
+.right-panel {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.95) 0%,
+        rgba(248, 250, 252, 0.92) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* === 按钮保持渐变效果 === */
+.modern-btn-primary,
+.layui-btn-normal {
+    background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+    box-shadow: 0 4px 12px rgba(92, 124, 250, 0.3) !important;
+    border: none !important;
+}
+
+.modern-btn-primary:hover,
+.layui-btn-normal:hover {
+    box-shadow: 0 6px 20px rgba(92, 124, 250, 0.4) !important;
+}
+
+.modern-btn-danger,
+.layui-btn-danger {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%) !important;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3) !important;
+}
+
+.modern-btn-success {
+    background: linear-gradient(135deg, #51cf66 0%, #40c057 100%) !important;
+    box-shadow: 0 4px 12px rgba(81, 207, 102, 0.3) !important;
+}
+
+/* === 加载状态 === */
+.layui-layer-load {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* === 滚动条样式 === */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(92, 124, 250, 0.2);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(92, 124, 250, 0.35);
+}
+
+/* === 表单容器 === */
+form {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.92) 0%,
+        rgba(250, 252, 255, 0.88) 100%
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: 16px !important;
+    box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(255, 255, 255, 0.7) !important;
+}

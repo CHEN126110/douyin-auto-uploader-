@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Pear Admin 4.0</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+		<link rel="stylesheet" href="./component/pear/css/pear.css" />
+		<link rel="stylesheet" href="./admin/css/admin.css" />
+		<link rel="stylesheet" href="./admin/css/admin.dark.css" />
+		<link rel="stylesheet" href="./admin/css/variables.css" />
+		<link rel="stylesheet" href="./admin/css/reset.css" />
+		<link rel="stylesheet" href="./admin/css/public.css" />
+	</head>
+	<!-- 结 构 代 码 -->
+	<body class="layui-layout-body pear-admin">
+		<!-- 布 局 框 架 -->
+		<div class="layui-layout layui-layout-admin">
+			<!-- 顶 部 样 式 -->
+			<div class="layui-header">
+				<!-- 菜 单 顶 部 -->
+				<div class="layui-logo">
+					<!-- 图 标 -->
+					<img class="logo">
+					<!-- 标 题 -->
+					<span class="title"></span>
+				</div>
+				<!-- 顶 部 左 侧 功 能 -->
+				<ul class="layui-nav layui-layout-left">
+					<li class="collapse layui-nav-item"><a href="#" class="layui-icon layui-icon-shrink-right"></a></li>
+					<li class="refresh layui-nav-item"><a href="#" class="layui-icon layui-icon-refresh-1" loading = 600></a></li>
+				</ul>
+				<!-- 多 系 统 菜 单 -->
+				<div id="control" class="layui-layout-control"></div>
+				<!-- 顶 部 右 侧 菜 单 -->
+				<ul class="layui-nav layui-layout-right">
+					<li class="layui-nav-item layui-hide-xs layui-hide"><a href="#" class="menuSearch layui-icon layui-icon-search"></a></li>
+					<li class="layui-nav-item layui-hide-xs message layui-hide"></li>
+					<li class="layui-nav-item layui-hide-xs layui-hide"><a href="#" class="fullScreen layui-icon layui-icon-screen-full"></a></li>
+					<li class="layui-nav-item user">
+						<!-- 头 像 -->
+						<a href="javascript:;" class="user-menu">
+							<img src="admin/images/avatar.jpg" alt="">
+							<span id="username">{{ payload.name }}</span>
+						</a>
+						<!-- 功 能 菜 单 -->
+						<dl class="layui-nav-child">
+							<dd class="layui-hide"><a user-menu-url="view/profile/index.html" user-menu-id="5555" user-menu-title="基本资料">基本资料</a></dd>
+							<dd><a href="javascript:void(0);" class="logout">注销登录</a></dd>
+						</dl>
+					</li>
+					<!-- 主 题 配 置 -->
+					<li class="layui-nav-item setting"><a href="#" class="layui-icon layui-icon-more-vertical layui-hide"></a></li>
+				</ul>
+			</div>
+			<!-- 侧 边 区 域 -->
+			<div class="layui-side layui-bg-black">
+				<!-- 菜 单 顶 部 -->
+				<div class="layui-logo">
+					<!-- 图 标 -->
+					<img class="logo">
+					<!-- 标 题 -->
+					<span class="title"></span>
+				</div>
+				<!-- 菜 单 内 容 -->
+				<div class="layui-side-scroll">
+					<div id="side"></div>
+				</div>
+			</div>
+			<!-- 视 图 页 面 -->
+			<div class="layui-body">
+				<!-- 内 容 页 面 -->
+				<div id="content"></div>
+			</div>
+			<!-- 页脚 -->
+			<div class="layui-footer layui-text"></div>
+			<!-- 遮 盖 层 -->
+			<div class="pear-cover"></div>
+			<!-- 加 载 动 画 -->
+			<div class="loader-wrapper">
+				<!-- 动 画 对 象 -->
+				<div class="loader"></div>
+			</div>
+		</div>
+		<!-- 移 动 端 便 捷 操 作 -->
+		<div class="pear-collapsed-pe collapse">
+			<a href="#" class="layui-icon layui-icon-shrink-right"></a>
+		</div>
+		<!-- 依 赖 脚 本 -->
+		<script src="./component/layui/layui.js"></script>
+		<script src="./component/pear/pear.js"></script>
+		<!-- 框 架 初 始 化 -->
+		<script>
+			layui.use(['admin','jquery','popup'], function() {
+				var admin = layui.admin;
+				var popup = layui.popup;
+				var dollar = layui.jquery;
+				
+				// yml | json | api
+				admin.setConfigurationPath("config/pear.config.yml");
+				
+				// 渲染
+				admin.render();
+				 
+				// 注销
+				admin.logout(function(){
+					let loader = layer.load();
+					dollar.ajax({
+						url: '/logout',
+						type: 'delete',
+						dataType: 'json',
+						contentType: 'application/json;charset=UTF-8',
+						success: function (result) {
+							layer.close(loader);
+							if (result.success) {
+								popup.success(result.msg, function(){
+									location.href = '/login';
+								})
+								return new Promise((resolve) => {
+									resolve(true);
+								});
+							} else {
+								layer.msg(result.msg, {icon: 2, time: 1000});
+							}
+						}
+					});
+				});
+			})
+		</script>		
+	
+        <!-- 错误处理脚本 -->
+        <script>
+        window.addEventListener('error', function(e) {
+            console.error('页面错误:', e.error);
+            // 可以在这里添加错误上报逻辑
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('未处理的Promise错误:', e.reason);
+        });
+        
+        // 检查关键资源是否加载成功
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof layui === 'undefined') {
+                    console.error('LayUI未正确加载');
+                    alert('页面资源加载失败,请刷新页面重试');
+                }
+            }, 3000);
+        });
+        </script>
+        
+</body>
+</html>

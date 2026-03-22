@@ -1,0 +1,38 @@
+{
+  "version": "2.0",
+  "status": "active",
+  "message": "智能价格计算功能已激活",
+  "last_updated": "2025-11-27 13:30:49",
+  "templates": {
+    "默认袜子模板": {
+      "profit_margin": 0.3,
+      "base_cost": 15.7,
+      "shipping_cost": 0,
+      "packaging_cost": 0,
+      "commission": 0.06,
+      "base_cost_items": [
+        {
+          "name": "运费",
+          "cost_type": "fixed",
+          "value": 2.6,
+          "description": "物流运输费用",
+          "is_active": true
+        },
+        {
+          "name": "推广费用",
+          "cost_type": "platform_fee",
+          "value": 5,
+          "description": "抖音平台扣点",
+          "is_active": true
+        },
+        {
+          "name": "包装费",
+          "cost_type": "fixed",
+          "value": 1,
+          "description": "",
+          "is_active": true
+        }
+      ]
+    }
+  }
+}

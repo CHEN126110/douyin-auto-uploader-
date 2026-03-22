@@ -1,0 +1,321 @@
+/**
+ * 虚拟滚动组件样式
+ * 
+ * 功能特性：
+ * - 优化大数据量列表渲染性能
+ * - 平滑滚动体验
+ * - GPU硬件加速
+ * - 内存优化
+ * 
+ * @author Frontend Performance Team
+ * @version 1.0.0
+ */
+
+/* 虚拟滚动容器 */
+.virtual-scroll-container {
+    position: relative;
+    overflow: auto;
+    height: 100%;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: scroll-position;
+    /* 优化滚动性能 */
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+
+/* 虚拟滚动区域 */
+.virtual-scroll-area {
+    position: relative;
+    width: 100%;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: height;
+}
+
+/* 虚拟滚动视口 */
+.virtual-scroll-viewport {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: transform;
+    /* 优化渲染性能 */
+    contain: layout style paint;
+}
+
+/* 虚拟滚动项目 */
+.virtual-scroll-item {
+    position: relative;
+    width: 100%;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: auto;
+    /* 优化渲染性能 */
+    contain: layout style paint;
+    /* 防止内容溢出 */
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* SKU虚拟滚动特定样式 */
+.virtual-sku-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    background: rgba(255, 255, 255, 0.95);
+    transition: all 0.2s ease;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: transform, background-color;
+}
+
+.virtual-sku-item:hover {
+    background: rgba(92, 124, 250, 0.08);
+    transform: translateZ(0) translateX(2px);
+    box-shadow: 0 2px 8px rgba(92, 124, 250, 0.15);
+}
+
+/* 虚拟滚动中的SKU缩略图 */
+.virtual-sku-item .sku-thumbnail {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+    object-fit: cover;
+    margin-right: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: transform;
+    /* 优化图片渲染 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+.virtual-sku-item .sku-thumbnail:hover {
+    transform: translateZ(0) scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.virtual-sku-item .sku-thumbnail.sku-selected {
+    border: 2px solid #5c7cfa;
+    box-shadow: 0 0 0 2px rgba(92, 124, 250, 0.2);
+}
+
+/* 虚拟滚动中的输入框 */
+.virtual-sku-item .layui-input {
+    flex: 1;
+    margin: 0 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: border-color, box-shadow;
+}
+
+.virtual-sku-item .layui-input:focus {
+    border-color: #5c7cfa;
+    box-shadow: 0 0 0 2px rgba(92, 124, 250, 0.2);
+    outline: none;
+}
+
+/* 虚拟滚动中的删除按钮 */
+.virtual-sku-item .delete-sku-btn {
+    margin-left: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
+    will-change: transform, background-color;
+}
+
+.virtual-sku-item .delete-sku-btn:hover {
+    transform: translateZ(0) scale(1.05);
+}
+
+/* 虚拟滚动性能优化 */
+.virtual-scroll-optimized {
+    /* 启用硬件加速 */
+    transform: translateZ(0);
+    will-change: scroll-position;
+    /* 优化滚动性能 */
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    /* 优化渲染性能 */
+    contain: layout style paint;
+}
+
+/* 虚拟滚动加载状态 */
+.virtual-scroll-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.virtual-scroll-loading::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    border: 2px solid #e9ecef;
+    border-top: 2px solid #5c7cfa;
+    border-radius: 50%;
+    animation: virtual-scroll-spin 1s linear infinite;
+}
+
+@keyframes virtual-scroll-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 虚拟滚动空状态 */
+.virtual-scroll-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #6c757d;
+    font-size: 14px;
+    text-align: center;
+}
+
+.virtual-scroll-empty::before {
+    content: '📦';
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+/* 虚拟滚动滚动条优化 */
+.virtual-scroll-container::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.virtual-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
+}
+
+.virtual-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(92, 124, 250, 0.3);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.virtual-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(92, 124, 250, 0.5);
+}
+
+/* 虚拟滚动响应式设计 */
+@media (max-width: 768px) {
+    .virtual-sku-item {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+    }
+    
+    .virtual-sku-item .sku-thumbnail {
+        width: 100%;
+        height: 120px;
+        margin-right: 0;
+        margin-bottom: 12px;
+    }
+    
+    .virtual-sku-item .layui-input {
+        margin: 4px 0;
+    }
+    
+    .virtual-sku-item .delete-sku-btn {
+        margin-left: 0;
+        margin-top: 8px;
+        align-self: flex-end;
+    }
+}
+
+/* 虚拟滚动性能监控 */
+.virtual-scroll-stats {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+    z-index: 9999;
+    opacity: 0.8;
+    pointer-events: none;
+}
+
+.virtual-scroll-stats.hidden {
+    display: none;
+}
+
+/* 虚拟滚动动画优化 */
+.virtual-scroll-item-enter {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: virtual-scroll-item-enter 0.3s ease forwards;
+}
+
+@keyframes virtual-scroll-item-enter {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.virtual-scroll-item-exit {
+    opacity: 1;
+    transform: translateY(0);
+    animation: virtual-scroll-item-exit 0.2s ease forwards;
+}
+
+@keyframes virtual-scroll-item-exit {
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+/* 虚拟滚动内存优化 */
+.virtual-scroll-memory-optimized {
+    /* 限制重绘区域 */
+    contain: layout style paint;
+    /* 优化合成层 */
+    isolation: isolate;
+    /* 减少内存占用 */
+    content-visibility: auto;
+    contain-intrinsic-size: 0 80px;
+}
+
+/* 虚拟滚动调试模式 */
+.virtual-scroll-debug .virtual-scroll-item {
+    border: 1px dashed #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+}
+
+.virtual-scroll-debug .virtual-scroll-viewport {
+    border: 2px solid #4ecdc4;
+    background: rgba(78, 205, 196, 0.1);
+}
+
+.virtual-scroll-debug .virtual-scroll-area {
+    border: 2px solid #45b7d1;
+    background: rgba(69, 183, 209, 0.1);
+}

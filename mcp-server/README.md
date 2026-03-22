@@ -9,19 +9,29 @@ This server exposes the existing local Flask sidecar as MCP tools, resources, an
 
 ## Run
 
+The Settings page inside the desktop app now generates the exact local launch command from the current runtime paths. If you are starting MCP manually, replace `<project-root>` with your own install or repo location instead of copying a machine-specific path.
+
 `stdio` mode:
 
 ```powershell
-Set-Location 'E:\Script Project\Dyin\beiufen\2.0\mcp-server'
+Set-Location '<project-root>\mcp-server'
 npm start
 ```
 
 `streamable_http` mode:
 
 ```powershell
-Set-Location 'E:\Script Project\Dyin\beiufen\2.0\mcp-server'
+Set-Location '<project-root>\mcp-server'
 npm run start:http
 ```
+
+Future packaged EXE mode:
+
+```powershell
+& '<install-root>\douyin-publisher-mcp.exe'
+```
+
+When a standalone MCP executable is available, prefer that `stdio` entry for distribution because it removes the Node.js and source-path dependency.
 
 ## Example MCP client config
 
@@ -31,7 +41,7 @@ npm run start:http
     "douyin-publisher": {
       "command": "node",
       "args": [
-        "E:\\Script Project\\Dyin\\beiufen\\2.0\\mcp-server\\server.js"
+        "<project-root>\\mcp-server\\server.js"
       ],
       "env": {
         "DOUYIN_BACKEND_URL": "http://127.0.0.1:5001"
@@ -45,6 +55,22 @@ Example Streamable HTTP endpoint:
 
 ```text
 http://127.0.0.1:3300/mcp
+```
+
+Example packaged EXE client config:
+
+```json
+{
+  "mcpServers": {
+    "douyin-publisher": {
+      "command": "<install-root>\\douyin-publisher-mcp.exe",
+      "args": [],
+      "env": {
+        "DOUYIN_BACKEND_URL": "http://127.0.0.1:5001"
+      }
+    }
+  }
+}
 ```
 
 ## Exposed capabilities
@@ -68,6 +94,9 @@ http://127.0.0.1:3300/mcp
 - Upload task start/status/list/cancel
 - Start upload only after readiness validation
 - Settings read, update, and reset
+- Shared browser debug session management
+- Browser page snapshots, element queries, and simple debug actions
+- Automatic browser error report retrieval with screenshot/HTML/context artifacts
 
 ## Exposed prompts
 
@@ -90,3 +119,23 @@ http://127.0.0.1:3300/mcp
 8. `get_upload_status`
 
 Use `fix-upload-blockers` when the product is not ready yet, `review-sku-quantities` when SKU pair counts are ambiguous, `capture-multiple-products` when the user provides many source links, and `monitor-upload-task` after upload has started.
+
+## Update material settings via MCP
+
+To update automation material composition, call `update_settings` with `automation_config.material_compositions`.
+
+```json
+{
+  "settings": {
+    "automation_config": {
+      "shipping_template": "中通包邮",
+      "material_compositions": [
+        { "material": "棉", "percentage": 75 },
+        { "material": "氨纶", "percentage": 25 }
+      ]
+    }
+  }
+}
+```
+
+The percentages must sum to `100`, otherwise the desktop settings page will block saving.

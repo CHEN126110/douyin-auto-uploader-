@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+	<title>登录</title>
+	<link rel="stylesheet" href="./component/pear/css/pear.css" />
+	<link rel="stylesheet" href="./admin/css/other/login.css" />
+	<link rel="stylesheet" href="./admin/css/variables.css" />
+	<link rel="stylesheet" href="./admin/css/modern-glass.css" />
+	<script>if (document.title != '登录') { top.location.reload();}</script>
+	<style>
+		body {
+			background: linear-gradient(135deg, #f8f9ff 0%, #fdf2f8 50%, #fffbf0 100%);
+			background-attachment: fixed;
+			min-height: 100vh;
+			font-family: 'Microsoft YaHei UI', sans-serif;
+			overflow: hidden;
+		}
+
+		.login-page {
+			background: none !important;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			position: relative;
+		}
+
+		.login-page::before {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: url('./admin/images/background.svg') center/cover;
+			opacity: 0.05;
+			z-index: 0;
+		}
+
+		.layui-row {
+			width: 900px !important;
+			height: 500px !important;
+			position: relative;
+			z-index: 1;
+			border-radius: 24px;
+			overflow: hidden;
+			box-shadow: 0 16px 48px rgba(0, 0, 0, 0.08);
+		}
+
+		.login-bg {
+			background: rgba(255, 255, 255, 0.85);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
+			border-right: 1px solid rgba(255, 255, 255, 0.9);
+			display: flex !important;
+			align-items: center;
+			justify-content: center;
+			padding: 40px;
+		}
+
+		.login-bg-img {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.1));
+		}
+
+		.login-form {
+			background: rgba(255, 255, 255, 0.75);
+			backdrop-filter: blur(25px);
+			-webkit-backdrop-filter: blur(25px);
+			border: 1px solid rgba(255, 255, 255, 0.9);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 40px;
+		}
+
+		.form-center-box {
+			width: 300px !important;
+		}
+
+		.top-log-title {
+			text-align: center;
+			margin-bottom: 40px;
+		}
+
+		.top-log-title span {
+			font-size: 28px;
+			font-weight: 700;
+			color: #2c3e50;
+			text-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+			letter-spacing: 2px;
+		}
+
+		.layui-form-item {
+			margin-bottom: 24px;
+		}
+
+		.layui-input-wrap {
+			position: relative;
+			background: rgba(255, 255, 255, 0.9);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+			border: 1px solid rgba(0, 0, 0, 0.1);
+			border-radius: 12px;
+			transition: all 0.3s ease;
+			overflow: hidden;
+		}
+
+		.layui-input-wrap:hover {
+			border-color: rgba(0, 0, 0, 0.15);
+			background: rgba(255, 255, 255, 0.95);
+		}
+
+		.layui-input-wrap:focus-within {
+			border-color: rgba(92, 124, 250, 0.6);
+			box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15);
+			background: rgba(255, 255, 255, 0.95);
+		}
+
+		.layui-input-prefix {
+			position: absolute;
+			left: 16px;
+			top: 50%;
+			transform: translateY(-50%);
+			color: rgba(44, 62, 80, 0.6);
+			font-size: 16px;
+			z-index: 2;
+		}
+
+		.layui-input {
+			background: transparent !important;
+			border: none !important;
+			color: #2c3e50 !important;
+			padding: 16px 20px 16px 50px !important;
+			font-size: 14px;
+			font-weight: 500;
+		}
+
+		.layui-input::placeholder {
+			color: rgba(44, 62, 80, 0.5) !important;
+		}
+
+		.login-btn {
+			margin-top: 32px;
+		}
+
+		.login-btn .layui-btn {
+			width: 100%;
+			padding: 16px;
+			background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%);
+			border: none;
+			border-radius: 12px;
+			font-size: 16px;
+			font-weight: 600;
+			color: white;
+			transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+			position: relative;
+			overflow: hidden;
+			box-shadow: 0 4px 16px rgba(92, 124, 250, 0.3);
+		}
+
+		.login-btn .layui-btn::before {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+			transform: translateX(-100%);
+			transition: transform 0.6s;
+		}
+
+		.login-btn .layui-btn:hover::before {
+			transform: translateX(100%);
+		}
+
+		.login-btn .layui-btn:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 8px 24px rgba(92, 124, 250, 0.4);
+		}
+
+		.login-btn .layui-btn:active {
+			transform: translateY(0);
+		}
+
+		.remember-passsword {
+			margin-top: 20px;
+		}
+
+		.remember-cehcked {
+			display: flex;
+			align-items: center;
+		}
+
+		.remember-cehcked .layui-form-checkbox {
+			color: rgba(44, 62, 80, 0.8);
+			font-weight: 500;
+		}
+
+		.remember-cehcked .layui-form-checkbox::before {
+			background: rgba(255, 255, 255, 0.9);
+			backdrop-filter: blur(10px);
+			border: 1px solid rgba(0, 0, 0, 0.1);
+			border-radius: 4px;
+		}
+
+		/* 添加加载动画 */
+		.fade-in {
+			animation: fadeIn 0.8s ease-out;
+		}
+
+		@keyframes fadeIn {
+			from { 
+				opacity: 0; 
+				transform: translateY(20px); 
+			}
+			to { 
+				opacity: 1; 
+				transform: translateY(0); 
+			}
+		}
+
+		/* 响应式设计 */
+		@media (max-width: 768px) {
+			.layui-row {
+				width: 90% !important;
+				height: auto !important;
+				flex-direction: column;
+			}
+			
+			.login-bg {
+				height: 200px;
+				border-right: none;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+			}
+			
+			.form-center-box {
+				width: 100% !important;
+				max-width: 300px;
+			}
+		}
+	</style>
+	<script>
+		document.addEventListener('dragover', function(e) {
+			e.preventDefault();
+			e.stopPropagation();
+		});
+		document.addEventListener('drop', function(e) {
+			e.preventDefault();
+			e.stopPropagation();
+		});
+	</script>
+</head>
+
+<body>
+	<div class="login-page">
+		<div class="layui-row fade-in">
+			<div class="layui-col-sm6 login-bg layui-hide-xs">
+				<img class="login-bg-img" src="./admin/images/banner.png" alt="" />
+			</div>
+			<div class="layui-col-sm6 layui-col-xs12 login-form">
+				<div class="layui-form">
+					<div class="form-center">
+						<div class="form-center-box">
+							<div class="top-log-title">
+								<span>抖音上传工具</span>
+							</div>
+							<div>
+								<div class="layui-form-item">
+									<div class="layui-input-wrap">
+										<div class="layui-input-prefix">
+											<i class="layui-icon layui-icon-username"></i>
+										</div>
+										<input lay-verify="required" placeholder="请输入账户" autocomplete="off"
+											class="layui-input" name="username">
+									</div>
+								</div>
+								<div class="layui-form-item">
+									<div class="layui-input-wrap">
+										<div class="layui-input-prefix">
+											<i class="layui-icon layui-icon-password"></i>
+										</div>
+										<input type="password" name="password" value=""
+											lay-verify="required|confirmPassword" placeholder="请输入密码" autocomplete="off"
+											class="layui-input" lay-affix="eye">
+									</div>
+								</div>
+								<div class="tab-log-verification layui-hide">
+									<div class="verification-text">
+										<div class="layui-input-wrap">
+											<div class="layui-input-prefix">
+												<i class="layui-icon layui-icon-auz"></i>
+											</div>
+											<input value="" placeholder="验证码" autocomplete="off"
+												class="layui-input" name="code">
+										</div>
+									</div>
+									<img src="" alt="" class="verification-img" />
+								</div>
+								<div class="layui-form-item">
+									<div class="remember-passsword">
+										<div class="remember-cehcked">
+											<input type="checkbox" name="remember" lay-skin="primary" title="记住我">
+										</div>
+									</div>
+								</div>
+								<div class="login-btn">
+									<button type="button" lay-submit lay-filter="login" class="layui-btn login">登 录</button>
+								</div>
+								<div class="top-desc layui-hide" style="margin-top: 30px; font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+									<span style="color: #ff9900;">提示:</span>
+									忘记账号密码可以联系管理员重置
+								</div>
+								<div class="other-login layui-hide">
+									<div class="other-login-methods">
+										其他方式
+									</div>
+									<div class="greenText">注册账号</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- 资 源 引 入 -->
+	<script src="./component/layui/layui.js"></script>
+	<script src="./component/pear/pear.js"></script>
+	<script>
+		layui.use(['form', 'button', 'popup', 'jquery'], function () {
+			var form = layui.form;
+			var button = layui.button;
+			var popup = layui.popup;
+			var dollar = layui.jquery;
+
+			// 登 录 提 交
+			form.on('submit(login)', function (data) {
+				let loader = layer.load();
+				dollar.ajax({
+					data: JSON.stringify(data.field),
+					url: '/login',
+					type: 'post',
+					dataType: 'json',
+					contentType: 'application/json;charset=UTF-8',
+					success: function (result) {
+						layer.close(loader);
+						if (result.success) {
+							button.load({
+								elem: '.login',
+								time: 1500,
+								done: function () {
+									popup.success(result.msg, function () {
+										location.href = '/';
+									});
+								}
+							})
+						} else {
+							layer.msg(result.msg, {icon: 2, time: 1000});
+						}
+					}
+				});
+				return false;
+			});
+
+			// function get_captcha() {
+			// 	dollar.ajax({
+			// 		url: '/captcha',
+			// 		type: 'get',
+			// 		dataType: 'json',
+			// 		contentType: 'application/json;charset=UTF-8',
+			// 		success: function (result) {
+			// 			if (result.success) {
+			// 				dollar(".verification-img").attr('src', 'data:image/jpeg;base64,' + result.data);
+			// 			} else {
+			// 				layer.msg(result.msg, {icon: 2, time: 1000});
+			// 			}
+			// 		}
+			// 	});
+			// }
+			//
+			// get_captcha();
+			//
+			// dollar(".verification-img").click(function () {
+			// 	get_captcha();
+			// });
+		})
+	</script>
+</body>
+
+</html>

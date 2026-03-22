@@ -1,0 +1,302 @@
+/* 🚀 前端性能优化CSS - GPU硬件加速和渲染优化 */
+
+/* ===== GPU硬件加速基础类 ===== */
+.gpu-accelerated {
+    /* 启用GPU硬件加速 */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    -moz-transform: translateZ(0);
+    -ms-transform: translateZ(0);
+    -o-transform: translateZ(0);
+    
+    /* 启用硬件加速合成层 */
+    will-change: transform, opacity;
+    
+    /* 优化渲染性能 */
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    -moz-backface-visibility: hidden;
+    -ms-backface-visibility: hidden;
+    
+    /* 启用子像素渲染 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+}
+
+/* ===== 滚动性能优化 ===== */
+.smooth-scroll {
+    /* 启用硬件加速滚动 */
+    -webkit-overflow-scrolling: touch;
+    
+    /* 优化滚动性能 */
+    scroll-behavior: smooth;
+    
+    /* GPU加速 */
+    transform: translateZ(0);
+    will-change: scroll-position;
+    
+    /* 减少重绘 */
+    contain: layout style paint;
+}
+
+/* 优化现有滚动容器 */
+.layui-side-scroll,
+.layui-body,
+.table_box {
+    /* 继承滚动优化 */
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    transform: translateZ(0);
+    will-change: scroll-position;
+    contain: layout style paint;
+    
+    /* 优化滚动条渲染 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+/* Webkit滚动条优化 */
+.layui-side-scroll::-webkit-scrollbar,
+.layui-body::-webkit-scrollbar,
+.table_box::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.layui-side-scroll::-webkit-scrollbar-track,
+.layui-body::-webkit-scrollbar-track,
+.table_box::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+}
+
+.layui-side-scroll::-webkit-scrollbar-thumb,
+.layui-body::-webkit-scrollbar-thumb,
+.table_box::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+    transition: background 0.2s ease;
+}
+
+.layui-side-scroll::-webkit-scrollbar-thumb:hover,
+.layui-body::-webkit-scrollbar-thumb:hover,
+.table_box::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* ===== 动画性能优化 ===== */
+.optimized-animation {
+    /* 使用transform和opacity进行动画 */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* GPU加速 */
+    transform: translateZ(0);
+    will-change: transform, opacity;
+    
+    /* 减少重绘 */
+    contain: layout style paint;
+}
+
+/* 优化现有过渡动画 */
+.pear-admin .layui-body,
+.pear-admin .layui-logo,
+.pear-admin .layui-side,
+.pear-admin .layui-header,
+.pear-admin .layui-header .layui-layout-left {
+    /* 使用GPU加速的过渡 */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateZ(0);
+    will-change: transform;
+    contain: layout;
+}
+
+/* ===== 字体渲染优化 ===== */
+.optimized-text {
+    /* 启用字体抗锯齿 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    
+    /* 优化文本渲染 */
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "liga" 1, "kern" 1;
+    
+    /* 减少重绘 */
+    contain: style;
+}
+
+/* 应用到全局文本 */
+body, .layui-layout, .layui-nav, .layui-nav-item {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* ===== 表格性能优化 ===== */
+.optimized-table {
+    /* 启用表格布局优化 */
+    table-layout: fixed;
+    
+    /* GPU加速 */
+    transform: translateZ(0);
+    will-change: contents;
+    
+    /* 减少重绘 */
+    contain: layout style;
+}
+
+.optimized-table td,
+.optimized-table th {
+    /* 优化单元格渲染 */
+    contain: layout style paint;
+    transform: translateZ(0);
+}
+
+/* ===== 图片和媒体优化 ===== */
+.optimized-image {
+    /* 启用GPU加速 */
+    transform: translateZ(0);
+    
+    /* 优化图片渲染 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    
+    /* 减少重绘 */
+    contain: layout style paint;
+}
+
+/* ===== 布局容器优化 ===== */
+.optimized-container {
+    /* 启用容器查询优化 */
+    contain: layout style paint;
+    
+    /* GPU加速 */
+    transform: translateZ(0);
+    will-change: contents;
+}
+
+/* 应用到主要布局容器 */
+.pear-container,
+.layui-layout,
+.layui-body,
+.layui-side,
+.layui-header {
+    contain: layout style;
+    transform: translateZ(0);
+}
+
+/* ===== 交互元素优化 ===== */
+.optimized-interactive {
+    /* 优化交互响应 */
+    touch-action: manipulation;
+    
+    /* GPU加速 */
+    transform: translateZ(0);
+    will-change: transform, opacity;
+    
+    /* 快速过渡 */
+    transition: transform 0.15s ease-out,
+                opacity 0.15s ease-out;
+}
+
+/* 应用到按钮和链接 */
+button, .layui-btn, a, .layui-nav-item {
+    touch-action: manipulation;
+    transform: translateZ(0);
+    transition: transform 0.15s ease-out,
+                opacity 0.15s ease-out;
+}
+
+/* ===== 响应式优化 ===== */
+@media (prefers-reduced-motion: reduce) {
+    /* 为偏好减少动画的用户优化 */
+    .optimized-animation,
+    .pear-admin .layui-body,
+    .pear-admin .layui-logo,
+    .pear-admin .layui-side,
+    .pear-admin .layui-header {
+        transition: none;
+        animation: none;
+    }
+}
+
+/* ===== 高DPI屏幕优化 ===== */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .optimized-text {
+        /* 高DPI屏幕字体优化 */
+        -webkit-font-smoothing: subpixel-antialiased;
+    }
+}
+
+/* ===== 内存优化 ===== */
+.memory-optimized {
+    /* 减少内存使用 */
+    contain: strict;
+    content-visibility: auto;
+    contain-intrinsic-size: 0 500px;
+}
+
+/* ===== 加载状态优化 ===== */
+.loading-optimized {
+    /* 加载状态GPU加速 */
+    transform: translateZ(0);
+    will-change: transform;
+    
+    /* 骨架屏效果 */
+    background: linear-gradient(90deg, 
+        rgba(255, 255, 255, 0) 0%, 
+        rgba(255, 255, 255, 0.2) 20%, 
+        rgba(255, 255, 255, 0.5) 60%, 
+        rgba(255, 255, 255, 0) 100%);
+    background-size: 200% 100%;
+    animation: loading-shimmer 2s infinite;
+}
+
+@keyframes loading-shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* ===== 性能监控样式 ===== */
+.performance-monitor {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    z-index: 10000;
+    display: none;
+    transform: translateZ(0);
+    will-change: contents;
+}
+
+.performance-monitor.visible {
+    display: block;
+}
+
+/* ===== 实用工具类 ===== */
+.will-change-transform { will-change: transform; }
+.will-change-opacity { will-change: opacity; }
+.will-change-contents { will-change: contents; }
+.will-change-scroll { will-change: scroll-position; }
+
+.contain-layout { contain: layout; }
+.contain-style { contain: style; }
+.contain-paint { contain: paint; }
+.contain-strict { contain: strict; }
+
+.gpu-layer { transform: translateZ(0); }
+.hardware-accelerated { 
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+}
