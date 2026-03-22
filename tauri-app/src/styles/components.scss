@@ -1,0 +1,309 @@
+/**
+ * Element Plus 组件样式覆盖
+ * 严格对标原版Layui样式
+ */
+
+/* ========== 按钮样式 ========== */
+.el-button {
+  position: relative;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600 !important;
+  font-size: var(--font-size-base) !important;
+  height: 42px !important;
+  padding: 0 20px !important;
+  line-height: 42px !important;
+  transition: all var(--transition-base) cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+    transition: left 0.5s;
+  }
+
+  &:hover {
+    transform: translateY(-2px) !important;
+
+    &::before {
+      left: 100%;
+    }
+  }
+
+  &:active {
+    transform: translateY(0) !important;
+    transition: transform 0.1s !important;
+  }
+}
+
+.el-button--primary {
+  background: var(--primary-gradient) !important;
+  box-shadow: 0 4px 16px var(--primary-shadow) !important;
+
+  &:hover {
+    box-shadow: 0 8px 24px var(--primary-shadow-hover) !important;
+  }
+}
+
+.el-button--success {
+  background: var(--success-gradient) !important;
+  box-shadow: 0 4px 16px var(--success-shadow) !important;
+
+  &:hover {
+    box-shadow: 0 8px 24px var(--success-shadow) !important;
+  }
+}
+
+.el-button--warning {
+  background: var(--warning-gradient) !important;
+  box-shadow: 0 4px 16px var(--warning-shadow) !important;
+
+  &:hover {
+    box-shadow: 0 8px 24px var(--warning-shadow) !important;
+  }
+}
+
+.el-button--danger {
+  background: var(--danger-gradient) !important;
+  box-shadow: 0 4px 16px var(--danger-shadow) !important;
+
+  &:hover {
+    box-shadow: 0 8px 24px var(--danger-shadow) !important;
+  }
+}
+
+.el-button--small {
+  height: 32px !important;
+  padding: 0 12px !important;
+  line-height: 32px !important;
+  font-size: var(--font-size-xs) !important;
+  border-radius: var(--radius-xs) !important;
+}
+
+/* ========== 输入框样式 ========== */
+.el-input {
+  --el-input-bg-color: rgba(255, 255, 255, 0.9);
+  --el-input-border-color: var(--border-color);
+  --el-input-border-radius: var(--radius-md);
+  --el-input-focus-border-color: var(--border-color-primary);
+}
+
+.el-input__wrapper {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 4px 12px !important;
+  height: 40px !important;
+  box-shadow: none !important;
+  transition: all var(--transition-base) ease !important;
+
+  &:hover {
+    border-color: var(--border-color-primary) !important;
+  }
+
+  &.is-focus {
+    border-color: var(--border-color-primary) !important;
+    box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+  }
+}
+
+.el-input__inner {
+  font-size: var(--font-size-base) !important;
+  color: var(--text-primary) !important;
+  font-weight: 500;
+
+  &::placeholder {
+    color: var(--text-placeholder) !important;
+    font-weight: 400;
+  }
+}
+
+/* ========== 下拉选择框样式 ========== */
+.el-select {
+  width: 100%;
+}
+
+.el-select__wrapper {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 4px 12px !important;
+  box-shadow: none !important;
+  transition: all var(--transition-base) ease !important;
+  height: 40px !important;
+  min-height: 40px !important;
+
+  &:hover {
+    border-color: var(--border-color-primary) !important;
+  }
+
+  &.is-focused {
+    border-color: var(--border-color-primary) !important;
+    box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+  }
+}
+
+.el-select-dropdown {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+.el-select-dropdown__item {
+  padding: 12px 20px !important;
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  font-size: var(--font-size-base) !important;
+  transition: all var(--transition-base) ease !important;
+
+  &:hover {
+    background: rgba(92, 124, 250, 0.08) !important;
+    color: var(--primary-color) !important;
+  }
+
+  &.is-selected {
+    background: rgba(92, 124, 250, 0.15) !important;
+    color: var(--primary-color) !important;
+    font-weight: 600 !important;
+  }
+}
+
+/* ========== 弹窗样式 ========== */
+.el-dialog {
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+.el-dialog__header {
+  background: var(--primary-gradient) !important;
+  padding: 16px 20px !important;
+  margin-right: 0 !important;
+}
+
+.el-dialog__title {
+  color: var(--text-white) !important;
+  font-weight: 600 !important;
+  font-size: var(--font-size-lg) !important;
+}
+
+.el-dialog__headerbtn {
+  top: 16px !important;
+  right: 16px !important;
+
+  .el-dialog__close {
+    color: rgba(255, 255, 255, 0.8) !important;
+
+    &:hover {
+      color: var(--text-white) !important;
+    }
+  }
+}
+
+.el-dialog__body {
+  padding: 24px !important;
+  color: var(--text-primary) !important;
+}
+
+.el-dialog__footer {
+  padding: 16px 24px !important;
+  border-top: 1px solid var(--border-color-light) !important;
+}
+
+/* ========== 消息提示样式 ========== */
+.el-message {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  padding: 12px 20px !important;
+}
+
+.el-message__content {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+
+/* ========== 表格样式 ========== */
+.el-table {
+  --el-table-border-color: var(--border-color-light);
+  --el-table-header-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+
+  background: transparent !important;
+
+  th.el-table__cell {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+  }
+
+  td.el-table__cell {
+    border-bottom: 1px solid var(--border-color-light) !important;
+    color: var(--text-primary) !important;
+    font-weight: 500;
+    padding: 16px 12px !important;
+  }
+
+  .el-table__row {
+    cursor: pointer;
+    transition: all var(--transition-base) ease;
+    border-radius: var(--radius-md);
+
+    &:hover {
+      background: rgba(92, 124, 250, 0.08) !important;
+
+      td {
+        color: var(--primary-color) !important;
+      }
+    }
+
+    &.active-row {
+      background: linear-gradient(
+        90deg,
+        rgba(92, 124, 250, 0.18) 0%,
+        rgba(92, 124, 250, 0.08) 100%
+      ) !important;
+      border-left: 3px solid var(--primary-color);
+
+      td {
+        color: var(--primary-color) !important;
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+/* ========== 加载动画 ========== */
+.el-loading-mask {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(10px);
+}
+
+.el-loading-spinner {
+  .circular {
+    animation: spin 1.5s linear infinite;
+  }
+
+  .el-loading-text {
+    color: var(--text-primary) !important;
+    font-weight: 500;
+  }
+}

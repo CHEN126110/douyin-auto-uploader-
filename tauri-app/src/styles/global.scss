@@ -1,0 +1,506 @@
+/**
+ * 全局样式
+ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background: var(--background-gradient);
+  background-attachment: fixed;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========== 滚动条样式 ========== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(92, 124, 250, 0.18);
+  border-radius: 3px;
+  transition: background var(--transition-base) ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(92, 124, 250, 0.28);
+}
+
+/* ========== 动画 ========== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-in {
+  animation: fadeIn var(--transition-slow) ease-out;
+}
+
+/* ========== 文字省略 ========== */
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== 禁止选中 ========== */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ========== Element Plus 组件样式统一 ========== */
+
+/* 统一输入框和选择器高度为 42px */
+.el-input {
+  --el-input-height: 42px;
+  height: 42px;
+}
+
+.el-input__wrapper {
+  height: 40px;
+  padding: 4px 12px;
+  box-sizing: border-box;
+}
+
+.el-input__inner {
+  height: 38px;
+  line-height: 38px;
+}
+
+/* Select 下拉框 */
+.el-select {
+  --el-select-input-height: 42px;
+  height: 42px;
+}
+
+.el-select__wrapper {
+  height: 40px;
+  min-height: 40px;
+}
+
+/* Textarea 多行文本框 */
+.el-textarea__inner {
+  padding: 8px 15px !important;
+  min-height: 48px !important;
+}
+
+/* 隐藏数字输入框的浏览器默认箭头 */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* Element Plus Button 按钮高度统一 */
+.el-button {
+  --el-button-size: 42px;
+  height: 42px;
+}
+
+/* ========== 对话框按钮顺序：确定在左，取消在右 ========== */
+.el-dialog__footer .dialog-footer,
+.dialog-footer {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-end !important;
+  gap: 10px;
+}
+
+/* ========== 下拉菜单样式优化 ========== */
+.el-select-dropdown,
+.el-popper.is-light {
+  background: #ffffff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 
+              0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  
+  .el-select-dropdown__list {
+    padding: 6px 0 !important;
+  }
+  
+  .el-select-dropdown__item {
+    height: 40px !important;
+    line-height: 40px !important;
+    padding: 0 16px !important;
+    font-size: 14px !important;
+    color: #303133 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    transition: all 0.15s ease !important;
+    
+    &:hover {
+      background-color: rgba(92, 124, 250, 0.08) !important;
+      color: #5c7cfa !important;
+    }
+    
+    &.is-hovering,
+    &.hover {
+      background-color: rgba(92, 124, 250, 0.08) !important;
+      color: #5c7cfa !important;
+    }
+    
+    &.selected,
+    &.is-selected {
+      background-color: rgba(92, 124, 250, 0.12) !important;
+      color: #5c7cfa !important;
+      font-weight: 600 !important;
+      
+      &::after {
+        content: "✓";
+        position: absolute;
+        right: 16px;
+        color: #5c7cfa;
+        font-size: 12px;
+      }
+    }
+    
+    &.is-disabled {
+      color: #c0c4cc !important;
+      cursor: not-allowed !important;
+      background-color: transparent !important;
+    }
+  }
+  
+  /* 下拉菜单滚动条 */
+  .el-scrollbar__wrap {
+    max-height: 280px;
+  }
+  
+  .el-scrollbar__bar.is-vertical {
+    width: 6px;
+    right: 2px;
+  }
+  
+  .el-scrollbar__thumb {
+    background-color: rgba(92, 124, 250, 0.3);
+    border-radius: 3px;
+    
+    &:hover {
+      background-color: rgba(92, 124, 250, 0.5);
+    }
+  }
+}
+
+/* 下拉菜单箭头 */
+.el-popper__arrow {
+  display: none !important;
+}
+
+/* 级联选择器下拉菜单 */
+.el-cascader__dropdown {
+  background: #ffffff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 
+              0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 日期选择器下拉面板 */
+.el-picker-panel {
+  background: #ffffff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 
+              0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 下拉菜单分组标题 */
+.el-select-group__title {
+  padding: 8px 16px !important;
+  font-size: 12px !important;
+  color: #909399 !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid #f0f2f5 !important;
+}
+
+/* ========== MessageBox 确认框样式优化 ========== */
+.el-message-box {
+  width: 380px !important;
+  max-width: 90vw !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  border: none !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
+              0 4px 16px rgba(0, 0, 0, 0.1) !important;
+  overflow: hidden !important;
+  
+  /* 头部标题 */
+  .el-message-box__header {
+    padding: 18px 24px 12px !important;
+    background: linear-gradient(135deg, rgba(92, 124, 250, 0.08) 0%, rgba(92, 124, 250, 0.03) 100%) !important;
+    border-bottom: 1px solid rgba(92, 124, 250, 0.1) !important;
+  }
+  
+  .el-message-box__title {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: #2c3e50 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  
+  /* 关闭按钮 */
+  .el-message-box__headerbtn {
+    top: 16px !important;
+    right: 16px !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    transition: all 0.2s ease !important;
+    
+    &:hover {
+      background: rgba(0, 0, 0, 0.06) !important;
+    }
+    
+    .el-message-box__close {
+      font-size: 14px !important;
+      color: #909399 !important;
+    }
+  }
+  
+  /* 内容区域 */
+  .el-message-box__content {
+    padding: 20px 24px !important;
+    font-size: 14px !important;
+    color: #606266 !important;
+    line-height: 1.6 !important;
+  }
+  
+  .el-message-box__message {
+    p {
+      margin: 0 !important;
+      font-size: 14px !important;
+      line-height: 1.6 !important;
+    }
+  }
+  
+  /* 图标 */
+  .el-message-box__status {
+    font-size: 22px !important;
+    
+    &.el-message-box-icon--warning {
+      color: #e6a23c !important;
+    }
+    
+    &.el-message-box-icon--error {
+      color: #f56c6c !important;
+    }
+    
+    &.el-message-box-icon--success {
+      color: #67c23a !important;
+    }
+    
+    &.el-message-box-icon--info {
+      color: #909399 !important;
+    }
+  }
+  
+  /* 输入框 */
+  .el-message-box__input {
+    padding: 0 24px 10px !important;
+    
+    .el-input__wrapper {
+      height: 40px !important;
+    }
+  }
+  
+  /* 底部按钮区域 */
+  .el-message-box__btns {
+    padding: 16px 24px 20px !important;
+    border-top: 1px solid #f0f2f5 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 12px !important;
+    
+    .el-button {
+      min-width: 80px !important;
+      height: 42px !important;
+      padding: 0 20px !important;
+      font-size: 14px !important;
+      font-weight: 500 !important;
+      border-radius: 8px !important;
+      transition: all 0.2s ease !important;
+      margin: 0 !important;
+      
+      &--primary {
+        order: 2 !important;
+        background: linear-gradient(135deg, #5c7cfa 0%, #748ffc 100%) !important;
+        border: none !important;
+        box-shadow: 0 2px 8px rgba(92, 124, 250, 0.35) !important;
+        
+        &:hover {
+          transform: translateY(-1px) !important;
+          box-shadow: 0 4px 12px rgba(92, 124, 250, 0.45) !important;
+        }
+        
+        &:active {
+          transform: translateY(0) !important;
+        }
+      }
+      
+      &:not(.el-button--primary) {
+        order: 1 !important;
+        background: #f5f7fa !important;
+        border: 1px solid #dcdfe6 !important;
+        color: #606266 !important;
+        
+        &:hover {
+          background: #ecf0f5 !important;
+          border-color: #c0c4cc !important;
+        }
+      }
+    }
+  }
+}
+
+/* 警告类型的 MessageBox */
+.el-message-box--warning {
+  .el-message-box__header {
+    background: linear-gradient(135deg, rgba(230, 162, 60, 0.1) 0%, rgba(230, 162, 60, 0.03) 100%) !important;
+    border-bottom: 1px solid rgba(230, 162, 60, 0.15) !important;
+  }
+}
+
+/* 危险类型的 MessageBox */
+.el-message-box--error {
+  .el-message-box__header {
+    background: linear-gradient(135deg, rgba(245, 108, 108, 0.1) 0%, rgba(245, 108, 108, 0.03) 100%) !important;
+    border-bottom: 1px solid rgba(245, 108, 108, 0.15) !important;
+  }
+}
+
+/* 成功类型的 MessageBox */
+.el-message-box--success {
+  .el-message-box__header {
+    background: linear-gradient(135deg, rgba(103, 194, 58, 0.1) 0%, rgba(103, 194, 58, 0.03) 100%) !important;
+    border-bottom: 1px solid rgba(103, 194, 58, 0.15) !important;
+  }
+}
+
+/* MessageBox 遮罩层 */
+.el-overlay.is-message-box {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+/* ========== Message 消息提示样式优化 ========== */
+.el-message {
+  /* 居中显示 */
+  top: 50% !important;
+  left: 50% !important;
+  transform: translateX(-50%) translateY(-50%) !important;
+  position: fixed !important;
+  
+  min-width: 280px !important;
+  max-width: 400px !important;
+  padding: 14px 24px !important;
+  border-radius: 12px !important;
+  border: none !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
+              0 4px 16px rgba(0, 0, 0, 0.1) !important;
+  
+  .el-message__content {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    line-height: 1.5 !important;
+  }
+  
+  .el-message__icon {
+    font-size: 20px !important;
+    margin-right: 12px !important;
+  }
+  
+  .el-message__closeBtn {
+    font-size: 14px !important;
+    
+    &:hover {
+      color: #606266 !important;
+    }
+  }
+  
+  &--success {
+    background: linear-gradient(135deg, #f0f9eb 0%, #e8f5e2 100%) !important;
+    border-left: 4px solid #67c23a !important;
+    
+    .el-message__content {
+      color: #529b2e !important;
+    }
+  }
+  
+  &--warning {
+    background: linear-gradient(135deg, #fef0e6 0%, #fdf3e5 100%) !important;
+    border-left: 4px solid #e6a23c !important;
+    
+    .el-message__content {
+      color: #b88230 !important;
+    }
+  }
+  
+  &--error {
+    background: linear-gradient(135deg, #fef0f0 0%, #fde5e5 100%) !important;
+    border-left: 4px solid #f56c6c !important;
+    
+    .el-message__content {
+      color: #c45656 !important;
+    }
+  }
+  
+  &--info {
+    background: linear-gradient(135deg, #f4f4f5 0%, #ebeef0 100%) !important;
+    border-left: 4px solid #909399 !important;
+    
+    .el-message__content {
+      color: #73767a !important;
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Python Sidecar 依赖
+# 用于 Tauri v4.0 后端服务
+
+# Web框架
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# 数据库
+peewee>=3.16.0
+
+# 网络请求
+requests>=2.31.0
+types-requests>=2.31.0  # 类型存根，消除IDE警告
+aiohttp>=3.9.0
+psutil>=5.9.0
+
+# 浏览器自动化
+DrissionPage>=4.0.0
+playwright>=1.40.0
+
+# 数据处理
+pillow>=10.0.0
+pyyaml>=6.0
+
+# 打包工具
+pyinstaller>=6.0.0

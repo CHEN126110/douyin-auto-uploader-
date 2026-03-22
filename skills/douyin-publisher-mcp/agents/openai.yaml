@@ -1,0 +1,4 @@
+interface:
+  display_name: "Douyin Publisher MCP"
+  short_description: "Capture, price, validate, and upload local Douyin products through MCP"
+  default_prompt: "Use $douyin-publisher-mcp to inspect products and assets, review SKU quantities, generate or apply prices, capture products from one or many source links, fix upload blockers, validate readiness, and monitor local upload tasks through MCP."
