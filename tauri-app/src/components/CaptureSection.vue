@@ -291,11 +291,16 @@ async function startCapture() {
       save_path: "uploads/products",
     });
 
-    if (!response.success || !response.data?.task_id) {
-      throw new Error("服务端返回异常");
+    const startedTaskId = response?.data?.task_id || response?.task_id;
+    if (!response.success || !startedTaskId) {
+      throw new Error(
+        response?.message ||
+          response?.msg ||
+          (response.success ? "服务端未返回任务ID" : "启动任务失败")
+      );
     }
 
-    taskId.value = response.data.task_id;
+    taskId.value = startedTaskId;
     statusText.value = "任务已创建，正在启动浏览器...";
     statusStep.value = "启动浏览器";
     progress.value = 10;
@@ -386,7 +391,7 @@ onUnmounted(() => {
       <div class="capture-input-group">
         <el-input
           v-model="url"
-          placeholder="粘贴淘宝/天猫商品链接..."
+          placeholder="粘贴淘宝/天猫/1688 商品链接..."
           :disabled="isCapturing"
           class="capture-input"
           clearable
@@ -399,21 +404,18 @@ onUnmounted(() => {
 
         <template v-if="!isCapturing && !hasFailed">
           <el-button type="primary" class="capture-btn" @click="startCapture">
-            <span class="btn-icon">开始</span>
             <span>开始采集</span>
           </el-button>
         </template>
 
         <template v-else-if="isCapturing && !hasFailed">
           <el-button type="warning" class="capture-btn cancel-btn" @click="cancelCapture">
-            <span class="btn-icon">取消</span>
             <span>取消</span>
           </el-button>
         </template>
 
         <template v-else-if="hasFailed && canRetry">
           <el-button type="primary" class="capture-btn" @click="retryCapture">
-            <span class="btn-icon">重试</span>
             <span>重试</span>
           </el-button>
           <el-button type="info" class="capture-btn reset-btn" @click="resetState">

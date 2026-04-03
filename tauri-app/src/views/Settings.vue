@@ -1,8 +1,18 @@
 <script setup lang="ts">
-// 独立设置页面 - 预留给未来扩展
-import { useRouter } from "vue-router";
+import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import SettingsPanel from "@/components/SettingsPanel.vue";
 
 const router = useRouter();
+const route = useRoute();
+
+const pageTitle = computed(() => {
+  const tab = route.query.tab;
+  if (tab === "automation") {
+    return "自动化设置";
+  }
+  return "系统设置";
+});
 
 function goBack() {
   router.push("/");
@@ -12,13 +22,16 @@ function goBack() {
 <template>
   <div class="settings-page">
     <div class="page-header">
-      <el-button @click="goBack">← 返回</el-button>
-      <h1>系统设置</h1>
+      <div class="header-left">
+        <el-button @click="goBack">返回</el-button>
+        <div class="header-text">
+          <h1>{{ pageTitle }}</h1>
+          <p>设置内容已迁移为独立页面，保存逻辑与原弹窗保持一致。</p>
+        </div>
+      </div>
     </div>
 
-    <div class="settings-container">
-      <p>设置页面 - 待实现</p>
-    </div>
+    <SettingsPanel mode="page" />
   </div>
 </template>
 
@@ -26,25 +39,37 @@ function goBack() {
 .settings-page {
   padding: var(--container-padding);
   min-height: 100vh;
+  background: var(--background-color);
 }
 
 .page-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
+}
+
+.header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 
   h1 {
     margin: 0;
     font-size: var(--font-size-title);
     color: var(--text-primary);
   }
-}
 
-.settings-container {
-  background: var(--card-background);
-  border-radius: var(--radius-lg);
-  padding: var(--container-padding);
-  box-shadow: var(--shadow-lg);
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
 }
 </style>

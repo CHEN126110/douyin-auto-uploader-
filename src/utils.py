@@ -328,6 +328,8 @@ def set_material_composition(new_tab, materials) -> bool:
                     'xpath://div[@attr-field-id="面料材质"]//button[.//*[contains(normalize-space(text()),"添加材质")] or contains(normalize-space(.),"添加材质")]',
                     'xpath://div[@attr-field-id="面料材质"]//*[contains(normalize-space(text()),"添加材质")]/ancestor::button[1]',
                     'xpath://div[@attr-field-id="面料材质"]//*[contains(normalize-space(text()),"添加材质")]',
+                    'xpath://button[contains(normalize-space(.),"添加材质")]',
+                    'xpath://span[contains(normalize-space(.),"添加材质")]/ancestor::button[1]',
                 ]
                 for selector in fallback_selectors:
                     try:
@@ -557,29 +559,6 @@ def get_pic_list(record, key: str) -> List[str]:
     
     # 支持的图片格式(硬编码默认值)
     supported_formats = ['.jpg', '.jpeg', '.png', '.webp']
-    def _result(path: str, is_fallback: bool):
-        if with_source:
-            return {
-                'path': path,
-                'is_fallback': is_fallback,
-            }
-        return path
-
-    def _result(path: str, is_fallback: bool):
-        if with_source:
-            return {
-                'path': path,
-                'is_fallback': is_fallback,
-            }
-        return path
-
-    def _result(path: str, is_fallback: bool):
-        if with_source:
-            return {
-                'path': path,
-                'is_fallback': is_fallback,
-            }
-        return path
     
     # 确定基础文件夹路径
     if record.type == 1:
@@ -697,7 +676,7 @@ def get_detail_pic_list(record) -> List[str]:
     
     # 如果设置的路径不存在,尝试兼容旧的路径
     if not os.path.exists(base_dir):
-        fallback_dir = os.path.join(record.path, 'images' if record.type == 1 else 'images')
+        fallback_dir = os.path.join(record.path, 'images')
         if os.path.exists(fallback_dir):
             base_dir = fallback_dir
         else:
@@ -1022,86 +1001,6 @@ def select_text(new_tab, key, value, extra=None):
     time.sleep(0.1)
 
 
-def _select_text_legacy(new_tab, key, value, extra=None):
-    """旧版 select_text 函数（备用）"""
-    func_start = _time.time()
-    _expand_category_more(new_tab)
-    
-    input_selectors = [
-        f'xpath://div[@attr-field-id="{key}"]//input',
-        f'xpath://span[text()="{key}"]/../../..//input',
-    ]
-    
-    input_element = None
-    for selector in input_selectors:
-        try:
-            input_element = new_tab.ele(selector, timeout=0.2)
-            if input_element and input_element.states.is_displayed:
-                break
-        except:
-            input_element = None
-            continue
-    
-    if not input_element:
-        print(f'未找到字段:{key}')
-        timer_record('属性设置', f'{key}(未找到)', 0, _time.time() - func_start, False)
-        return
-        
-    print(f'选择{key} -> {value}')
-    input_element.click()
-    time.sleep(0.15)
-    
-    dropdown_selectors = [
-        'xpath://div[contains(@class,"ecom-g-select-dropdown") and not(contains(@class,"hidden"))]',
-    ]
-    
-    dropdown_menu = None
-    for selector in dropdown_selectors:
-        try:
-            dropdown_menu = new_tab.ele(selector, timeout=0.2)
-            if dropdown_menu and dropdown_menu.states.is_displayed:
-                break
-        except:
-            dropdown_menu = None
-            continue
-    
-    if dropdown_menu:
-        option_selectors = [
-            f'xpath:.//div[@class="ecom-g-select-item-option-content"][text()="{value}"]',
-            f'xpath:.//*[text()="{value}"]',
-        ]
-        
-        option = None
-        for opt_sel in option_selectors:
-            try:
-                option = dropdown_menu.ele(opt_sel, timeout=0.1)
-                if option and option.states.is_displayed:
-                    option.click()
-                    time.sleep(0.1)
-                    timer_record('属性设置', f'{key}={value}', 0, _time.time() - func_start, True)
-                    return
-            except:
-                continue
-        
-        if extra:
-            try:
-                option = dropdown_menu.ele(f'xpath:.//*[text()="{extra}"]', timeout=0.1)
-                if option and option.states.is_displayed:
-                    option.click()
-                    time.sleep(0.1)
-                    timer_record('属性设置', f'{key}={extra}', 0, _time.time() - func_start, True)
-                    return
-            except:
-                pass
-            print(f'未在下拉菜单中找到选项:{value} 或 {extra}')
-        else:
-            print(f'未在下拉菜单中找到选项:{value}')
-    else:
-        print('未找到下拉菜单')
-    timer_record('属性设置', f'{key}(失败)', 0, _time.time() - func_start, False)
-    time.sleep(0.1)
-
-
 def get_sex(title):
     if '男' in title and '女' in title:
         return '通用'
@@ -1170,15 +1069,12 @@ def smart_find_upload_button(tab, context="SKU"):
     """
     print(f"[检查] 智能查找'{context}'上传按钮...")
     
-    # ========== 优先级1: 精确选择器（基于实际DOM结构）==========
-    # 新版抖音页面的"本地上传"按钮位于 popover 弹窗中
-    # 精确 class: label.index-module_actionBefore__VyHLB
+    # ========== 优先级1: 精确选择器（只接受真正的“本地上传”文件输入）==========
     precise_selectors = [
-        # 最精确的选择器 - 弹窗中的"本地上传" label
-        'xpath://label[contains(@class,"index-module_actionBefore")]',
-        # 弹窗容器中的本地上传
-        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[contains(text(),"本地上传")]',
-        'xpath://div[contains(@class,"popover-inner-content")]//label[1]',
+        'xpath://div[contains(@class,"ecom-g-popover")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+        'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//*[contains(normalize-space(.),"本地上传")]/ancestor::label[1][.//input[@type="file"]]',
     ]
     
     # 快速尝试精确选择器（超时更短）
@@ -1197,26 +1093,23 @@ def smart_find_upload_button(tab, context="SKU"):
     if context == '主图':
         upload_selectors = [
             # 新版页面 - saotu 区域中的上传按钮
-            'xpath://div[@id="saotu"]//label[contains(@class,"index-module_button")][1]',
-            'xpath://div[@id="saotu"]//label[contains(@class,"material-upload-button")]',
-            # 弹窗中的本地上传（文本匹配）
-            'xpath://label[text()="本地上传"]',
-            'xpath://div[text()="本地上传"]',
+            'xpath://div[@id="saotu"]//label[.//input[@type="file"]]',
+            'xpath://div[@id="saotu"]//label[contains(@class,"material-upload-button") and .//input[@type="file"]]',
+            'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
         ]
     elif context == 'SKU':
         upload_selectors = [
-            # SKU 规格图上传
-            'xpath://div[@id="skuValue-颜色分类"]//label[contains(@class,"index-module_actionBefore")]',
-            'xpath://label[contains(@class,"index-module_actionBefore")]',
-            'xpath://div[text()="本地上传"]',
+            'xpath://div[contains(@class,"ecom-g-popover")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+            'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+            'xpath://div[@id="skuValue-颜色分类"]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+            'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.),"本地上传")]/ancestor::label[1][.//input[@type="file"]]',
         ]
     else:
         # 通用选择器（白底图、吊牌、视频等）
         upload_selectors = [
-            'xpath://label[contains(@class,"index-module_actionBefore")]',
-            'xpath://div[text()="本地上传"]',
-            'xpath://span[text()="本地上传"]',
-            'xpath://label[text()="本地上传"]',
+            'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+            'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+            'xpath://label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
         ]
     
     # 尝试上下文选择器
@@ -1234,11 +1127,11 @@ def smart_find_upload_button(tab, context="SKU"):
         except:
             continue
     
-    # ========== 优先级3: 备用宽松选择器 ==========
+    # ========== 优先级3: 备用选择器（仍然必须是“本地上传”而不是“本地替换”）==========
     fallback_selectors = [
-        'xpath://*[contains(text(),"本地上传")]',
-        'xpath://button[contains(text(),"上传")]',
-        'xpath://label[contains(@class,"button")]',
+        'xpath://label[.//input[@type="file"] and .//*[contains(normalize-space(.),"本地上传")]]',
+        'xpath://*[contains(normalize-space(.),"本地上传")]/ancestor::label[1][.//input[@type="file"]]',
+        'xpath://div[contains(normalize-space(.),"本地上传")]',
     ]
     
     for selector in fallback_selectors:
@@ -1247,7 +1140,7 @@ def smart_find_upload_button(tab, context="SKU"):
             for element in elements:
                 try:
                     text = element.text.strip() if element.text else ''
-                    if '本地' in text or '上传' in text:
+                    if '本地上传' in text:
                         if element.states.is_displayed:
                             print(f"  [成功] 备用定位: '{text}'")
                             return element
@@ -1258,71 +1151,6 @@ def smart_find_upload_button(tab, context="SKU"):
     
     print(f"  [失败] 未找到'{context}'上传按钮")
     return None
-
-
-def smart_find_element_with_retry(tab, element_name, selectors_list, max_retries=3, wait_time=1):
-    """
-    带重试的智能元素查找
-    
-    Args:
-        tab: 页面标签页
-        element_name: 元素名称(用于日志)
-        selectors_list: 选择器列表
-        max_retries: 最大重试次数
-        wait_time: 重试等待时间
-        
-    Returns:
-        找到的元素或None
-    """
-    for attempt in range(max_retries):
-        print(f"[检查] 查找{element_name}(第{attempt + 1}/{max_retries}次尝试)...")
-        
-        for i, selector in enumerate(selectors_list, 1):
-            try:
-                print(f"  尝试选择器 {i}: {selector}")
-                element = tab.ele(selector, timeout=2)
-                if element and element.states.is_displayed:
-                    print(f"  [成功] 成功找到{element_name}")
-                    return element
-            except Exception as e:
-                print(f"  [失败] 选择器 {i} 失败: {e}")
-                continue
-        
-        if attempt < max_retries - 1:
-            print(f"  [等待] 等待{wait_time}秒后重试...")
-            time.sleep(wait_time)
-    
-    print(f"  [失败] 最终未找到{element_name}")
-    return None
-
-
-def _wait_for_element(tab, selector, timeout=2, visible=True):
-    """等待元素出现并可见"""
-    start = _time.time()
-    while _time.time() - start < timeout:
-        try:
-            el = tab.ele(selector, timeout=0.1)
-            if el:
-                if not visible or el.states.is_displayed:
-                    return el
-        except:
-            pass
-        time.sleep(0.05)
-    return None
-
-
-def _wait_for_element_gone(tab, selector, timeout=2):
-    """等待元素消失"""
-    start = _time.time()
-    while _time.time() - start < timeout:
-        try:
-            el = tab.ele(selector, timeout=0.1)
-            if not el or not el.states.is_displayed:
-                return True
-        except:
-            return True
-        time.sleep(0.05)
-    return False
 
 
 def _wait_until(predicate, timeout=2, interval=0.05):
@@ -1344,6 +1172,51 @@ def _get_visible_elements(tab, selector, timeout=0.1):
         return [el for el in tab.eles(selector, timeout=timeout) if el and el.states.is_displayed]
     except:
         return []
+
+
+def _wait_for_first_visible(tab, selectors, timeout=2.0, interval=0.1):
+    start = _time.time()
+    while _time.time() - start < timeout:
+        for selector in selectors:
+            try:
+                element = tab.ele(selector, timeout=0.1)
+                if element and element.states.is_displayed:
+                    return element
+            except:
+                pass
+        time.sleep(interval)
+    return None
+
+
+def _is_upload_busy(tab):
+    try:
+        if tab.ele('xpath://span[contains(@class,"ecom-g-btn-loading-icon")]', timeout=0.1):
+            return True
+    except:
+        pass
+    try:
+        if tab.ele('上传中', timeout=0.1):
+            return True
+    except:
+        pass
+    return False
+
+
+def _wait_for_upload_complete(tab, timeout=90.0, interval=0.25):
+    start = _time.time()
+    seen_busy = False
+    idle_checks = 0
+    while _time.time() - start < timeout:
+        busy = _is_upload_busy(tab)
+        if busy:
+            seen_busy = True
+            idle_checks = 0
+        else:
+            idle_checks += 1
+            if idle_checks >= (2 if seen_busy else 4):
+                return True
+        time.sleep(interval)
+    return False
 
 
 def _xpath_literal(value: str) -> str:
@@ -1379,7 +1252,7 @@ def _find_sku_local_upload_button(new_tab):
             except:
                 continue
 
-    return smart_find_upload_button(new_tab, "SKU")
+    return None
 
 
 def _find_sku_upload_trigger(new_tab, sku_name: str):
@@ -1678,270 +1551,6 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
 
 def set_sku_info(new_tab, index, sku, remark):
     return _set_sku_info_legacy(new_tab, index, sku, remark)
-    """
-    设置SKU信息 - 稳定优化版（带时间记录）
-    
-    使用等待元素状态的方式确保每一步操作完成后再继续
-    """
-    sku_start_time = _time.time()
-    step_times = {}  # 记录每个步骤的耗时
-    
-    def _record_step(step_name, start_time):
-        """记录步骤耗时"""
-        elapsed = _time.time() - start_time
-        step_times[step_name] = elapsed
-        return _time.time()
-    
-    print(f'\n{"="*50}')
-    print(f'设置第{index + 1}个SKU -> {sku["name"]}')
-    print(f'{"="*50}')
-    
-    try:
-        step_start = _time.time()
-        sku_name = str(sku.get("name") or "").strip()
-        if not sku_name:
-            raise Exception("SKU名称为空")
-        spec_input_selector = 'xpath://input[@placeholder="请输入规格值"]'
-        remark_input_selector = 'xpath://div[@id="skuValue-颜色分类"]//input[@placeholder="备注"]'
-        popup_selector = 'xpath://div[contains(@class,"cascader-menus")]'
-        confirm_bottom_selectors = [
-            'xpath://div[contains(@class,"styles_popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
-            'xpath://div[contains(@class,"popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
-            'xpath://button[contains(@class,"ecom-g-btn-primary")][.//span[starts-with(normalize-space(text()),"确定")]]',
-        ]
-        
-        # 1. 设置待上传的图片文件
-        new_tab.set.upload_files(sku['path'])
-        step_start = _record_step("1.设置上传文件", step_start)
-
-        # 2. 滚动并点击颜色分类输入框
-        color_inputs = _get_visible_elements(new_tab, 'xpath://div[@id="skuValue-颜色分类"]//input')
-        if not color_inputs:
-            raise Exception("未找到颜色分类输入框")
-        
-        last_input = color_inputs[-1]
-        last_input.scroll.to_center()
-        time.sleep(0.05)
-        last_input.click()
-        
-        popup_appeared = _wait_until(
-            lambda: _wait_for_element(new_tab, popup_selector, timeout=0.05) is not None,
-            timeout=0.6,
-            interval=0.05
-        )
-        if not popup_appeared:
-            last_input.click(by_js=True)
-            popup_appeared = _wait_until(
-                lambda: _wait_for_element(new_tab, popup_selector, timeout=0.05) is not None,
-                timeout=1.0,
-                interval=0.05
-            )
-        if not popup_appeared:
-            raise Exception("未打开规格下拉菜单")
-        step_start = _record_step("2.点击颜色分类", step_start)
-
-        # 3. 点击"+"按钮(添加规格值)
-        before_spec_count = len(_get_visible_elements(new_tab, spec_input_selector, timeout=0.05))
-        before_remark_count = len(_get_visible_elements(new_tab, remark_input_selector, timeout=0.05))
-        add_btn = _wait_for_element(new_tab, f'xpath:{new_btn_xpath}', timeout=1.5)
-        if add_btn:
-            add_btn.click(by_js=True)
-        else:
-            raise Exception("未找到添加规格按钮")
-
-        # 等待输入框出现
-        spec_input = None
-        def _probe_spec_input():
-            nonlocal spec_input
-            inputs = _get_visible_elements(new_tab, spec_input_selector, timeout=0.05)
-            if not inputs:
-                return False
-            if len(inputs) > before_spec_count:
-                spec_input = inputs[-1]
-                return True
-            spec_input = inputs[-1]
-            return spec_input.states.is_displayed
-
-        _wait_until(_probe_spec_input, timeout=2.0, interval=0.05)
-        step_start = _record_step("3.点击添加按钮", step_start)
-
-        # 4. 输入规格值
-        if spec_input:
-            try:
-                spec_input.click(by_js=True)
-            except:
-                pass
-            try:
-                spec_input.clear(by_js=True)
-            except:
-                pass
-            spec_input.input(sku_name, clear=True)
-            if not _wait_until(
-                lambda: (spec_input.attr("value") or "").strip() == sku_name,
-                timeout=0.6,
-                interval=0.05
-            ):
-                spec_input.input(sku_name, clear=True, by_js=True)
-        else:
-            raise Exception("未找到规格值输入框")
-        step_start = _record_step("4.输入规格值", step_start)
-
-        # 5. 点击绿色勾选图标 [确认] - 优化版
-        confirm_icon = None
-        def _probe_confirm_icon():
-            nonlocal confirm_icon
-            icons = _get_visible_elements(new_tab, 'xpath://span[@data-kora="确认"]', timeout=0.05)
-            if icons:
-                confirm_icon = icons[-1]
-                return True
-            return False
-
-        _wait_until(_probe_confirm_icon, timeout=1.2, interval=0.05)
-        
-        if confirm_icon:
-            confirm_icon.click(by_js=True)
-            _wait_until(
-                lambda: (spec_input.attr("value") or "").strip() == sku_name,
-                timeout=0.3,
-                interval=0.05
-            )
-        step_start = _record_step("5.点击确认图标", step_start)
-        
-        # 6. 等待并点击底部 "确定 (数字)" 按钮 - 优化版
-        confirm_bottom = None
-        def _probe_confirm_bottom():
-            nonlocal confirm_bottom
-            for selector in confirm_bottom_selectors:
-                try:
-                    buttons = new_tab.eles(selector, timeout=0.05)
-                except:
-                    buttons = []
-                for btn in reversed(buttons):
-                    try:
-                        classes = btn.attr('class') or ''
-                        disabled = btn.attr('disabled')
-                        if btn.states.is_displayed and disabled is None and 'disabled' not in classes:
-                            confirm_bottom = btn
-                            return True
-                    except:
-                        continue
-            return False
-
-        _wait_until(_probe_confirm_bottom, timeout=1.5, interval=0.05)
-        
-        if confirm_bottom:
-            confirm_bottom.click(by_js=True)
-            _wait_until(
-                lambda: len(_get_visible_elements(new_tab, spec_input_selector, timeout=0.05)) <= before_spec_count,
-                timeout=1.5,
-                interval=0.05
-            )
-        else:
-            raise Exception("未找到规格确认按钮")
-        step_start = _record_step("6.点击确定按钮", step_start)
-        
-        literal = _xpath_literal(sku_name)
-        sku_anchor_selector = f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]'
-        sku_anchor = None
-        def _probe_sku_anchor():
-            nonlocal sku_anchor
-            anchor = new_tab.ele(sku_anchor_selector, timeout=0.05)
-            if anchor and anchor.states.is_displayed:
-                sku_anchor = anchor
-                return True
-            return False
-
-        if not _wait_until(_probe_sku_anchor, timeout=3.0, interval=0.08):
-            raise Exception(f'SKU "{sku_name}" 未稳定生成')
-
-        # 7. 提交备注
-        remark_text = str(remark or '').strip()
-        if remark_text:
-            try:
-                remark_input = None
-                def _probe_remark_input():
-                    nonlocal remark_input
-                    inputs = _get_visible_elements(new_tab, remark_input_selector, timeout=0.05)
-                    if not inputs:
-                        return False
-                    if len(inputs) > before_remark_count:
-                        remark_input = inputs[-1]
-                        return True
-                    remark_input = inputs[-1]
-                    return remark_input.states.is_displayed
-
-                if _wait_until(_probe_remark_input, timeout=2.0, interval=0.05) and remark_input:
-                    remark_input.click(by_js=True)
-                    try:
-                        remark_input.clear(by_js=True)
-                    except:
-                        pass
-                    remark_input.input(remark_text, clear=True)
-                    _wait_until(
-                        lambda: (remark_input.attr("value") or "").strip() == remark_text,
-                        timeout=0.5,
-                        interval=0.05
-                    )
-                    try:
-                        remark_input.run_js('this.blur();')
-                    except:
-                        pass
-            except:
-                pass
-        step_start = _record_step("7.填写备注", step_start)
-
-        # 8. 滚动并悬停到当前 SKU 元素
-        hover_target = sku_anchor
-        try:
-            anchor_container = sku_anchor.parent('xpath:ancestor::*[contains(@class,"index-module_")][1]')
-            if anchor_container:
-                hover_target = anchor_container
-        except:
-            pass
-        if hover_target:
-            hover_target.scroll.to_center()
-            time.sleep(0.05)
-            hover_target.hover()
-        step_start = _record_step("8.悬停SKU元素", step_start)
-
-        # 9. 点击上传按钮
-        upload_button = None
-        def _probe_upload_button():
-            nonlocal upload_button
-            btn = smart_find_upload_button(new_tab, "SKU")
-            if btn and btn.states.is_displayed:
-                upload_button = btn
-                return True
-            return False
-
-        if _wait_until(_probe_upload_button, timeout=2.0, interval=0.08) and upload_button:
-            upload_button.click(by_js=True)
-        else:
-            raise Exception("无法找到'本地上传'按钮")
-        step_start = _record_step("9.点击上传按钮", step_start)
-
-        # 10. 处理裁剪弹窗（如果有）
-        handle_crop_popup(new_tab)
-        step_start = _record_step("10.处理裁剪弹窗", step_start)
-        
-        # 输出时间统计
-        total_time = _time.time() - sku_start_time
-        print(f'\n[时间统计] SKU {index + 1} ({sku["name"]}):')
-        print(f'{"步骤":<20} {"耗时(ms)":<10}')
-        print(f'{"-"*30}')
-        for step_name, elapsed in step_times.items():
-            print(f'{step_name:<20} {int(elapsed*1000):<10}')
-        print(f'{"-"*30}')
-        print(f'{"总计":<20} {int(total_time*1000):<10}ms')
-        print(f'{"="*50}\n')
-        
-    except Exception as e:
-        total_time = _time.time() - sku_start_time
-        error_msg = f"[失败] 设置SKU {index + 1}失败: {str(e)} (耗时: {int(total_time*1000)}ms)"
-        print(error_msg)
-        traceback.print_exc()
-        raise Exception(error_msg)
-
 
 def _ensure_section_ready(new_tab, section_label: str, timeout: float = 10.0):
     start = _time.time()
@@ -1997,10 +1606,10 @@ def upload_file(
     new_tab.set.upload_files(file_list)
 
     fast_mode = not wait_for_finish
-    area_ready_wait = 0.05 if fast_mode else 0.3
-    hover_wait = 0.05 if fast_mode else 0.2
-    trigger_wait = 0.1 if fast_mode else 0.5
-    post_trigger_wait = 0.02 if fast_mode else 0.8
+    area_ready_wait = 0.05 if fast_mode else 0.15
+    hover_wait = 0.05 if fast_mode else 0.12
+    trigger_wait = 0.05 if fast_mode else 0.18
+    post_trigger_wait = 0.02 if fast_mode else 0.18
     size_error_timeout = 0.05 if fast_mode else 0.3
 
     # 根据 key 设置不同的 key_value
@@ -2080,6 +1689,8 @@ def upload_file(
 
     # ========== 智能查找并点击"本地上传"按钮 ==========
     upload_button = None
+    upload_triggered = False
+    file_inputs = []
     
     # 如果指定了目标区域，优先在该区域内直接点击 label 触发文件选择
     if target_area_element:
@@ -2096,7 +1707,8 @@ def upload_file(
                 first_label = target_area_element.ele('xpath:.//div[contains(@class,"material-upload-button")]//label', timeout=1)
                 if first_label:
                     first_label.click(by_js=True)
-                    upload_button = first_label  # 标记已找到
+                    upload_button = first_label
+                    upload_triggered = True
         except Exception as e:
             print(f'  方案1失败: {e}')
         
@@ -2122,10 +1734,11 @@ def upload_file(
     if not upload_button:
         upload_button = smart_find_upload_button(new_tab, key)
     
-    if upload_button and upload_button != True:  # 如果是元素而不是标记
+    if not upload_triggered and upload_button:
         print(f"[成功] 智能定位成功,点击{key}上传按钮...")
         try:
             upload_button.click(by_js=True)
+            upload_triggered = True
         except:
             pass  # 可能已经点击过了
     elif not upload_button:
@@ -2173,34 +1786,23 @@ def upload_file(
                 if not new_tab.ele(f'xpath://div[text()="{error_size}"]', timeout=1):
                     break
                 new_tab.ele(f'xpath://div[text()="{error_size}"]/../..//img/../..').hover()
-                time.sleep(0.5)
+                time.sleep(0.15)
                 # 点击"AI换背景"按钮来调整尺寸
                 ai_change_bg_btn = new_tab.ele('xpath://div[text()="AI换背景"]', timeout=1)
                 if ai_change_bg_btn:
                     ai_change_bg_btn.click(by_js=True)
-                    time.sleep(0.5)
+                    time.sleep(0.15)
                 else:
                     print('未找到AI换背景按钮')
                     break
-            apply_btn_curr = None
-            for _ in range(10):
-                apply_btn_list = new_tab.eles('xpath://span[text()="应用"]/..', timeout=0.5)
-                for apply_btn in apply_btn_list:
-                    if apply_btn.states.is_displayed:
-                        apply_btn_curr = apply_btn
-                        break
-                if apply_btn_curr:
-                    break
-                time.sleep(0.5)
+            apply_btn_curr = _wait_for_first_visible(new_tab, ['xpath://span[text()="应用"]/..'], timeout=2.5, interval=0.15)
             if not apply_btn_curr:
                 break
             print('遇到需要裁剪!!!')
             print('点击应用...')
             apply_btn_curr.click()
-            time.sleep(3)
             print('点击上传...')
             # 使用多种选择器查找上传按钮（兼容不同版本的页面结构）
-            upload_btn = None
             footer_selectors = [
                 # 通用选择器 - 查找包含"上传"文本的主按钮
                 'xpath://button[contains(@class,"ecom-g-btn-primary")]//span[text()="上传"]/..',
@@ -2211,18 +1813,8 @@ def upload_file(
                 # 模态框底部
                 'xpath://div[contains(@class,"modal")]//button[contains(@class,"primary")]//span[text()="上传"]/..',
             ]
-            for selector in footer_selectors:
-                try:
-                    btn = new_tab.ele(selector, timeout=2)
-                    if btn and btn.states.is_displayed:
-                        upload_btn = btn
-                        print(f'  找到上传按钮: {selector}')
-                        break
-                except:
-                    continue
-            
+            upload_btn = _wait_for_first_visible(new_tab, footer_selectors, timeout=1.8, interval=0.12)
             if upload_btn:
-                # 使用JavaScript点击增强可靠性
                 upload_btn.click(by_js=True)
                 btn_class = upload_btn.attr('class') or ''
                 if 'disabled' in btn_class:
@@ -2231,53 +1823,12 @@ def upload_file(
                         new_tab.run_js('arguments[0].click();', upload_btn)
                     except:
                         pass
-                time.sleep(0.3)
             else:
                 print('警告: 未找到上传按钮，跳过本次裁剪')
-        # 等待上传完成（动态判断，最多90秒）
-        upload_flag = False
-        idle_checks = 0
-        for _ in range(180):
-            spinner = new_tab.ele('xpath://span[contains(@class,"ecom-g-btn-loading-icon")]', timeout=0.5)
-            uploading_text = new_tab.ele('上传中', timeout=0.5)
-            if not spinner and not uploading_text:
-                idle_checks += 1
-            else:
-                idle_checks = 0
-            if idle_checks >= 3:
-                upload_flag = True
-                break
-            time.sleep(0.5)
+        upload_flag = _wait_for_upload_complete(new_tab, timeout=90.0, interval=0.25)
         if not upload_flag:
             raise Exception(f'上传{key}超时失败!')
         print(f'上传{key}成功!')
-        time.sleep(0.3)
+        time.sleep(0.1)
 
 
-def create_video(new_tab):
-    if not new_tab.ele('xpath://div[text()="主图视频"]', timeout=1):
-        return
-    print('生成主图视频')
-    new_tab.ele('xpath://div[text()="主图视频"]').scroll.to_center()
-    time.sleep(0.3)
-    new_tab.ele('xpath://div[text()="主图视频"]').hover()
-    time.sleep(0.3)
-    new_tab.ele('xpath://div[text()="制作视频"]').click()
-    time.sleep(1)
-    new_tab.ele('xpath://div[text()="一键生成视频"]/../../..//span[text()="立即使用"]/..').click(by_js=True)
-    time.sleep(1)
-    new_tab.ele('xpath://div[text()="3:4主图视频"]').click()
-    time.sleep(0.5)
-    new_tab.ele('xpath://span[text()="一键生成"]/..').click()
-    time.sleep(3)
-    flag = False
-    for _ in range(300):
-        if not new_tab.ele('创意生成中...', timeout=1) and not new_tab.ele('创意视频生成中...', timeout=1):
-            flag = True
-            break
-        time.sleep(1)
-    if not flag:
-        raise Exception('创意生成超时失败!!!')
-    new_tab.ele('xpath://div[text()="商品展示类创意"]/../..//span[text()="上传该视频"]/..').click(by_js=True)
-    time.sleep(1)
-    print('生成主图视频成功!')

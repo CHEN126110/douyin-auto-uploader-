@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, ElLoading } from "element-plus";
 import { useProductStore } from "@/stores/productStore";
 import { CATEGORY_OPTIONS } from "@/types";
@@ -8,9 +9,9 @@ import { api } from "@/services/api";
 import SkuList from "@/components/SkuList.vue";
 import CaptureSection from "@/components/CaptureSection.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
-import SettingsDialog from "@/components/SettingsDialog.vue";
 
 const productStore = useProductStore();
+const router = useRouter();
 
 // 表单数据
 const formData = ref({
@@ -30,7 +31,6 @@ const contextMenuPosition = ref({ x: 0, y: 0 });
 const contextMenuProductId = ref<number | null>(null);
 
 // 设置弹窗
-const settingsVisible = ref(false);
 
 // 选中的SKU
 const selectedSkuPaths = ref<Set<string>>(new Set());
@@ -106,6 +106,10 @@ function handleContextMenu(event: MouseEvent, productId: number) {
   contextMenuPosition.value = { x: event.clientX, y: event.clientY };
   contextMenuProductId.value = productId;
   contextMenuVisible.value = true;
+}
+
+function openSettingsPage() {
+  router.push("/settings");
 }
 
 function isUserCancel(error: unknown) {
@@ -356,14 +360,23 @@ async function handleSmartFill() {
         unitPrice: formData.value.price,
       };
       
-      // 显示结果弹窗
+      await nextTick();
       pricingResultsVisible.value = true;
     } else {
-      ElMessage.error("智能定价失败");
+      const errorMessage =
+        (response as any)?.error ||
+        (response as any)?.message ||
+        "智能定价失败";
+      ElMessage.error(errorMessage);
     }
   } catch (error) {
     console.error("智能填充失败:", error);
-    ElMessage.error("智能填充失败，请检查后端服务");
+    const backendError =
+      (error as any)?.response?.data?.error ||
+      (error as any)?.response?.data?.message ||
+      (error as any)?.message ||
+      "智能填充失败，请检查后端服务";
+    ElMessage.error(backendError);
   } finally {
     smartFillLoading.value = false;
   }
@@ -855,7 +868,7 @@ onUnmounted(() => {
           <el-button type="danger" @click="handleDeleteAll">
             清空全部
           </el-button>
-          <el-button type="info" @click="settingsVisible = true">
+          <el-button type="info" @click="openSettingsPage">
             ⚙️ 设置
           </el-button>
         </div>
@@ -870,7 +883,6 @@ onUnmounted(() => {
     />
 
     <!-- 设置弹窗 -->
-    <SettingsDialog v-model:visible="settingsVisible" />
 
     <!-- 智能填充结果弹窗 -->
     <el-dialog
@@ -879,8 +891,9 @@ onUnmounted(() => {
       width="1200px"
       top="5vh"
       class="pricing-results-dialog"
-      :lock-scroll="true"
+      :lock-scroll="false"
       :close-on-click-modal="false"
+      destroy-on-close
       center
     >
       <!-- 配置与统计信息 -->
@@ -904,7 +917,7 @@ onUnmounted(() => {
           max-height="350"
           class="pricing-table"
           size="small"
-          table-layout="auto"
+          table-layout="fixed"
         >
           <el-table-column prop="sku_name" label="SKU名称" min-width="150">
             <template #default="{ row }">
@@ -1456,7 +1469,8 @@ onUnmounted(() => {
 
 .pricing-table {
   font-size: 12px;
-  min-width: max-content; // 确保表格宽度自适应内容
+  width: 100%;
+  min-width: 1080px;
   
   :deep(.el-table__header th) {
     background-color: #f8f9fa !important;

@@ -145,6 +145,8 @@ export interface AutomationConfig {
   shipping_template: string;
   shipping_templates: string[];
   material_compositions: MaterialComposition[];
+  material_options?: string[];
+  qualification_certificate_path?: string | null;
 }
 
 export interface Settings {

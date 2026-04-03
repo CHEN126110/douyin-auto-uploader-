@@ -17,6 +17,7 @@ import sqlite3
 import os
 import random
 import math
+from .runtime_paths import resolve_data_file
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ class TrendingKeywordsScraper:
         Args:
             db_path: 数据库文件路径
         """
-        self.db_path = db_path
+        legacy_path = db_path if os.path.isabs(db_path) else db_path
+        self.db_path = str(resolve_data_file(db_path, legacy_fallback=legacy_path))
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',

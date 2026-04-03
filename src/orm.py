@@ -3,8 +3,10 @@
 import logging
 import os
 from peewee import *  # type: ignore
+from .runtime_paths import resolve_data_file
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_database_path = os.path.join(_project_root, 'sqlite.db')
+_legacy_database_path = os.path.join(_project_root, 'sqlite.db')
+_database_path = str(resolve_data_file('sqlite.db', legacy_fallback=_legacy_database_path))
 database = SqliteDatabase(_database_path)
 
 

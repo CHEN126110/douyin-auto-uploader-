@@ -160,6 +160,37 @@ function jsonResult(payload) {
   };
 }
 
+function extractCaptureTaskId(payload) {
+  const nestedTaskId = payload?.data?.task_id;
+  if (typeof nestedTaskId === "string" && nestedTaskId.trim()) {
+    return nestedTaskId.trim();
+  }
+
+  const topLevelTaskId = payload?.task_id;
+  if (typeof topLevelTaskId === "string" && topLevelTaskId.trim()) {
+    return topLevelTaskId.trim();
+  }
+
+  return null;
+}
+
+function normalizeCaptureResponse(payload) {
+  const taskId = extractCaptureTaskId(payload);
+  if (!taskId) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    task_id: taskId,
+    data: {
+      ...(payload?.data ?? {}),
+      task_id: taskId,
+      url: payload?.data?.url ?? payload?.url ?? null,
+    },
+  };
+}
+
 function errorResult(error) {
   const normalized =
     error instanceof BackendError
@@ -1392,14 +1423,14 @@ async function startCaptureBatch(urls, options = {}) {
 
   for (const url of normalizedUrls) {
     try {
-      const response = await backendRequest("/api/capture/start", {
+      const response = normalizeCaptureResponse(await backendRequest("/api/capture/start", {
         method: "POST",
         body: { url, options: captureOptions },
-      });
+      }));
       tasks.push({
         url,
         success: true,
-        task_id: response?.data?.task_id ?? null,
+        task_id: extractCaptureTaskId(response),
         response,
       });
     } catch (error) {
@@ -2475,10 +2506,10 @@ function registerCoreTools(server) {
       },
     },
     async ({ url, options }) =>
-      backendRequest("/api/capture/start", {
+      normalizeCaptureResponse(await backendRequest("/api/capture/start", {
         method: "POST",
         body: { url, options: options ?? {} },
-      })
+      }))
   );
 
   registerTool(

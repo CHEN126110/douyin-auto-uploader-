@@ -1,6 +1,6 @@
 [package]
 name = "douyin-sock-publisher"
-version = "4.0.0"
+version = "4.0.6"
 description = "抖音袜子发布工具 - Tauri版本"
 authors = ["Dyin"]
 license = "MIT"

@@ -21,6 +21,7 @@ $aliasMap = @{
   "qwenmax" = "bailian/qwen-max"
   "coder" = "bailian/qwen-coder-plus"
   "qwenvl" = "bailian/qwen-vl-plus"
+  "mimo" = "openrouter/xiaomi/mimo-v2-pro"
 }
 
 $agentKey = $AgentId.Trim().ToLower()

@@ -37,12 +37,37 @@ const isIgnorablePromiseRejection = (reason: unknown) => {
   return false;
 };
 
+const isIgnorableRuntimeError = (detail: unknown) => {
+  const message =
+    detail instanceof Error
+      ? detail.message
+      : typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && "message" in detail
+          ? String((detail as { message?: unknown }).message ?? "")
+          : "";
+
+  return (
+    message.includes("ResizeObserver loop completed with undelivered notifications") ||
+    message.includes("ResizeObserver loop limit exceeded")
+  );
+};
+
 window.addEventListener("error", (event) => {
+  if (isIgnorableRuntimeError(event.error ?? event.message)) {
+    event.preventDefault();
+    return;
+  }
   showFatal("前端运行错误", event.error ?? event.message);
 });
 
 window.addEventListener("unhandledrejection", (event) => {
   if (isIgnorablePromiseRejection(event.reason)) {
+    event.preventDefault();
+    return;
+  }
+
+  if (isIgnorableRuntimeError(event.reason)) {
     event.preventDefault();
     return;
   }

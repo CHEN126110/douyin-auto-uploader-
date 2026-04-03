@@ -18,9 +18,16 @@ psutil>=5.9.0
 DrissionPage>=4.0.0
 playwright>=1.40.0
 
+# 桌面嵌入浏览器
+PySide6>=6.8.0
+shiboken6>=6.8.0
+natsort>=8.4.0
+pywin32>=306
+
 # 数据处理
 pillow>=10.0.0
 pyyaml>=6.0
+py7zr>=0.21.0
 
 # 打包工具
 pyinstaller>=6.0.0

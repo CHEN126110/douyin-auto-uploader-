@@ -5,16 +5,126 @@ import time as system_time
 import os
 import sys
 import copy
+import html
+import importlib
+import builtins
+import re
+import tempfile
 import uuid
+from decimal import Decimal, InvalidOperation
 
-if sys.platform == 'win32':
+
+def _resolve_bootstrap_log_path():
+    data_dir = os.environ.get('DOUYIN_DATA_DIR')
+    if data_dir:
+        log_dir = os.path.join(data_dir, 'logs')
+    else:
+        local_app_data = os.environ.get('LOCALAPPDATA')
+        if local_app_data:
+            log_dir = os.path.join(local_app_data, 'com.dyin.sock-publisher', 'logs')
+        else:
+            log_dir = os.path.join(tempfile.gettempdir(), 'dyin-sock-publisher-logs')
     try:
+        os.makedirs(log_dir, exist_ok=True)
+    except Exception:
+        log_dir = tempfile.gettempdir()
+    return os.path.join(log_dir, 'python-backend.bootstrap.log')
+
+
+_BOOTSTRAP_LOG_PATH = _resolve_bootstrap_log_path()
+
+
+def _bootstrap_log(message):
+    try:
+        with open(_BOOTSTRAP_LOG_PATH, 'a', encoding='utf-8', errors='replace') as fp:
+            fp.write(f"{message}\n")
+    except Exception:
+        pass
+
+
+def _bootstrap_excepthook(exc_type, exc_value, exc_tb):
+    formatted = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        _bootstrap_log('=== unhandled exception ===')
+        _bootstrap_log(formatted)
+    except Exception:
+        pass
+    try:
+        if sys.stderr is not None:
+            sys.stderr.write(formatted)
+            sys.stderr.flush()
+    except Exception:
+        pass
+
+
+sys.excepthook = _bootstrap_excepthook
+_EARLY_SIDECAR_MODE = str(os.environ.get('SIDECAR_MODE', '')).strip().lower()
+_bootstrap_log(f"bootstrap start frozen={getattr(sys, 'frozen', False)} sidecar_raw={os.environ.get('SIDECAR_MODE')!r}")
+
+
+def print(*args, **kwargs):
+    try:
+        return builtins.print(*args, **kwargs)
+    except UnicodeEncodeError:
+        file = kwargs.get('file', sys.stdout)
+        sep = kwargs.get('sep', ' ')
+        end = kwargs.get('end', '\n')
+        flush = kwargs.get('flush', False)
+        encoding = getattr(file, 'encoding', 'utf-8') or 'utf-8'
+        text = sep.join(str(arg) for arg in args)
+        safe_text = text.encode(encoding, errors='replace').decode(encoding, errors='replace')
+        return builtins.print(safe_text, end=end, file=file, flush=flush)
+
+class _SafeConsoleStream:
+    def __init__(self, stream):
+        self._stream = stream
+        self.encoding = getattr(stream, 'encoding', 'utf-8') or 'utf-8'
+
+    def write(self, text):
+        if text is None:
+            return 0
+        if not isinstance(text, str):
+            text = str(text)
+        try:
+            return self._stream.write(text)
+        except UnicodeEncodeError:
+            safe_text = text.encode(self.encoding, errors='replace').decode(self.encoding, errors='replace')
+            return self._stream.write(safe_text)
+
+    def flush(self):
+        return self._stream.flush()
+
+    def isatty(self):
+        return self._stream.isatty()
+
+    def fileno(self):
+        return self._stream.fileno()
+
+    def reconfigure(self, *args, **kwargs):
+        if hasattr(self._stream, 'reconfigure'):
+            result = self._stream.reconfigure(*args, **kwargs)
+            self.encoding = getattr(self._stream, 'encoding', self.encoding) or self.encoding
+            return result
+        return None
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+if sys.stdout is not None:
+    sys.stdout = _SafeConsoleStream(sys.stdout)
+if sys.stderr is not None:
+    sys.stderr = _SafeConsoleStream(sys.stderr)
+
+if sys.platform == 'win32' and _EARLY_SIDECAR_MODE not in ('1', 'true', 'yes', 'on'):
+    try:
+        Gui = importlib.import_module('src.gui').Gui
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
 
-if getattr(sys, 'frozen', False):
+if getattr(sys, 'frozen', False) and _EARLY_SIDECAR_MODE not in ('1', 'true', 'yes', 'on'):
     try:
         base_dir = os.path.dirname(sys.executable)
         os.add_dll_directory(base_dir)
@@ -36,24 +146,51 @@ if getattr(sys, 'frozen', False):
             os.environ['PATH'] = meipass + os.pathsep + os.path.join(meipass, 'PySide6') + os.pathsep + os.path.join(meipass, 'shiboken6') + os.pathsep + os.environ.get('PATH', '')
     except Exception:
         pass
+_bootstrap_log('import flask start')
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+_bootstrap_log('import flask done')
 
 # 开发模式下，sidecar 位于 tauri-app/python-sidecar，需要把项目根目录加入 sys.path
+repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if not getattr(sys, 'frozen', False):
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
 
+_bootstrap_log('import runtime_paths start')
+from src.runtime_paths import bootstrap_runtime_environment, resolve_data_file
+_bootstrap_log('import runtime_paths done')
+
+bootstrap_runtime_environment(
+    seed_files={
+        'cfg.yaml': ['cfg.yaml', os.path.join(repo_root, 'tauri-app', 'cfg.yaml'), os.path.join(repo_root, 'cfg.yaml')],
+        'sqlite.db': ['sqlite.db', os.path.join(repo_root, 'sqlite.db')],
+        'pricing_config.json': ['pricing_config.json', os.path.join(repo_root, 'pricing_config.json')],
+        'user_settings.json': ['user_settings.json', os.path.join(repo_root, 'tauri-app', 'user_settings.json'), os.path.join(repo_root, 'user_settings.json')],
+        'trending_keywords.db': ['trending_keywords.db', os.path.join(repo_root, 'trending_keywords.db')],
+    }
+)
+_bootstrap_log('bootstrap_runtime_environment done')
+
+_bootstrap_log('import orm start')
 from src.orm import Record
+_bootstrap_log('import orm done')
+_bootstrap_log('import utils start')
 from src.utils import *
+from src.utils import _wait_until
+_bootstrap_log('import utils done')
+_bootstrap_log('import config start')
 from src.config import settings_manager
-from src.gui import Gui
-from src.thread import Thread
+_bootstrap_log('import config done')
+_bootstrap_log('import professional_title_generator start')
 from src.professional_title_generator import get_professional_generator, ProductInfo as ProfessionalProductInfo
+_bootstrap_log('import professional_title_generator done')
+_bootstrap_log('import enhanced_category_selector start')
 from src.enhanced_category_selector import smart_select_category
+_bootstrap_log('import enhanced_category_selector done')
 import json
 import base64
+import shutil
 from datetime import datetime, timedelta
 import threading
 
@@ -65,7 +202,13 @@ def get_app_root():
     - 开发环境：返回脚本所在目录
     - 打包后（PyInstaller）：返回可执行文件所在目录
     """
-    if getattr(sys, 'frozen', False):
+    data_dir = os.environ.get('DOUYIN_DATA_DIR')
+    if data_dir:
+        return data_dir
+    env_resource_dir = os.environ.get('DOUYIN_RESOURCE_DIR')
+    if env_resource_dir:
+        return env_resource_dir
+    elif getattr(sys, 'frozen', False):
         # 如果是打包后的可执行文件
         return os.path.dirname(sys.executable)
     else:
@@ -114,6 +257,99 @@ def normalize_save_path(path):
     return result
 
 
+def get_runtime_data_path(file_name, legacy_fallback=None):
+    fallback = legacy_fallback or os.path.join(os.path.dirname(__file__), file_name)
+    return str(resolve_data_file(file_name, legacy_fallback=fallback))
+
+
+_AUTOMATION_ASSETS_DIR_NAME = 'automation_assets'
+_QUALIFICATION_CERTIFICATE_BASENAME = 'qualification_certificate'
+_ALLOWED_AUTOMATION_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
+
+
+def _get_automation_assets_dir():
+    assets_dir = get_runtime_data_path(_AUTOMATION_ASSETS_DIR_NAME)
+    os.makedirs(assets_dir, exist_ok=True)
+    return assets_dir
+
+
+def _is_path_within_dir(path_value, directory):
+    try:
+        resolved_path = os.path.abspath(path_value)
+        resolved_dir = os.path.abspath(directory)
+        return os.path.commonpath([resolved_path, resolved_dir]) == resolved_dir
+    except Exception:
+        return False
+
+
+def _delete_managed_qualification_certificate_files():
+    assets_dir = _get_automation_assets_dir()
+    for file_name in os.listdir(assets_dir):
+        if not file_name.startswith(f'{_QUALIFICATION_CERTIFICATE_BASENAME}.'):
+            continue
+        file_path = os.path.join(assets_dir, file_name)
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except Exception:
+            continue
+
+
+def _resolve_managed_qualification_certificate_path(source_path):
+    extension = os.path.splitext(source_path)[1].lower()
+    if extension not in _ALLOWED_AUTOMATION_IMAGE_EXTENSIONS:
+        raise ValueError('仅支持 jpg、jpeg、png、bmp、webp 格式的合格证图片')
+    file_name = f'{_QUALIFICATION_CERTIFICATE_BASENAME}{extension}'
+    return os.path.join(_get_automation_assets_dir(), file_name)
+
+
+def _get_runtime_log_dir():
+    try:
+        log_dir = os.path.dirname(_BOOTSTRAP_LOG_PATH) or tempfile.gettempdir()
+        os.makedirs(log_dir, exist_ok=True)
+        return log_dir
+    except Exception:
+        return tempfile.gettempdir()
+
+
+_UPLOAD_STAGE_TIMING_LOG_PATH = os.path.join(_get_runtime_log_dir(), 'upload-stage-timing.jsonl')
+
+
+def _append_stage_timing_log(entry):
+    try:
+        with open(_UPLOAD_STAGE_TIMING_LOG_PATH, 'a', encoding='utf-8', errors='replace') as fp:
+            fp.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+
+def _run_stage_with_timing(stage_timings, record, stage_name, func, *args, **kwargs):
+    started_at = datetime.now().isoformat()
+    perf_started_at = system_time.perf_counter()
+    error_message = None
+    try:
+        return func(*args, **kwargs)
+    except Exception as exc:
+        error_message = str(exc)
+        raise
+    finally:
+        duration_ms = round((system_time.perf_counter() - perf_started_at) * 1000, 2)
+        entry = {
+            'type': 'stage',
+            'captured_at': datetime.now().isoformat(),
+            'started_at': started_at,
+            'stage': stage_name,
+            'duration_ms': duration_ms,
+            'record_id': getattr(record, 'id', None),
+            'record_name': getattr(record, 'name', ''),
+            'status': 'failed' if error_message else 'ok',
+            'error': error_message,
+        }
+        stage_timings.append(entry)
+        _append_stage_timing_log(entry)
+        print(f'[阶段耗时] {stage_name}: {duration_ms}ms')
+
+
 app = Flask(__name__, template_folder=constants.run_path, static_folder=constants.run_path, static_url_path='')
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config['JWT_SECRET_KEY'] = constants.secret
@@ -138,7 +374,8 @@ class _GuiState:
 gui = _GuiState()
 
 
-_BROWSER_DEBUG_DEFAULT_URL = 'https://fxg.jinritemai.com/login/common'
+_PUBLISH_CREATE_URL = 'https://fxg.jinritemai.com/ffa/g/create'
+_BROWSER_DEBUG_DEFAULT_URL = _PUBLISH_CREATE_URL
 _BROWSER_DEBUG_MAX_EVENTS = 200
 _BROWSER_DEBUG_MAX_SESSIONS = 8
 _browser_debug_lock = threading.Lock()
@@ -150,7 +387,14 @@ _browser_debug_state = {
 
 
 def is_sidecar_mode() -> bool:
-    return os.environ.get('SIDECAR_MODE') == '1'
+    value = str(os.environ.get('SIDECAR_MODE', '')).strip().lower()
+    if value in ('1', 'true', 'yes', 'on'):
+        return True
+    if getattr(sys, 'frozen', False):
+        executable_name = os.path.basename(sys.executable).lower()
+        if executable_name in ('python-backend.exe', 'python-backend'):
+            return True
+    return False
 
 
 def get_sidecar_port() -> int:
@@ -384,6 +628,7 @@ def _collect_browser_page_bits(tab, max_fields=30, max_controls=30):
     script = """
     const maxFields = %d;
     const maxControls = %d;
+    const maxOverlays = 12;
     const normalize = (value, limit = 160) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);
     const isVisible = (el) => {
       if (!el) return false;
@@ -410,13 +655,26 @@ def _collect_browser_page_bits(tab, max_fields=30, max_controls=30):
         value: normalize(el.value || '', 80),
         attr_field_id: el.getAttribute('attr-field-id') || ''
       }));
+    const overlayItems = Array.from(document.querySelectorAll(
+      '[role="dialog"], .ecom-g-modal, .ecom-g-popover, [class*="guide"], [class*="Guide"], [class*="tour"], [class*="Tour"], [class*="coach"], [class*="Coach"]'
+    ))
+      .filter(isVisible)
+      .slice(0, maxOverlays)
+      .map((el, index) => ({
+        index,
+        tag: (el.tagName || '').toLowerCase(),
+        class_name: el.className || '',
+        role: el.getAttribute('role') || '',
+        text: normalize(el.innerText || el.getAttribute('aria-label') || '', 220)
+      }));
     return {
       url: location.href,
       title: document.title,
       ready_state: document.readyState,
       scroll: { x: window.scrollX, y: window.scrollY },
       field_items: fieldItems,
-      control_items: controlItems
+      control_items: controlItems,
+      overlay_items: overlayItems
     };
     """ % (max_fields, max_controls)
 
@@ -547,6 +805,7 @@ def _snapshot_browser_context(tab, locator=None, locator_type='raw', limit=5, in
         'scroll': page_bits.get('scroll') or {'x': 0, 'y': 0},
         'visible_fields': page_bits.get('field_items') or [],
         'visible_controls': page_bits.get('control_items') or [],
+        'visible_overlays': page_bits.get('overlay_items') or [],
     }
 
     if locator:
@@ -1178,501 +1437,871 @@ def save_info():
         return api_error(msg=f'保存失败：{str(e)}')
 
 
-@app.post('/start')
-def start():
-    msg_list = []
-    try:
-        # 🚀 启动上传流程
-        print("🚀 开始上传流程...")
+def _wait_login_complete(page, report_progress):
+    for idx in range(150):
+        current_url = str(page.url or '')
+        if '/homepage' in current_url or '/ffa/g/create' in current_url:
+            return True
+        if idx % 25 == 0:
+            report_progress(14, '等待登录完成，请在浏览器中完成登录')
+        time.sleep(0.2)
+    return False
 
-        request_data = request.get_json(silent=True) or {}
-        record_id = request_data.get('record_id')
 
-        if record_id:
-            record = Record.get_or_none(Record.id == record_id)
-            if not record:
-                return api_error(msg='指定产品不存在')
-            record_list = [record]
-        else:
-            record_list = list(Record.select().execute())
+def _load_upload_records(record_id=None):
+    if record_id:
+        record = Record.get_or_none(Record.id == record_id)
+        if not record:
+            return None, '指定产品不存在'
+        return [record], None
 
-        if len(record_list) == 0:
-            return api_error(msg='没有待上传数据！')
+    record_list = list(Record.select().execute())
+    if len(record_list) == 0:
+        return None, '没有待上传数据！'
+    return record_list, None
 
-        user_settings = settings_manager.get_settings()
-        automation_config = settings_manager.normalize_automation_config(user_settings.automation_config)
-        shipping_template_name = str(automation_config.get('shipping_template') or '中通包邮').strip() or '中通包邮'
-        configured_materials = []
-        for item in automation_config.get('material_compositions') or []:
-            if not isinstance(item, dict):
-                continue
-            material_name = str(item.get('material') or '').strip()
-            percentage = item.get('percentage')
-            if not material_name:
-                continue
-            try:
-                percentage_text = str(int(float(percentage)))
-            except Exception:
-                percentage_text = ''
-            configured_materials.append((material_name, percentage_text))
-        configured_materials = [item for item in configured_materials if item[0] and item[1]]
-        if not configured_materials:
-            configured_materials = [('棉', '75'), ('氨纶', '25')]
-        
-        # 确保 gui.page 存在且不为 None
-        if not gui.page:
-            gui.page = get_page('https://fxg.jinritemai.com/login/common')
-            login_ok = False
-            for _ in range(100):
-                if '/homepage' in gui.page.url:
-                    login_ok = True
-                    break
-                time.sleep(0.3)
-            if not login_ok:
-                return api_error('超时未登录！！！')
-        
+
+def _load_upload_runtime_config():
+    user_settings = settings_manager.get_settings()
+    automation_config = settings_manager.normalize_automation_config(user_settings.automation_config)
+    shipping_template_name = str(automation_config.get('shipping_template') or '中通包邮').strip() or '中通包邮'
+    qualification_certificate_path = str(automation_config.get('qualification_certificate_path') or '').strip()
+    configured_materials = []
+    for item in automation_config.get('material_compositions') or []:
+        if not isinstance(item, dict):
+            continue
+        material_name = str(item.get('material') or '').strip()
+        percentage = item.get('percentage')
+        if not material_name:
+            continue
         try:
-            main_tab = gui.page.get_tab(gui.page.latest_tab)
-        except:
-            gui.page = get_page('https://fxg.jinritemai.com/login/common')
-            login_ok = False
-            for _ in range(100):
-                if '/homepage' in gui.page.url:
-                    login_ok = True
-                    break
-                time.sleep(0.3)
-            if not login_ok:
-                return api_error('超时未登录！！！')
-            main_tab = gui.page.get_tab(gui.page.latest_tab)
-        gui.page.close_tabs(main_tab, others=True)
+            percentage_text = str(int(float(percentage)))
+        except Exception:
+            percentage_text = ''
+        configured_materials.append((material_name, percentage_text))
+    configured_materials = [item for item in configured_materials if item[0] and item[1]]
+    if not configured_materials:
+        configured_materials = [('棉', '75'), ('氨纶', '25')]
+    if qualification_certificate_path and not os.path.isfile(qualification_certificate_path):
+        print(f'自动化设置中的合格证图片不存在，已跳过: {qualification_certificate_path}')
+        qualification_certificate_path = ''
+    return shipping_template_name, configured_materials, qualification_certificate_path
+
+
+def _ensure_publish_session(report_progress):
+    if not gui.page:
+        report_progress(13, '正在启动浏览器并检查登录状态')
+        gui.page = get_page(_PUBLISH_CREATE_URL)
+        if not _wait_login_complete(gui.page, report_progress):
+            return None, '超时未登录！！！'
+
+    try:
+        main_tab = gui.page.get_tab(gui.page.latest_tab)
+    except:
+        report_progress(13, '正在恢复浏览器会话并检查登录状态')
+        gui.page = get_page(_PUBLISH_CREATE_URL)
+        if not _wait_login_complete(gui.page, report_progress):
+            return None, '超时未登录！！！'
+        main_tab = gui.page.get_tab(gui.page.latest_tab)
+
+    gui.page.close_tabs(main_tab, others=True)
+    return main_tab, None
+
+
+def _prepare_record_assets(record):
+    if not record.title:
+        return None, '标题为空！！！'
+    if not record.clazz:
+        return None, '类目为空！！！'
+    if not str(record.repo):
+        return None, '库存为空！！！'
+
+    try:
+        main_pic_list = get_pic_list(record, '800')
+    except:
+        return None, '未找到主图或者主图不全！！！'
+
+    try:
+        sub_pic_list = get_pic_list(record, '750')
+        if record.type == 2 and len(sub_pic_list) == 0:
+            print('ID模式：没有3:4主图，将使用平台自带的1:1导入功能')
+    except:
+        if record.type == 1:
+            return None, '未找到4:3主图或者4:3主图不全！！！'
+        sub_pic_list = []
+        print('ID模式：获取3:4主图时出现异常，将使用平台自带的1:1导入功能')
+
+    try:
+        detail_pic_list = get_detail_pic_list(record)
+    except:
+        return None, '未找到详情图！！！'
+
+    diaopai_pic = get_diaopai_pic(record)
+    my_video = get_my_video(record)
+
+    sku_list = json.loads(record.content)
+    if len(sku_list) == 0:
+        return None, '未找到sku信息！！！'
+
+    for sku_item in sku_list:
+        if not sku_item['name'] or sku_item['price'] is None:
+            return None, 'sku信息不全！！！'
+        try:
+            float(sku_item['price'])
+        except (ValueError, TypeError):
+            return None, 'sku信息不全！！！'
+
+    white_pic = get_white_pic(record, sku_list)
+    return {
+        'main_pic_list': main_pic_list,
+        'sub_pic_list': sub_pic_list,
+        'detail_pic_list': detail_pic_list,
+        'diaopai_pic': diaopai_pic,
+        'my_video': my_video,
+        'sku_list': sku_list,
+        'white_pic': white_pic,
+    }, None
+
+
+_INTERFERING_OVERLAY_TEXTS = (
+    '我知道了',
+    '知道了',
+    '暂不',
+    '跳过',
+    '关闭引导',
+    '关闭新手引导',
+    '稍后再说',
+    '下次再说',
+    '以后再说',
+)
+
+
+def _build_overlay_button_selector(scope_expr=None):
+    predicate_parts = []
+    for text in _INTERFERING_OVERLAY_TEXTS:
+        predicate_parts.append(f'normalize-space(.)="{text}"')
+        predicate_parts.append(f'.//span[normalize-space(.)="{text}"]')
+    predicate = ' or '.join(predicate_parts)
+    base = '//*[self::button or @role="button"]'
+    if scope_expr:
+        base = f'//*[{scope_expr}]//*[self::button or @role="button"]'
+    return f'xpath:{base}[{predicate}]'
+
+
+def _find_first_visible_element(tab, selectors, timeout=0.15):
+    for selector in selectors:
+        try:
+            elements = tab.eles(selector, timeout=timeout)
+        except Exception:
+            continue
+        for element in elements:
+            try:
+                if element and element.states.is_displayed:
+                    return element
+            except Exception:
+                continue
+    return None
+
+
+def _click_element_safely(element):
+    try:
+        element.scroll.to_center()
+    except Exception:
+        pass
+    for action in (
+        lambda: element.click(),
+        lambda: element.click(by_js=True),
+        lambda: element.run_js('arguments[0].click();', element),
+    ):
+        try:
+            action()
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _dismiss_interfering_overlays(main_tab, context=''):
+    total_actions = 0
+
+    try:
+        drag_controller = main_tab.ele('xpath://div[contains(@class,"index_DragController__")]', timeout=0.1)
+        if drag_controller and drag_controller.states.is_displayed:
+            main_tab.remove_ele(drag_controller)
+            total_actions += 1
+    except Exception:
+        pass
+
+    overlay_root = (
+        'contains(@class,"ecom-g-modal") or contains(@class,"ecom-g-popover") '
+        'or @role="dialog" or contains(@class,"guide") or contains(@class,"Guide") '
+        'or contains(@class,"tour") or contains(@class,"Tour") '
+        'or contains(@class,"coach") or contains(@class,"Coach")'
+    )
+
+    text_button_selector = _build_overlay_button_selector()
+    scoped_text_button_selector = _build_overlay_button_selector(overlay_root)
+    close_button_selector = (
+        f'xpath://*[{overlay_root}]//*[self::button or @role="button"]'
+        '[contains(@aria-label,"鍏抽棴") or contains(@title,"鍏抽棴") '
+        'or contains(@class,"close") or contains(@class,"Close")]'
+    )
+
+    for _ in range(2):
+        clicked = False
+        selectors = [scoped_text_button_selector, text_button_selector]
+        for text in ():
+            selectors.extend([
+                f'xpath://button[normalize-space(.)="{text}" or .//span[normalize-space(.)="{text}"]]',
+                f'xpath://*[{overlay_root}]//*[self::button or @role="button"][normalize-space(.)="{text}" or .//span[normalize-space(.)="{text}"]]',
+                f'xpath://*[{overlay_root}]//*[normalize-space(.)="{text}"]/ancestor::*[self::button or @role="button"][1]',
+            ])
+        selectors.extend([
+            f'xpath://*[{overlay_root}]//*[self::button or @role="button"][contains(@aria-label,"关闭") or contains(@title,"关闭")]',
+            f'xpath://*[{overlay_root}]//*[self::button or @role="button"][contains(@class,"close") or contains(@class,"Close")]',
+        ])
+        target = _find_first_visible_element(main_tab, selectors, timeout=0.02)
+        if target and _click_element_safely(target):
+            clicked = True
+            total_actions += 1
+            time.sleep(0.05)
+
+        if not clicked:
+            break
+
+    if total_actions > 0:
+        print(f'已处理干扰弹层{total_actions}次' + (f'，阶段: {context}' if context else ''))
+    return total_actions
+
+
+def _get_title_input(main_tab, timeout=0.3):
+    title_field = main_tab.ele('xpath://div[@attr-field-id="商品标题"]', timeout=timeout)
+    if not title_field:
+        return None
+
+    selectors = [
+        'xpath:.//input[@id="pg-title-input"]',
+        'xpath:.//input[@type="text"]',
+        'xpath:.//input',
+        'xpath:.//textarea',
+    ]
+    for selector in selectors:
+        try:
+            candidates = title_field.eles(selector, timeout=0.05)
+        except Exception:
+            candidates = []
+        for item in candidates:
+            try:
+                if item and item.states.is_displayed:
+                    return item
+            except Exception:
+                continue
+    return None
+
+
+def _is_publish_page_ready(main_tab):
+    try:
+        current_url = str(main_tab.url or '')
+    except Exception:
+        current_url = ''
+
+    if '/ffa/g/create' not in current_url:
+        return False
+
+    try:
+        return bool(
+            _get_title_input(main_tab, timeout=0.05) or
+            main_tab.ele('xpath://div[@attr-field-id="商品标题"]', timeout=0.05) or
+            main_tab.ele('xpath://span[text()="主图上传"]', timeout=0.05) or
+            main_tab.ele('xpath://button//span[text()="下一步"]', timeout=0.05)
+        )
+    except Exception:
+        return False
+
+
+def _open_publish_page(main_tab, report_progress):
+    print('打开商品发布页面...')
+    report_progress(22, '正在打开商品发布页面')
+    main_tab.handle_alert(next_one=True)
+    if not _is_publish_page_ready(main_tab):
+        main_tab.get(_PUBLISH_CREATE_URL)
+    ready = _wait_until(
+        lambda: _is_publish_page_ready(main_tab),
+        timeout=10,
+        interval=0.1
+    )
+    if not ready:
+        return False
+
+    _dismiss_interfering_overlays(main_tab, context='open_publish_page')
+
+    try:
+        republish_btn = _find_first_visible_element(
+            main_tab,
+            ['xpath://span[text()="重新发布"]/../..'],
+            timeout=0.15
+        )
+        if republish_btn:
+            republish_btn.click(by_js=True)
+            _dismiss_interfering_overlays(main_tab, context='republish')
+    except:
+        pass
+    return True
+
+
+def _fill_title_for_record(main_tab, record):
+    _dismiss_interfering_overlays(main_tab, context='fill_title')
+    input_element = _get_title_input(main_tab, timeout=0.4)
+    if not input_element:
+        raise Exception('未找到商品标题输入框')
+    input_element.click()
+    time.sleep(0.05)
+    input_element.input(record.title)
+    time.sleep(0.05)
+    try:
+        main_tab.remove_ele(main_tab.ele('xpath://div[contains(@class,"index_DragController__")]', timeout=1))
+    except:
+        pass
+    _dismiss_interfering_overlays(main_tab, context='fill_title')
+
+
+def _upload_main_images(main_tab, record, main_pic_list):
+    upload_file(main_tab, main_pic_list, '主图', error_size='长宽比需为1:1' if record.type == 2 else None)
+
+
+def _select_category_and_prepare_attributes(main_tab, record, diaopai_pic):
+    _dismiss_interfering_overlays(main_tab, context='select_category')
+    print(f'开始智能类目选择: {wazi_dict.get(record.clazz)}')
+    if not smart_select_category(main_tab, record.clazz):
+        print('类目选择失败，已尝试推荐与手动选择。请检查页面结构或账号资质。')
+        raise Exception('类目选择失败')
+    print('智能类目选择成功')
+    _dismiss_interfering_overlays(main_tab, context='select_category')
+
+    gen_btn = main_tab.ele(
+        'xpath://div[@data-better-log-outer-key="short_product_name"]'
+        + '//span[contains(@class,"ecom-g-input-suffix")]//img',
+        timeout=3
+    )
+    if gen_btn:
+        gen_btn.scroll.to_center()
+        gen_btn.click(by_js=True)
+        print('已点击生成短标题按钮')
+    else:
+        print('未找到生成短标题按钮，检查 XPath 或页面结构是否变化')
+
+    _dismiss_interfering_overlays(main_tab, context='after_short_title')
+
+    if diaopai_pic and str(record.clazz) != '0':
+        print('处理其他类目吊牌上传...')
+        upload_file(main_tab, [diaopai_pic], '吊牌')
+        for _ in range(30):
+            if main_tab.ele('吊牌识别成功', timeout=0.1):
+                break
+            if main_tab.ele('吊牌识别失败', timeout=0.1):
+                break
+            time.sleep(0.1)
+
+
+def _upload_qualification_certificate(main_tab, qualification_certificate_path):
+    if not qualification_certificate_path:
+        print('未配置合格证图片，跳过合格证上传')
+        return
+    if not os.path.isfile(qualification_certificate_path):
+        print(f'合格证图片不存在，跳过上传: {qualification_certificate_path}')
+        return
+
+    qualification_area = None
+    try:
+        qualification_area = main_tab.ele('xpath://div[@attr-field-id="合格证"]', timeout=0.5)
+    except Exception:
+        qualification_area = None
+
+    if not qualification_area:
+        print('当前页面未发现“合格证”上传区域，跳过合格证上传')
+        return
+
+    print('开始上传自动化设置中的合格证图片...')
+    upload_file(
+        main_tab,
+        [qualification_certificate_path],
+        '合格证',
+        target_field_id='合格证',
+        wait_for_finish=False,
+    )
+
+
+def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pic, qualification_certificate_path):
+    _dismiss_interfering_overlays(main_tab, context='fill_category_attributes')
+    current_category_text = get_current_category_text(main_tab)
+    current_sock_height = infer_sock_height_value(current_category_text, record.clazz)
+    is_ship_socks = '船袜' in current_category_text
+    print(f'当前页面类目: {current_category_text or "未识别"}')
+    if current_sock_height:
+        print(f'当前页面筒高目标值: {current_sock_height}')
+
+    if is_ship_socks:
+        print('处理船袜类目属性...')
+        main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
+        time.sleep(0.1)
+
+        select_text(main_tab, '品牌', '无品牌')
+        time.sleep(0.1)
+        try:
+            material_input = main_tab.ele('xpath://div[@attr-field-id="材质"]//input[@placeholder="请输入"]')
+            material_input.scroll.to_center()
+            material_input.click()
+            time.sleep(0.1)
+            material_input.input('棉')
+            time.sleep(0.1)
+            print('船袜类目：已填写材质为棉')
+        except Exception as e:
+            print(f'船袜类目材质填写失败: {str(e)}')
+
+    elif diaopai_pic:
+        print('处理其他类目属性（有吊牌）...')
+        main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
+        time.sleep(0.1)
+
+        ss = main_tab.eles('xpath://div[@attr-field-id="面料材质"]//span[contains(@class,"styles_del__")]', timeout=1)
+        for del_btn in ss:
+            del_btn.click(by_js=True)
+            time.sleep(0.3)
+
+        select_text(main_tab, '品牌', '无品牌')
+        select_text(main_tab, '适用人群', '成人')
+        select_text(main_tab, '适用性别', get_sex(record.title))
+        if current_sock_height:
+            select_text(main_tab, '筒高', current_sock_height)
+
+    else:
+        print('处理其他类目属性（无吊牌）...')
+        main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
+        time.sleep(0.1)
+        material_ok = set_material_composition(main_tab, configured_materials)
+        if not material_ok:
+            raise Exception('面料材质填写失败')
+        select_text(main_tab, '品牌', '无品牌')
+        select_text(main_tab, '适用人群', '成人')
+        select_text(main_tab, '适用性别', get_sex(record.title))
+        if current_sock_height:
+            select_text(main_tab, '筒高', current_sock_height)
+
+    _dismiss_interfering_overlays(main_tab, context='before_qualification_certificate')
+    _upload_qualification_certificate(main_tab, qualification_certificate_path)
+
+
+def _upload_media_assets(main_tab, sub_pic_list, my_video, white_pic, detail_pic_list):
+    _dismiss_interfering_overlays(main_tab, context='upload_media_assets')
+    if len(sub_pic_list) > 0:
+        upload_file(
+            main_tab,
+            sub_pic_list,
+            '主图',
+            error_size='长宽比需为3:4',
+            target_field_id='主图3:4',
+            wait_for_finish=False
+        )
+    else:
+        print("跳过3:4主图上传，尝试自动点击'从1:1主图智能裁剪'按钮")
+        try:
+            if click_field_action(main_tab, '主图3:4', '从1:1主图智能裁剪') or click_field_action(main_tab, '主图3:4', '从1:1主图一键填入'):
+                print('成功触发3:4主图智能裁剪')
+                time.sleep(0.2)
+            else:
+                print('未找到3:4主图智能裁剪按钮')
+        except Exception as e:
+            print(f'自动点击3:4主图智能裁剪按钮失败: {str(e)}')
+            print('请手动点击3:4主图智能裁剪按钮')
+    main_tab.ele('xpath://div[@attr-field-id="主图视频"]').scroll.to_see()
+    time.sleep(0.1)
+    _dismiss_interfering_overlays(main_tab, context='before_video_upload')
+
+    if my_video:
+        print('开始上传主图视频...')
+        upload_file(
+            main_tab,
+            [my_video],
+            '主图视频',
+            target_field_id='主图视频',
+            wait_for_finish=False
+        )
+    else:
+        print('没有本地主图视频，尝试在主图视频区域内点击一键生成')
+        if click_field_action(main_tab, '主图视频', '一键生成'):
+            time.sleep(0.2)
+        else:
+            print('未找到可用的一键生成按钮，或按钮当前不可点击')
+
+    upload_file(
+        main_tab,
+        [white_pic],
+        '白底图',
+        target_field_id='白底图',
+        wait_for_finish=False
+    )
+    time.sleep(0.5)
+    _dismiss_interfering_overlays(main_tab, context='before_detail_upload')
+    try:
+        apply_btn_list = main_tab.eles('xpath://div[text()="AI智能做主图"]/../../../..//span[text()="应用"]/..', timeout=1)
+        for item in apply_btn_list:
+            if item.states.is_displayed:
+                item.click()
+                time.sleep(3)
+                break
+        if len(apply_btn_list) > 0:
+            main_tab.ele('xpath://div[text()="AI智能做主图"]/../../../..//span[text()="上传"]/..', timeout=1).click()
+            time.sleep(0.5)
+    except:
+        pass
+    upload_file(main_tab, detail_pic_list, '图片', extra=True, target_field_id='商品详情')
+
+
+def _configure_sku_entries(main_tab, sku_list, remark):
+    _dismiss_interfering_overlays(main_tab, context='configure_sku_entries')
+    main_tab.ele('xpath://span[text()="价格与库存"]').scroll.to_see()
+    time.sleep(0.1)
+
+    print('选择发货时间 -> 48小时')
+    main_tab.ele('xpath://span[text()="48小时"]').click()
+    time.sleep(0.1)
+
+    print('勾选添加规格图片')
+    main_tab.ele('xpath://span[text()="添加规格图"]').click(by_js=True)
+    time.sleep(0.1)
+
+    ss = main_tab.eles('xpath://div[@id="skuValue-颜色分类"]//span[@data-kora="删除规格值"]', timeout=1)
+    for del_btn in ss:
+        del_btn.click(by_js=True)
+        time.sleep(0.1)
+
+    for i, sku in enumerate(sku_list):
+        set_sku_info(main_tab, i, sku, remark)
+
+
+def _configure_sku_structure(main_tab):
+    _dismiss_interfering_overlays(main_tab, context='configure_sku_structure')
+    print('选择均码')
+    main_tab.ele('xpath://div[@id="skuValue-码数"]//input').scroll.to_center()
+    time.sleep(0.1)
+    main_tab.ele('xpath://div[@id="skuValue-码数"]//input').click()
+    time.sleep(0.1)
+    main_tab.ele('xpath://li[@title="均码"]').click()
+    time.sleep(0.1)
+    main_tab.eles('xpath://li[@title="均码"]')[1].click()
+    time.sleep(0.5)
+    try:
+        confirm_button = main_tab.ele('xpath://div[contains(@class,"styles_popupFooter__")]//button[.//span[starts-with(text(), "确定")]]', timeout=0.5)
+        confirm_button.click()
+    except:
+        pass
+    _dismiss_interfering_overlays(main_tab, context='configure_sku_structure')
+
+
+def _xpath_text_literal(value):
+    value = str(value)
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    return "concat(" + ', "\'", '.join([f"'{part}'" for part in parts]) + ")"
+
+
+def _normalize_numeric_text(value):
+    text = '' if value is None else str(value).strip()
+    if not text:
+        return ''
+    cleaned = text.replace('￥', '').replace(',', '').strip()
+    try:
+        number = Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return cleaned
+    normalized = format(number.normalize(), 'f')
+    if '.' in normalized:
+        normalized = normalized.rstrip('0').rstrip('.')
+    return normalized or '0'
+
+
+def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template_name):
+    print('设置价格和库存...')
+    _dismiss_interfering_overlays(main_tab, context='fill_price_and_stock')
+    price_stock_root = main_tab.ele('xpath://div[@attr-field-id="价格与库存"]')
+    if not price_stock_root:
+        raise Exception('未找到价格与库存区域')
+
+    for i, sku in enumerate(sku_list):
+        sku_name = str(sku.get('name', '')).strip()
+        sku_price = _normalize_numeric_text(sku.get('price'))
+        sku_stock = _normalize_numeric_text(record.repo)
+        print(f'填写SKU价格库存 -> {i + 1}. {sku_name} | 价格:{sku_price} | 库存:{sku_stock}')
+
+        row_selector = (
+            'xpath://tr[contains(@class,"ecom-g-table-row")]'
+            f'[.//td[1]//div[contains(@class,"styles_specName__") and normalize-space(.)={_xpath_text_literal(sku_name)}]]'
+        )
+        row_list = price_stock_root.eles(f'xpath:.{row_selector[6:]}', timeout=1)
+        if not row_list:
+            raise Exception(f'未找到价格库存行：{sku_name}')
+
+        tr = row_list[-1]
+        tr.scroll.to_center()
+        time.sleep(0.1)
+
+        price_input = tr.ele('xpath:./td[3]//input', timeout=1)
+        stock_input = tr.ele('xpath:./td[4]//input', timeout=1)
+        if not price_input or not stock_input:
+            raise Exception(f'未找到价格或库存输入框：{sku_name}')
+
+        price_input.input(sku_price, clear=True)
+        time.sleep(0.1)
+        stock_input.input(sku_stock, clear=True)
+        time.sleep(0.1)
+
+        expected_price = _normalize_numeric_text(sku_price)
+        expected_stock = _normalize_numeric_text(sku_stock)
+
+        def _price_stock_written():
+            current_price = _normalize_numeric_text(price_input.attr('value'))
+            current_stock = _normalize_numeric_text(stock_input.attr('value'))
+            return current_price == expected_price and current_stock == expected_stock
+
+        if not _wait_until(_price_stock_written, timeout=1.2, interval=0.08):
+            price_value = _normalize_numeric_text(price_input.attr('value'))
+            stock_value = _normalize_numeric_text(stock_input.attr('value'))
+            raise Exception(
+                f'价格库存写入校验失败：{sku_name} -> 期望价格[{expected_price}] 实际价格[{price_value}] 期望库存[{expected_stock}] 实际库存[{stock_value}]'
+            )
+
+    main_tab.ele('xpath://span[text()="售后服务承诺"]').scroll.to_see()
+    time.sleep(0.1)
+
+    select_text(main_tab, '运费模板', shipping_template_name, '包邮')
+    time.sleep(0.1)
+    youhui_btn = main_tab.ele('xpath://button[contains(@class,"marketing_sylva-switch-checked")]', timeout=1)
+    if youhui_btn:
+        print('取消商品优惠券勾选')
+        youhui_btn.click(by_js=True)
+
+    print('选择商品状态 -> 上架')
+    main_tab.ele('xpath://span[text()="上架"]').click(by_js=True)
+    time.sleep(0.1)
+
+    try:
+        switch = main_tab.ele('xpath://button[@dropdownclassname="auto-dropdown-id-支持联盟达人带货"]', timeout=2)
+        if switch and switch.states.is_displayed:
+            cls = switch.attr('class') or ''
+            disabled_attr = switch.attr('disabled')
+            if ('disabled' not in cls) and (disabled_attr is None):
+                print('勾选支持联盟达人带货')
+                switch.click(by_js=True)
+                time.sleep(0.1)
+                rate_input = main_tab.ele('xpath://label[@title="佣金率"]/../..//input', timeout=2)
+                if rate_input:
+                    print('输入佣金率：20%')
+                    rate_input.input('20')
+                    time.sleep(0.1)
+            else:
+                print('联盟达人带货不可用，已跳过')
+        else:
+            print('未找到联盟达人带货开关，已跳过')
+    except:
+        print('处理联盟达人带货失败，已跳过')
+
+
+def _submit_publish(main_tab, record):
+    print('发布商品')
+    _dismiss_interfering_overlays(main_tab, context='submit_publish')
+    main_tab.ele('xpath://span[text()="发布商品"]/..').click()
+    time.sleep(0.5)
+    _dismiss_interfering_overlays(main_tab, context='after_publish_click')
+
+    try:
+        modal = main_tab.ele('xpath://div[@class="ecom-g-modal-title"][text()="发布提醒"]/../..', timeout=5)
+        continue_btn = modal.ele('xpath:.//div[text()="不修改，继续发布"]/ancestor::button')
+        continue_btn.scroll.to_center()
+        continue_btn.click()
+        print('已处理发布提醒弹窗')
+    except Exception as e:
+        print(f'未出现弹窗或处理失败: {str(e)}')
+
+    publish_ok = _wait_until(
+        lambda: main_tab.ele('商品提交成功，继续发布商品视频，分享到抖音', timeout=0.1),
+        timeout=12,
+        interval=0.25
+    )
+
+    if publish_ok:
+        print('发布成功！')
+        record.status = 1
+        record.publish_time = time.now()
+        record.save()
+        return True
+
+    print('发布失败！！！')
+    return False
+
+
+def _execute_upload_flow(record_id=None, progress_callback=None):
+    msg_list = []
+
+    def _report_progress(progress, message):
+        if not callable(progress_callback):
+            return
+        try:
+            progress_callback(progress, message)
+        except Exception:
+            traceback.print_exc()
+
+    try:
+        print('开始上传流程...')
+
+        record_list, load_error = _load_upload_records(record_id)
+        if load_error:
+            return api_error(msg=load_error)
+        _report_progress(12, '已读取上传任务，正在初始化自动化参数')
+
+        shipping_template_name, configured_materials, qualification_certificate_path = _load_upload_runtime_config()
+        main_tab, session_error = _ensure_publish_session(_report_progress)
+        if session_error:
+            return api_error(session_error)
+
         for record in record_list:
             record_ok = False
             error_tip = ''
             current_stage = 'prechecks'
+            stage_timings = []
+            record_started_at = datetime.now().isoformat()
+            record_perf_started_at = system_time.perf_counter()
+            _report_progress(16, f'正在处理商品：{record.name}')
 
             try:
-                if not record.title:
-                    error_tip = '标题为空！！！'
+                record_assets, error_tip = _prepare_record_assets(record)
+                if error_tip:
                     continue
-                if not record.clazz:
-                    error_tip = '类目为空！！！'
-                    continue
-                if not str(record.repo):
-                    error_tip = '库存为空！！！'
-                    continue
-                try:
-                    main_pic_list = get_pic_list(record, '800')
-                except:
-                    error_tip = '未找到主图或者主图不全！！！'
-                    continue
-                try:
-                    sub_pic_list = get_pic_list(record, '750')
-                    # 🔧 ID模式下，如果返回空列表，说明没有3:4主图，这是正常的
-                    if record.type == 2 and len(sub_pic_list) == 0:
-                        print("ID模式：没有3:4主图，将使用平台自带的1:1导入功能")
-                except:
-                    # 标准模式下仍然需要3:4主图
-                    if record.type == 1:
-                        error_tip = '未找到4:3主图或者4:3主图不全！！！'
-                        continue
-                    else:
-                        # ID模式下出现异常，设置为空列表
-                        sub_pic_list = []
-                        print("ID模式：获取3:4主图时出现异常，将使用平台自带的1:1导入功能")
-                try:    
-                    detail_pic_list = get_detail_pic_list(record)
-                except:
-                    error_tip = '未找到详情图！！！'
-                    continue
-                diaopai_pic = get_diaopai_pic(record)
-                
-                # 获取视频文件
-                my_video = get_my_video(record)
 
-                sku_list = json.loads(record.content)
-                if len(sku_list) == 0:
-                    error_tip = '未找到sku信息！！！'
-                    continue
-                sku_flag = False
-                for sku_item in sku_list:
-                    # 🔧 修复：价格可以为0，只需要检查name是否存在，price是否是数字
-                    if not sku_item['name'] or sku_item['price'] is None:
-                        sku_flag = True
-                        break
-                    # 检查price是否是有效数字（包括0）
-                    try:
-                        float(sku_item['price'])
-                    except (ValueError, TypeError):
-                        sku_flag = True
-                        break
-                if sku_flag:
-                    error_tip = 'sku信息不全！！！'
-                    continue
-                white_pic = get_white_pic(record, sku_list)
-
-                print('打开商品发布页面...')
                 current_stage = 'open_publish_page'
-                main_tab.handle_alert(next_one=True)
-                main_tab.get('https://fxg.jinritemai.com/ffa/g/create')
-                ready = False
-                for _ in range(75):
-                    if main_tab.ele('xpath://input[@id="pg-title-input"]', timeout=0.2) or \
-                       main_tab.ele('xpath://span[text()="主图上传"]', timeout=0.2) or \
-                       main_tab.ele('xpath://button//span[text()="下一步"]', timeout=0.2):
-                        ready = True
-                        break
-                    time.sleep(0.2)
-                if not ready:
+                if not _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _open_publish_page,
+                    main_tab,
+                    _report_progress
+                ):
                     return api_error('页面未就绪，请稍后重试')
 
-                try:
-                    main_tab.ele('xpath://span[text()="重新发布"]/../..', timeout=3).click(by_js=True)
-                    time.sleep(1)
-                    main_tab.ele('xpath://*[text()="我知道了"]', timeout=1)
-                    time.sleep(0.5)
-                except:
-                    pass
-                input_element = main_tab.ele('xpath://input[@placeholder="请输入2-60个字符（1-30个汉字）"]')
-                input_element.click()
-                time.sleep(0.1)
-                input_element.input(record.title)
-                time.sleep(0.1)
-                try:
-                    main_tab.remove_ele(main_tab.ele('xpath://div[contains(@class,"index_DragController__")]', timeout=1))
-                except:
-                    pass
+                current_stage = 'fill_title'
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _fill_title_for_record,
+                    main_tab,
+                    record
+                )
 
                 current_stage = 'upload_main_images'
-                upload_file(main_tab, main_pic_list, '主图', error_size='长宽比需为1:1' if record.type == 2 else None)
-
-                # 🚀 使用增强的类目选择器
-                print(f'开始智能类目选择: {wazi_dict.get(record.clazz)}')
-                current_stage = 'select_category'
-                if not smart_select_category(main_tab, record.clazz):
-                    print("❌ 类目选择失败，已尝试推荐与手动选择。请检查页面结构或账号资质。")
-                    raise Exception("类目选择失败")
-                else:
-                    print("✅ 智能类目选择成功")
-
-                gen_btn = main_tab.ele(
-                    'xpath://div[@data-better-log-outer-key="short_product_name"]'
-                    + '//span[contains(@class,"ecom-g-input-suffix")]//img',
-                    timeout=3
-                )
-
-                # 2. 如果找到了，就点击；否则打印提示
-                if gen_btn:
-                    # 可选：滚动到中央，确保可见
-                    gen_btn.scroll.to_center()
-                    # 点击
-                    gen_btn.click(by_js=True)
-                    print("已点击生成短标题按钮")
-                else:
-                    print("未找到生成短标题按钮，检查 XPath 或页面结构是否变化")
-                
-                try:
-                    main_tab.ele('xpath://*[text()="我知道了"]', timeout=1)
-                except:
-                    pass
-
-                # 处理吊牌识别（仅非船袜类目）
-                if diaopai_pic and str(record.clazz) != '0':
-                    print('处理其他类目吊牌上传...')
-                    upload_file(main_tab, [diaopai_pic], '吊牌')
-                    for _ in range(30):
-                        if main_tab.ele('吊牌识别成功', timeout=0.1):
-                            break
-                        if main_tab.ele('吊牌识别失败', timeout=0.1):
-                            break
-                        time.sleep(0.1)
-
-                # 根据当前页面类目处理属性填写，避免 record.clazz 与二级页实际类目不一致
-                current_stage = 'fill_category_attributes'
-                current_category_text = get_current_category_text(main_tab)
-                current_sock_height = infer_sock_height_value(current_category_text, record.clazz)
-                is_ship_socks = '船袜' in current_category_text
-                print(f'当前页面类目: {current_category_text or "未识别"}')
-                if current_sock_height:
-                    print(f'当前页面筒高目标值: {current_sock_height}')
-
-                if is_ship_socks:  # 船袜类目
-                    print('处理船袜类目属性...')
-                    main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
-                    time.sleep(0.1)
-                    
-                    # 船袜类目专门处理品牌和材质
-                    select_text(main_tab, '品牌', '无品牌')
-                    time.sleep(0.1)
-                    # 针对船袜类目的材质输入框处理
-                    try:
-                        material_input = main_tab.ele('xpath://div[@attr-field-id="材质"]//input[@placeholder="请输入"]')
-                        material_input.scroll.to_center()
-                        material_input.click()
-                        time.sleep(0.1)
-                        material_input.input('棉')
-                        time.sleep(0.1)
-                        print('船袜类目：已填写材质为棉')
-                    except Exception as e:
-                        print(f'船袜类目材质填写失败: {str(e)}')
-                        
-                elif diaopai_pic:  # 其他类目且有吊牌
-                    print('处理其他类目属性（有吊牌）...')
-                    main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
-                    time.sleep(0.1)
-                    
-                    # 删除现有面料材质，让吊牌识别结果生效
-                    ss = main_tab.eles('xpath://div[@attr-field-id="面料材质"]//span[contains(@class,"styles_del__")]', timeout=1)
-                    for del_btn in ss:
-                        del_btn.click(by_js=True)   
-                        time.sleep(0.3)
-                    
-                    # 填写其他必要属性
-                    select_text(main_tab, '品牌', '无品牌')
-                    select_text(main_tab, '适用人群', '成人')
-                    select_text(main_tab, '适用性别', get_sex(record.title))
-                    if current_sock_height:
-                        select_text(main_tab, '筒高', current_sock_height)
-                    
-                else:  # 其他类目且没有吊牌
-                    print('处理其他类目属性（无吊牌）...')
-                    main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
-                    time.sleep(0.1)
-                    material_ok = set_material_composition(main_tab, configured_materials)
-                    if not material_ok:
-                        raise Exception('面料材质填写失败')
-                    select_text(main_tab, '品牌', '无品牌')
-                    select_text(main_tab, '适用人群', '成人')
-                    select_text(main_tab, '适用性别', get_sex(record.title))
-                    if current_sock_height:
-                        select_text(main_tab, '筒高', current_sock_height)
-
-
-                # 🔧 只有当sub_pic_list不为空时才上传3:4主图
-                current_stage = 'upload_media_assets'
-                if len(sub_pic_list) > 0:
-                    upload_file(
-                        main_tab,
-                        sub_pic_list,
-                        '主图',
-                        error_size='长宽比需为3:4',
-                        target_field_id='主图3:4',
-                        wait_for_finish=False
-                    )
-                else:
-                    print("跳过3:4主图上传，尝试自动点击'从1:1主图智能裁剪'按钮")
-                    try:
-                        if click_field_action(main_tab, '主图3:4', '从1:1主图智能裁剪') or click_field_action(main_tab, '主图3:4', '从1:1主图一键填入'):
-                            print("✅ 成功触发3:4主图智能裁剪")
-                            time.sleep(0.2)
-                        else:
-                            print("❌ 未找到3:4主图智能裁剪按钮")
-                    except Exception as e:
-                        print(f"❌ 自动点击3:4主图智能裁剪按钮失败: {str(e)}")
-                        print("请手动点击3:4主图智能裁剪按钮")
-                main_tab.ele('xpath://div[@attr-field-id="主图视频"]').scroll.to_see()
-                time.sleep(0.1)
-
-                if my_video:
-                    print('开始上传主图视频...')
-                    upload_file(
-                        main_tab,
-                        [my_video],
-                        '主图视频',
-                        target_field_id='主图视频',
-                        wait_for_finish=False
-                    )
-                else:
-                    print('没有本地主图视频，尝试在主图视频区域内点击一键生成')
-                    if click_field_action(main_tab, '主图视频', '一键生成'):
-                        time.sleep(0.2)
-                    else:
-                        print('未找到可用的一键生成按钮，或按钮当前不可点击')
-
-                upload_file(
+                _report_progress(32, '正在上传主图并选择类目')
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _upload_main_images,
                     main_tab,
-                    [white_pic],
-                    '白底图',
-                    target_field_id='白底图',
-                    wait_for_finish=False
+                    record,
+                    record_assets['main_pic_list']
                 )
-                time.sleep(0.5)
-                try:
-                    apply_btn_list = main_tab.eles('xpath://div[text()="AI智能做主图"]/../../../..//span[text()="应用"]/..', timeout=1)
-                    for item in apply_btn_list:
-                        if item.states.is_displayed:
-                            item.click()
-                            time.sleep(3)
-                            break
-                    if len(apply_btn_list) > 0:
-                        main_tab.ele('xpath://div[text()="AI智能做主图"]/../../../..//span[text()="上传"]/..', timeout=1).click()
-                        time.sleep(0.5)
-                except:
-                    pass
-                upload_file(main_tab, detail_pic_list, '图片', extra=True, target_field_id='商品详情')
 
-                main_tab.ele('xpath://span[text()="价格与库存"]').scroll.to_see()
-                time.sleep(0.1)
+                current_stage = 'select_category'
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _select_category_and_prepare_attributes,
+                    main_tab,
+                    record,
+                    record_assets['diaopai_pic']
+                )
 
-                print('选择发货时间 -> 48小时')
-                main_tab.ele('xpath://span[text()="48小时"]').click()
-                time.sleep(0.1)
+                current_stage = 'fill_category_attributes'
+                _report_progress(46, '正在填写类目属性与面料材质')
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _fill_category_attributes,
+                    main_tab,
+                    record,
+                    configured_materials,
+                    record_assets['diaopai_pic'],
+                    qualification_certificate_path,
+                )
 
-                print('勾选添加规格图片')
-                main_tab.ele('xpath://span[text()="添加规格图"]').click(by_js=True)
-                time.sleep(0.1)
-
-                ss = main_tab.eles('xpath://div[@id="skuValue-颜色分类"]//span[@data-kora="删除规格值"]', timeout=1)
-                for del_btn in ss:
-                    del_btn.click(by_js=True)
-                    time.sleep(0.1)
+                current_stage = 'upload_media_assets'
+                _report_progress(60, '正在上传主图视频、白底图与详情图')
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _upload_media_assets,
+                    main_tab,
+                    record_assets['sub_pic_list'],
+                    record_assets['my_video'],
+                    record_assets['white_pic'],
+                    record_assets['detail_pic_list']
+                )
 
                 current_stage = 'configure_sku_entries'
-                for i, sku in enumerate(sku_list):
-                    set_sku_info(main_tab, i, sku, record.remark)
+                _report_progress(74, '正在填写规格与SKU信息')
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _configure_sku_entries,
+                    main_tab,
+                    record_assets['sku_list'],
+                    record.remark
+                )
 
                 current_stage = 'configure_sku_structure'
-                print('选择均码')
-                main_tab.ele('xpath://div[@id="skuValue-码数"]//input').scroll.to_center()
-                time.sleep(0.1)
-                main_tab.ele('xpath://div[@id="skuValue-码数"]//input').click()
-                time.sleep(0.1)
-                main_tab.ele('xpath://li[@title="均码"]').click()
-                time.sleep(0.1)
-                main_tab.eles('xpath://li[@title="均码"]')[1].click()
-                time.sleep(0.5)
-                try:
-
-                    confirm_button = main_tab.ele('xpath://div[contains(@class,"styles_popupFooter__")]//button[.//span[starts-with(text(), "确定")]]', timeout=0.5)
-                    confirm_button.click()
-                except:
-                    pass
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _configure_sku_structure,
+                    main_tab
+                )
 
                 current_stage = 'fill_price_and_stock'
-                print('设置价格和库存...')
-                price_stock_root = main_tab.ele('xpath://div[@attr-field-id="价格与库存"]')
-                if not price_stock_root:
-                    raise Exception('未找到价格与库存区域')
-
-                def _xpath_text_literal(value):
-                    value = str(value)
-                    if "'" not in value:
-                        return f"'{value}'"
-                    if '"' not in value:
-                        return f'"{value}"'
-                    parts = value.split("'")
-                    return "concat(" + ', "\'", '.join([f"'{part}'" for part in parts]) + ")"
-
-                for i, sku in enumerate(sku_list):
-                    sku_name = str(sku.get('name', '')).strip()
-                    sku_price = '' if sku.get('price') is None else str(sku.get('price'))
-                    sku_stock = str(record.repo)
-                    print(f'填写SKU价格库存 -> {i + 1}. {sku_name} | 价格:{sku_price} | 库存:{sku_stock}')
-
-                    row_selector = (
-                        'xpath://tr[contains(@class,"ecom-g-table-row")]'
-                        f'[.//td[1]//div[contains(@class,"styles_specName__") and normalize-space(.)={_xpath_text_literal(sku_name)}]]'
-                    )
-                    row_list = price_stock_root.eles(f'xpath:.{row_selector[6:]}', timeout=1)
-                    if not row_list:
-                        raise Exception(f'未找到价格库存行：{sku_name}')
-
-                    tr = row_list[-1]
-                    tr.scroll.to_center()
-                    time.sleep(0.1)
-
-                    price_input = tr.ele('xpath:./td[3]//input', timeout=1)
-                    stock_input = tr.ele('xpath:./td[4]//input', timeout=1)
-                    if not price_input or not stock_input:
-                        raise Exception(f'未找到价格或库存输入框：{sku_name}')
-
-                    price_input.input(sku_price, clear=True)
-                    time.sleep(0.1)
-                    stock_input.input(sku_stock, clear=True)
-                    time.sleep(0.1)
-
-                    price_value = (price_input.attr('value') or '').strip()
-                    stock_value = (stock_input.attr('value') or '').strip()
-                    if price_value != sku_price or stock_value != sku_stock:
-                        raise Exception(
-                            f'价格库存写入校验失败：{sku_name} -> 价格[{price_value}] 库存[{stock_value}]'
-                        )
-                
-                main_tab.ele('xpath://span[text()="售后服务承诺"]').scroll.to_see()
-                time.sleep(0.1)
-
-                select_text(main_tab, '运费模板', shipping_template_name, '包邮')
-                time.sleep(0.1)
-                youhui_btn = main_tab.ele('xpath://button[contains(@class,"marketing_sylva-switch-checked")]', timeout=1)
-                if youhui_btn:
-                    print('取消商品优惠券勾选')
-                    youhui_btn.click(by_js=True)
-
-                print('选择商品状态 -> 上架')
-                main_tab.ele('xpath://span[text()="上架"]').click(by_js=True)
-                time.sleep(0.1)
-
-                try:
-                    switch = main_tab.ele('xpath://button[@dropdownclassname="auto-dropdown-id-支持联盟达人带货"]', timeout=2)
-                    if switch and switch.states.is_displayed:
-                        cls = switch.attr('class') or ''
-                        disabled_attr = switch.attr('disabled')
-                        if ('disabled' not in cls) and (disabled_attr is None):
-                            print('勾选支持联盟达人带货')
-                            switch.click(by_js=True)
-                            time.sleep(0.1)
-                            rate_input = main_tab.ele('xpath://label[@title="佣金率"]/../..//input', timeout=2)
-                            if rate_input:
-                                print('输入佣金率：20%')
-                                rate_input.input('20')
-                                time.sleep(0.1)
-                        else:
-                            print('联盟达人带货不可用，已跳过')
-                    else:
-                        print('未找到联盟达人带货开关，已跳过')
-                except:
-                    print('处理联盟达人带货失败，已跳过')
-                
+                _report_progress(84, '正在填写价格库存与发货配置')
+                _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _fill_price_stock_and_delivery,
+                    main_tab,
+                    record,
+                    record_assets['sku_list'],
+                    shipping_template_name
+                )
 
                 current_stage = 'submit_publish'
-                print('发布商品')
-                main_tab.ele('xpath://span[text()="发布商品"]/..').click()
-                time.sleep(0.5)
-
-                try:
-                    # 等待弹窗出现（最多等5秒）
-                    modal = main_tab.ele('xpath://div[@class="ecom-g-modal-title"][text()="发布提醒"]/../..', timeout=5)
-                    
-                    # 定位目标按钮（通过文本精准定位）
-                    continue_btn = modal.ele('xpath:.//div[text()="不修改，继续发布"]/ancestor::button')
-                    
-                    # 确保按钮可见后点击
-                    continue_btn.scroll.to_center()
-                    continue_btn.click()
-                    print('已处理发布提醒弹窗')
-                except Exception as e:
-                    print(f'未出现弹窗或处理失败: {str(e)}')
-                publish_ok = False
-                for _ in range(30):
-                    if main_tab.ele('商品提交成功，继续发布商品视频，分享到抖音', timeout=0.5):
-                        publish_ok = True
-                        break
-                    time.sleep(0.5)
-
-                if publish_ok:
-                    print('发布成功！')
-                    record_ok = True
-                    record.status = 1
-                    record.publish_time = time.now()
-                    record.save()
-                else:
-                    print('发布失败！！！')
+                _report_progress(95, '正在提交发布请求')
+                record_ok = _run_stage_with_timing(
+                    stage_timings,
+                    record,
+                    current_stage,
+                    _submit_publish,
+                    main_tab,
+                    record
+                )
 
             except Exception as e:
-                # 获取完整的错误追踪信息
                 detailed_error = traceback.format_exc()
-                print("------------- 详细错误报告 -------------")
+                print('------------- 详细错误报告 -------------')
                 print(detailed_error)
-                print("------------------------------------")
+                print('------------------------------------')
                 try:
                     _record_browser_automation_error(
                         current_stage,
@@ -1682,19 +2311,17 @@ def start():
                         extra={
                             'record_id': record.id,
                             'record_name': record.name,
+                            'stage_timings': copy.deepcopy(stage_timings),
                         }
                     )
                 except Exception:
                     traceback.print_exc()
-                
-                # 如果是脚本预设的错误提示，直接使用
+
                 if not error_tip:
-                    # 否则，使用异常的文本信息作为错误提示
                     error_tip = str(e)
-            
+
             finally:
                 fi_arr = record.name.split('_')
-                # 确保 fi_name 是一个字符串
                 fi_name_tuple = record.name if len(fi_arr) < 4 else fi_arr[3],
                 fi_name = fi_name_tuple[0] if isinstance(fi_name_tuple, tuple) else fi_name_tuple
 
@@ -1702,19 +2329,40 @@ def start():
                     msg_list.append(f'{fi_name} -> 操作成功！')
                 else:
                     msg_list.append(f'{fi_name} -> 操作失败[{error_tip}]！')
+
+                record_duration_ms = round((system_time.perf_counter() - record_perf_started_at) * 1000, 2)
+                _append_stage_timing_log({
+                    'type': 'record_summary',
+                    'captured_at': datetime.now().isoformat(),
+                    'started_at': record_started_at,
+                    'record_id': getattr(record, 'id', None),
+                    'record_name': getattr(record, 'name', ''),
+                    'status': 'ok' if record_ok else 'failed',
+                    'current_stage': current_stage,
+                    'duration_ms': record_duration_ms,
+                    'error': error_tip,
+                    'stage_count': len(stage_timings),
+                    'stage_timings': stage_timings,
+                })
+                print(f'[整单耗时] {record.name}: {record_duration_ms}ms')
                 time.sleep(3)
     except:
-        print("------------- 致误报告 -------------")
+        print('------------- 致误报告 -------------')
         print(traceback.format_exc())
-        print("------------------------------------")
+        print('------------------------------------')
         msg_list.append('发生了一个意外的错误，请检查控制台日志。')
-        
-    # 🔧 修复：检查是否有失败消息，决定返回成功还是失败
-    combined_msg = '\n'.join(msg_list)
+
+    _report_progress(98, '已完成自动化流程，正在汇总结果')
+    combined_msg = chr(10).join(msg_list)
     if '操作失败' in combined_msg or '意外的错误' in combined_msg:
         return api_error(msg=combined_msg)
-    else:
-        return api_ok(msg=combined_msg)
+    return api_ok(msg=combined_msg)
+
+
+@app.post('/start')
+def start():
+    request_data = request.get_json(silent=True) or {}
+    return _execute_upload_flow(record_id=request_data.get('record_id'))
 
 
 _upload_tasks = {}
@@ -1748,12 +2396,20 @@ def _run_upload_task(task_id: str, record_id=None):
         task['started_at'] = datetime.now().isoformat()
 
     try:
-        payload = {}
-        if record_id:
-            payload['record_id'] = record_id
+        def _task_progress_callback(progress, message):
+            with _upload_tasks_lock:
+                task = _upload_tasks.get(task_id)
+                if not task:
+                    return
+                safe_progress = max(0, min(int(progress), 99))
+                task['progress'] = safe_progress
+                if message:
+                    task['message'] = str(message)
 
-        with app.test_request_context('/start', method='POST', json=payload):
-            result = start()
+        result = _execute_upload_flow(
+            record_id=record_id,
+            progress_callback=_task_progress_callback,
+        )
 
         success = bool(result.get('success'))
         message = str(result.get('msg') or '')
@@ -2130,19 +2786,24 @@ def update_settings():
 
         if 'automation_config' in data:
             automation_config = data.get('automation_config') or {}
+            normalized_automation = settings_manager.normalize_automation_config(automation_config)
+            allowed_materials = set(normalized_automation.get('material_options') or [])
             material_compositions = automation_config.get('material_compositions') or []
             if isinstance(material_compositions, list) and len(material_compositions) > 0:
                 total_percentage = 0
                 for item in material_compositions:
                     if not isinstance(item, dict):
                         continue
+                    material_name = str(item.get('material') or '').strip()
+                    if material_name and material_name not in allowed_materials:
+                        return api_error(f'材质「{material_name}」不在平台面料选项内')
                     try:
                         total_percentage += int(float(item.get('percentage', 0) or 0))
                     except Exception:
                         continue
                 if total_percentage != 100:
                     return api_error('材质面料含量总和必须等于100')
-            backend_data['automation_config'] = data.get('automation_config')
+            backend_data['automation_config'] = normalized_automation
         
         if settings_manager.update_settings(backend_data):
             return api_ok(msg='设置保存成功')
@@ -2150,6 +2811,57 @@ def update_settings():
             return api_error('设置保存失败')
     except Exception as e:
         return api_error(f'设置更新失败: {str(e)}')
+
+
+@app.post('/settings/automation/certificate/import')
+def import_automation_certificate():
+    """导入自动化设置中的合格证图片到应用数据目录"""
+    try:
+        data = request.get_json(silent=True) or {}
+        source_path = os.path.abspath(str(data.get('source_path') or '').strip())
+        if not source_path:
+            return api_error('缺少合格证图片路径')
+        if not os.path.isfile(source_path):
+            return api_error('合格证图片不存在')
+
+        try:
+            target_path = _resolve_managed_qualification_certificate_path(source_path)
+        except ValueError as exc:
+            return api_error(str(exc))
+
+        _delete_managed_qualification_certificate_files()
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+        return api_ok(msg='合格证图片导入成功', data={
+            'stored_path': target_path,
+            'file_name': os.path.basename(target_path),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f'导入合格证图片失败: {str(e)}')
+
+
+@app.post('/settings/automation/certificate/remove')
+def remove_automation_certificate():
+    """删除自动化设置中的合格证图片"""
+    try:
+        data = request.get_json(silent=True) or {}
+        stored_path = os.path.abspath(str(data.get('stored_path') or '').strip()) if data.get('stored_path') else ''
+        assets_dir = _get_automation_assets_dir()
+
+        if stored_path:
+            if not _is_path_within_dir(stored_path, assets_dir):
+                return api_error('只能删除应用数据目录中的合格证图片')
+            if os.path.isfile(stored_path):
+                os.remove(stored_path)
+        else:
+            _delete_managed_qualification_certificate_files()
+
+        return api_ok(msg='合格证图片已删除')
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f'删除合格证图片失败: {str(e)}')
 
 
 @app.post('/settings/reset')
@@ -2533,7 +3245,7 @@ def calculate_smart_prices():
 
         from src.smart_pricing_engine import SmartPricingEngine
 
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         engine = SmartPricingEngine(config_file)
         pricing_data = engine.calculate_runtime_pricing(
             sku_list=sku_list,
@@ -2558,18 +3270,28 @@ def calculate_smart_prices():
             f"fixed={config_used.get('fixed_costs', 0)}, percentage={config_used.get('percentage_costs', 0)}%"
         )
 
-        return jsonify({
+        response_payload = {
             'success': True,
             'message': f"smart pricing finished for {len(pricing_results)} skus",
             'data': pricing_data
-        })
+        }
+        return app.response_class(
+            response=json.dumps(response_payload, ensure_ascii=False, default=str),
+            status=200,
+            mimetype='application/json'
+        )
     except Exception as e:
         print(f'smart pricing failed: {e}')
         traceback.print_exc()
-        return jsonify({
+        response_payload = {
             'success': False,
             'error': f'smart pricing failed: {str(e)}'
-        })
+        }
+        return app.response_class(
+            response=json.dumps(response_payload, ensure_ascii=False, default=str),
+            status=200,
+            mimetype='application/json'
+        )
 
 
 @app.post('/api/generate_professional_title')
@@ -2685,7 +3407,7 @@ def save_cost_config():
             return jsonify({'success': False, 'error': '目标利润率必须在0-100%之间'})
         
         # 保存到配置文件
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         
         # 🔧 确保配置目录存在
         config_dir = os.path.dirname(config_file)
@@ -2809,7 +3531,7 @@ def force_reload_pricing_config():
 def get_pricing_config():
     """获取价格配置API"""
     try:
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         
         if os.path.exists(config_file):
             with open(config_file, 'r', encoding='utf-8') as f:
@@ -2904,7 +3626,7 @@ def add_cost_item():
             return jsonify({'success': False, 'error': '成本值必须是非负数'})
         
         # 读取现有配置
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         existing_config = {}
         
         if os.path.exists(config_file):
@@ -2961,7 +3683,7 @@ def update_cost_item(item_name):
         data = request.get_json()
         
         # 读取现有配置
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         if not os.path.exists(config_file):
             return jsonify({'success': False, 'error': '配置文件不存在'})
         
@@ -3020,7 +3742,7 @@ def delete_cost_item(item_name):
     """删除单个成本项目API"""
     try:
         # 读取现有配置
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         if not os.path.exists(config_file):
             return jsonify({'success': False, 'error': '配置文件不存在'})
         
@@ -3063,7 +3785,7 @@ def delete_cost_item(item_name):
 def get_cost_items():
     """获取成本项目列表API"""
     try:
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         
         if os.path.exists(config_file):
             with open(config_file, 'r', encoding='utf-8') as f:
@@ -3462,7 +4184,7 @@ def save_profit_margin_config():
         profit_margin_decimal = profit_margin / 100.0
         
         # 读取现有配置
-        config_file = os.path.join(os.path.dirname(__file__), 'pricing_config.json')
+        config_file = get_runtime_data_path('pricing_config.json')
         existing_config = {}
         
         if os.path.exists(config_file):
@@ -3577,6 +4299,265 @@ def validate_pricing_config():
 # 全局任务存储
 capture_tasks = {}
 
+
+def _is_1688_capture_url(url: str) -> bool:
+    return '1688.com' in (url or '').lower()
+
+
+def _is_taobao_tmall_capture_url(url: str) -> bool:
+    lower_url = (url or '').lower()
+    return 'taobao.com' in lower_url or 'tmall.com' in lower_url
+
+
+def _extract_capture_product_id(url: str) -> str:
+    url = (url or '').strip()
+    patterns = [
+        r'[?&]id=(\d+)',
+        r'/offer/(\d+)\.html',
+        r'/offer/(\d+)(?:[/?#]|$)',
+        r'offerId=(\d+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return f"product_{int(system_time.time())}"
+
+
+def _parse_capture_price(value) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.search(r'(\d+(?:\.\d+)?)', str(value))
+    return float(match.group(1)) if match else 0.0
+
+
+def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
+    """Extract a positive price from nested capture payloads."""
+    if not isinstance(item, dict):
+        return default
+
+    preferred_keys = (
+        'price',
+        'discountPrice',
+        'promotionPrice',
+        'salePrice',
+        'skuPrice',
+        'consignPrice',
+        'specQuotePrice',
+        'priceWithTax',
+        'currentPrice',
+        'finalPrice',
+    )
+
+    for key in preferred_keys:
+        price = _parse_capture_price(item.get(key))
+        if price > 0:
+            return price
+
+    seen = set()
+
+    def walk(value, depth: int = 0) -> float:
+        if depth > 4 or value is None:
+            return 0.0
+        value_id = id(value)
+        if value_id in seen:
+            return 0.0
+        seen.add(value_id)
+
+        if isinstance(value, (int, float, str)):
+            return _parse_capture_price(value)
+
+        if isinstance(value, dict):
+            for key in preferred_keys:
+                price = _parse_capture_price(value.get(key))
+                if price > 0:
+                    return price
+            for nested_key, nested_value in value.items():
+                if 'price' in str(nested_key).lower():
+                    price = walk(nested_value, depth + 1)
+                    if price > 0:
+                        return price
+            for nested_value in value.values():
+                price = walk(nested_value, depth + 1)
+                if price > 0:
+                    return price
+            return 0.0
+
+        if isinstance(value, (list, tuple)):
+            for nested_value in value:
+                price = walk(nested_value, depth + 1)
+                if price > 0:
+                    return price
+        return 0.0
+
+    nested_price = walk(item)
+    return nested_price if nested_price > 0 else default
+
+
+def _extract_1688_context_snapshot(page):
+    return page.run_js(
+        '''
+        return (() => {
+            const ctx = window.context || {};
+            const data = ctx?.result?.data || {};
+            const globalModel = ctx?.result?.global?.globalData?.model || {};
+            const gallery = data?.gallery?.fields || {};
+            const rootData = data?.Root?.fields?.dataJson || {};
+            const offerDetail = globalModel?.offerDetail || {};
+            const tradeModel = rootData?.tradeModel || globalModel?.tradeModel || data?.tradeModel?.fields || {};
+            const fallbackPriceModel = data?.mainPrice?.fields?.priceModel || {};
+            const description = data?.description?.fields || {};
+            const rootImages = Array.isArray(rootData?.images)
+                ? rootData.images
+                    .map((item) => item?.fullPathImageURI || item?.imageURI || '')
+                    .filter(Boolean)
+                : [];
+
+            return {
+                title: gallery?.subject || rootData?.subject || offerDetail?.subject || '',
+                main_images: Array.isArray(gallery?.mainImage)
+                    ? gallery.mainImage
+                    : (Array.isArray(offerDetail?.mainImageList) ? offerDetail.mainImageList : []),
+                offer_images: Array.isArray(gallery?.offerImgList)
+                    ? gallery.offerImgList
+                    : (Array.isArray(offerDetail?.imageList) ? offerDetail.imageList : []),
+                root_images: rootImages,
+                current_prices: Array.isArray(tradeModel?.offerPriceModel?.currentPrices)
+                    ? tradeModel.offerPriceModel.currentPrices
+                    : (Array.isArray(fallbackPriceModel?.currentPrices) ? fallbackPriceModel.currentPrices : []),
+                price_display: tradeModel?.priceDisplay || '',
+                sku_props: Array.isArray(rootData?.skuProps)
+                    ? rootData.skuProps
+                    : (
+                        Array.isArray(rootData?.skuModel?.skuProps)
+                            ? rootData.skuModel.skuProps
+                            : (Array.isArray(offerDetail?.skuProps) ? offerDetail.skuProps : [])
+                    ),
+                sku_map: Array.isArray(tradeModel?.skuMap) ? tradeModel.skuMap : [],
+                detail_url: description?.detailUrl || offerDetail?.detailUrl || '',
+                parameters: tradeModel?.offerIDatacenterSellInfo || {},
+                offer_id: rootData?.offerId || tradeModel?.offerId || gallery?.offerId || offerDetail?.offerId || '',
+            };
+        })()
+        '''
+    ) or {}
+
+
+def _collect_1688_detail_images(detail_url: str):
+    detail_url = (detail_url or '').strip()
+    if not detail_url:
+        return []
+
+    try:
+        import requests
+
+        response = requests.get(
+            detail_url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        detail_html = response.text
+    except Exception:
+        return []
+
+    image_urls = []
+    seen = set()
+    for match in re.finditer(r'((?:https?:)?//[^"\'<>\s]+(?:alicdn|tbcdn)\.com[^"\'<>\s]+)', detail_html, flags=re.IGNORECASE):
+        image_url = html.unescape(match.group(1) or '').replace('\\/', '/').strip().rstrip('\\')
+        if image_url not in seen:
+            seen.add(image_url)
+            image_urls.append(image_url)
+    return image_urls
+
+
+def _build_1688_sku_info(snapshot: dict, clean_url_fn, default_price: float):
+    sku_props = snapshot.get('sku_props') or []
+    sku_map = snapshot.get('sku_map') or []
+    prop_titles = []
+    value_image_map = {}
+
+    for prop in sku_props:
+        prop_name = str(prop.get('prop') or prop.get('name') or '').strip()
+        if prop_name:
+            prop_titles.append(prop_name)
+        for value in prop.get('value') or []:
+            value_name = str(value.get('name') or '').strip()
+            raw_image = value.get('imageUrl') or value.get('image') or value.get('imgUrl') or ''
+            cleaned_image = clean_url_fn(raw_image)
+            if value_name and cleaned_image:
+                value_image_map[value_name] = cleaned_image
+
+    sku_info = []
+    if sku_map:
+        for index, item in enumerate(sku_map, start=1):
+            spec_attrs = html.unescape(str(item.get('specAttrs') or '')).replace('&gt;', '>')
+            spec_parts = [part.strip() for part in spec_attrs.split('>') if part and part.strip()]
+            name = ' / '.join(spec_parts) if spec_parts else f'SKU{index}'
+            image_url = ''
+            for part in spec_parts:
+                if part in value_image_map:
+                    image_url = value_image_map[part]
+                    break
+
+            price = _extract_capture_price_from_mapping(item, default_price)
+            stock = item.get('canBookCount') or item.get('stock') or item.get('quantity')
+            sku_info.append({
+                'type': ' / '.join(prop_titles) if prop_titles else '规格',
+                'name': name,
+                'vid': str(item.get('skuId') or item.get('specId') or index),
+                'image': image_url,
+                'price': price,
+                'stock': stock,
+                'index': index,
+            })
+
+    if sku_info:
+        return sku_info
+
+    flattened_values = []
+    for prop in sku_props:
+        prop_name = str(prop.get('prop') or prop.get('name') or '').strip() or '规格'
+        for value in prop.get('value') or []:
+            value_name = str(value.get('name') or '').strip()
+            if not value_name:
+                continue
+            flattened_values.append({
+                'type': prop_name,
+                'name': value_name,
+                'image': value_image_map.get(value_name, ''),
+            })
+
+    for index, item in enumerate(flattened_values, start=1):
+        sku_info.append({
+            'type': item['type'],
+            'name': item['name'],
+            'vid': f'1688_{index}',
+            'image': item['image'],
+            'price': default_price,
+            'index': index,
+        })
+
+    return sku_info
+
+
+def _extract_1688_parameters(snapshot: dict):
+    raw_parameters = snapshot.get('parameters') or {}
+    parameters = []
+    for key, value in raw_parameters.items():
+        if key in {'sellPointModel'}:
+            continue
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            parameters.append({
+                'name': str(key).strip(),
+                'value': str(value).strip(),
+            })
+    return parameters
+
 @app.route('/api/capture/start', methods=['POST'])
 def start_capture():
     """启动商品采集任务"""
@@ -3604,9 +4585,11 @@ def start_capture():
             app.logger.error("❌ URL为空")
             return jsonify({'success': False, 'message': '请输入商品链接'})
         
-        if 'taobao.com' not in url and 'tmall.com' not in url:
+        is_1688 = _is_1688_capture_url(url)
+        is_taobao_tmall = _is_taobao_tmall_capture_url(url)
+        if not is_1688 and not is_taobao_tmall:
             app.logger.error(f"❌ 不支持的URL: {url}")
-            return jsonify({'success': False, 'message': '仅支持淘宝/天猫商品链接'})
+            return jsonify({'success': False, 'message': '仅支持淘宝/天猫/1688商品链接'})
         
         # 生成任务ID
         import hashlib
@@ -3706,13 +4689,13 @@ def start_capture():
                 app.logger.info("⚙️ 配置浏览器选项...")
                 co = ChromiumOptions()
                 co.headless(False)  # 显示浏览器，方便用户登录
+                co.set_user()  # 复用本机默认已登录用户数据，避免 1688 打开新会话后落到登录页
                 
                 # 🛡️ 反爬虫策略配置
                 # 1. 设置真实的User-Agent
                 co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
                 
                 # 2. 禁用自动化检测特征
-                co.set_argument('--disable-blink-features=AutomationControlled')
                 
                 # 3. 添加更多反检测参数
                 co.set_argument('--disable-dev-shm-usage')
@@ -3767,10 +4750,15 @@ def start_capture():
                 
                 # 从任务中获取URL
                 task_url = capture_tasks[task_id]['url']
+                is_1688 = _is_1688_capture_url(task_url)
+                is_taobao_tmall = _is_taobao_tmall_capture_url(task_url)
                 
                 # 🛡️ 先访问淘宝首页，建立正常浏览轨迹（反爬虫关键）
                 try:
-                    if 'tmall.com' in task_url:
+                    if is_1688:
+                        app.logger.info("🏠 先访问1688首页，建立浏览轨迹...")
+                        page.get('https://www.1688.com', timeout=15)
+                    elif 'tmall.com' in task_url:
                         app.logger.info("🏠 先访问天猫首页，建立浏览轨迹...")
                         page.get('https://www.tmall.com', timeout=15)
                     else:
@@ -3789,7 +4777,7 @@ def start_capture():
                 current_url = page.url
                 app.logger.info(f"📍 页面加载后URL: {current_url[:100]}")
                 
-                if 'punish' in current_url or 'sec.taobao.com' in current_url or 'bixi.alicdn.com' in current_url:
+                if not is_1688 and ('punish' in current_url or 'sec.taobao.com' in current_url or 'bixi.alicdn.com' in current_url):
                     app.logger.error("❌ 触发反爬虫验证！")
                     capture_tasks[task_id]['status'] = 'failed'
                     capture_tasks[task_id]['progress'] = 0
@@ -3835,7 +4823,9 @@ def start_capture():
                     app.logger.info(f"🔍 当前URL: {current_url}")
                     
                     # 通过URL判断是否需要登录（更快更准确）
-                    if 'login.taobao.com' in current_url or 'login.tmall.com' in current_url:
+                    if (is_1688 and ('login.1688.com' in current_url or 'login.alibaba.com' in current_url)) or (
+                        not is_1688 and ('login.taobao.com' in current_url or 'login.tmall.com' in current_url)
+                    ):
                         login_detected = True
                         app.logger.warning("⚠️ 检测到登录页面（URL包含login）")
                         capture_tasks[task_id]['message'] = '需要登录，请在浏览器中完成登录...'
@@ -3849,9 +4839,15 @@ def start_capture():
                             
                             # 检查URL是否变回商品详情页
                             current_url = page.url
-                            if 'login.taobao.com' not in current_url and 'login.tmall.com' not in current_url:
+                            if (
+                                (is_1688 and 'login.1688.com' not in current_url and 'login.alibaba.com' not in current_url) or
+                                (not is_1688 and 'login.taobao.com' not in current_url and 'login.tmall.com' not in current_url)
+                            ):
                                 # 确认已经跳转回商品页面
-                                if 'detail.tmall.com' in current_url or 'item.taobao.com' in current_url:
+                                if (
+                                    (is_1688 and ('detail.1688.com' in current_url or 'offer.1688.com' in current_url or '/offer/' in current_url))
+                                    or (not is_1688 and ('detail.tmall.com' in current_url or 'item.taobao.com' in current_url))
+                                ):
                                     login_detected = False
                                     app.logger.info(f"✅ 登录完成，当前URL: {current_url[:100]}")
                                     # 等待页面稳定加载
@@ -3860,6 +4856,10 @@ def start_capture():
                         
                         if login_detected:
                             app.logger.warning("⏰ 登录等待超时")
+                            capture_tasks[task_id]['status'] = 'failed'
+                            capture_tasks[task_id]['progress'] = 0
+                            capture_tasks[task_id]['message'] = '需要先在浏览器中完成1688/淘宝登录，当前会话仍停留在登录页'
+                            return
                     else:
                         app.logger.info("✅ 无需登录或已登录")
                 except Exception as e:
@@ -3868,9 +4868,8 @@ def start_capture():
                 # 🔧 提取商品ID
                 product_id = ''
                 try:
-                    id_match = re.search(r'[?&]id=(\d+)', task_url)
-                    if id_match:
-                        product_id = id_match.group(1)
+                    product_id = _extract_capture_product_id(task_url)
+                    if product_id:
                         app.logger.info(f"✅ 商品ID: {product_id}")
                     else:
                         app.logger.warning("⚠️ 未能从URL提取商品ID")
@@ -3934,12 +4933,46 @@ def start_capture():
                     'sku_info': [],
                     'parameters': []
                 }
+                platform_context = {}
+
+                if is_1688:
+                    app.logger.info("🧭 检测到1688商品，切换到 window.context 采集分支")
+                    try:
+                        for attempt in range(5):
+                            platform_context = _extract_1688_context_snapshot(page)
+                            if (
+                                platform_context.get('title')
+                                or platform_context.get('main_images')
+                                or platform_context.get('sku_props')
+                                or platform_context.get('sku_map')
+                            ):
+                                break
+                            if attempt < 4:
+                                page.wait(1)
+                        app.logger.info(
+                            f"✅ 1688 context 提取完成: 标题={str(platform_context.get('title') or '')[:40]}, "
+                            f"主图={len(platform_context.get('main_images') or [])}, "
+                            f"SKU属性={len(platform_context.get('sku_props') or [])}, "
+                            f"SKU映射={len(platform_context.get('sku_map') or [])}"
+                        )
+                    except Exception as platform_error:
+                        app.logger.error(f"❌ 1688 context 提取失败: {platform_error}")
+                        app.logger.error(traceback.format_exc())
+                        raise Exception("1688页面结构异常，未能读取商品上下文数据")
                 
                 # 提取标题
                 try:
-                    title_elem = page.s_ele('.mainTitle--R75fTcZL') or page.s_ele('h1')
-                    if title_elem:
-                        product_data['title'] = title_elem.text.strip()
+                    if is_1688:
+                        extracted_title = str(platform_context.get('title') or '').strip()
+                        if extracted_title:
+                            product_data['title'] = extracted_title
+                        else:
+                            raise Exception('1688页面未返回标题')
+                    else:
+                        title_elem = page.s_ele('.mainTitle--R75fTcZL') or page.s_ele('h1')
+                        if title_elem:
+                            product_data['title'] = title_elem.text.strip()
+                    if product_data['title']:
                         app.logger.info(f"✅ 标题: {product_data['title'][:50]}...")
                     else:
                         app.logger.warning("⚠️ 未找到标题元素")
@@ -3949,271 +4982,382 @@ def start_capture():
                 
                 # 提取价格
                 try:
-                    price_elem = page.s_ele('.highlightPrice--asfw5V1e') or page.s_ele('.tb-rmb-num')
-                    if price_elem:
-                        price_text = price_elem.text
-                        import re
-                        price_match = re.search(r'(\d+\.?\d*)', price_text)
-                        if price_match:
-                            product_data['price']['current'] = float(price_match.group(1))
+                    if is_1688:
+                        current_prices = platform_context.get('current_prices') or []
+                        resolved_price = 0.0
+                        for item in current_prices:
+                            resolved_price = _parse_capture_price((item or {}).get('price'))
+                            if resolved_price > 0:
+                                break
+                        if resolved_price <= 0:
+                            resolved_price = _parse_capture_price(platform_context.get('price_display'))
+                        if resolved_price > 0:
+                            product_data['price']['current'] = resolved_price
                             app.logger.info(f"✅ 价格: ¥{product_data['price']['current']}")
                         else:
-                            app.logger.warning(f"⚠️ 价格文本格式异常: {price_text}")
+                            app.logger.warning(f"⚠️ 1688价格提取失败: {platform_context.get('price_display')}")
                     else:
-                        app.logger.warning("⚠️ 未找到价格元素")
+                        price_elem = page.s_ele('.highlightPrice--asfw5V1e') or page.s_ele('.tb-rmb-num')
+                        if price_elem:
+                            price_text = price_elem.text
+                            price_match = re.search(r'(\d+\.?\d*)', price_text)
+                            if price_match:
+                                product_data['price']['current'] = float(price_match.group(1))
+                                app.logger.info(f"✅ 价格: ¥{product_data['price']['current']}")
+                            else:
+                                app.logger.warning(f"⚠️ 价格文本格式异常: {price_text}")
+                        else:
+                            app.logger.warning("⚠️ 未找到价格元素")
                 except Exception as e:
                     app.logger.error(f"❌ 价格提取失败: {e}")
                 
-                # 🔧 提取主图（所有缩略图）
-                app.logger.info("📸 开始提取主图...")
+                # Extract main images
+                app.logger.info("Start extracting main images...")
                 try:
-                    # 提取所有主图缩略图
-                    thumbnail_imgs = page.s_eles('.thumbnailPic--QasTmWDm')
-                    if thumbnail_imgs:
-                        for idx, img in enumerate(thumbnail_imgs):
-                            src = img.attr('src')
-                            if src:
-                                # 使用统一的URL清洗函数
+                    if is_1688:
+                        raw_main_images = (
+                            platform_context.get('main_images')
+                            or platform_context.get('offer_images')
+                            or platform_context.get('root_images')
+                            or []
+                        )
+                        for idx, src in enumerate(raw_main_images):
+                            original_src = clean_alicdn_url(src)
+                            if original_src and original_src not in product_data['main_images']:
+                                product_data['main_images'].append(original_src)
+                                if idx < 5:
+                                    app.logger.info(f"1688 main image {idx + 1}: {original_src[:100]}...")
+                        app.logger.info(f"1688 main images extracted: {len(product_data['main_images'])}")
+                    else:
+                        thumbnail_imgs = (
+                            page.s_eles('.thumbnailPic--QasTmWDm')
+                            or page.s_eles('.thumbnailWrap--TikzqD8l img')
+                            or page.s_eles('.thumbnailList--T63jJ6eM img')
+                        )
+                        if thumbnail_imgs:
+                            for idx, img in enumerate(thumbnail_imgs):
+                                src = img.attr('src') or img.attr('data-src')
+                                if not src:
+                                    continue
                                 original_src = clean_alicdn_url(src)
                                 if original_src and original_src not in product_data['main_images']:
                                     product_data['main_images'].append(original_src)
-                                    app.logger.info(f"✅ 主图 {idx+1}: {original_src[:100]}...")
-                        app.logger.info(f"✅ 共提取主图: {len(product_data['main_images'])} 张")
-                    else:
-                        app.logger.warning("⚠️ 未找到主图元素")
+                                    if idx < 5:
+                                        app.logger.info(f"Main image {idx + 1}: {original_src[:100]}...")
+                            app.logger.info(f"Main images extracted: {len(product_data['main_images'])}")
+                        else:
+                            app.logger.warning("Main image elements not found")
                 except Exception as e:
-                    app.logger.error(f"❌ 主图提取失败: {e}")
-                
-                # 🔧 提取详情图片（优化版：直接使用JavaScript，跳过慢速选择器）
-                app.logger.info("📸 开始提取详情图片...")
+                    app.logger.error(f"Main image extraction failed: {e}")
+
+                # Extract detail images
+                app.logger.info("Start extracting detail images...")
                 try:
-                    # 直接使用JavaScript提取，避免DrissionPage选择器的延迟
-                    detail_urls = page.run_js('''
-                            var selectors = [
-                                '#container .descV8-singleImage img',
-                                '#container .descV8-container img',
-                                '#container img',
-                                '#description img',
-                                '.detail-content img',
-                                '.desc-root img'
-                            ];
-                            
-                            var urls = [];
-                            var foundImgs = false;
-                            
-                            for (var i = 0; i < selectors.length; i++) {
-                                var imgs = document.querySelectorAll(selectors[i]);
-                                if (imgs.length > 0) {
-                                    console.log('找到图片使用选择器: ' + selectors[i] + ', 数量: ' + imgs.length);
-                                    imgs.forEach(function(img) {
-                                        var dataSrc = img.getAttribute('data-src');
-                                        var src = img.getAttribute('src');
-                                        var url = dataSrc || src;
-                                        if (url && url.indexOf('s.gif') === -1 && url.indexOf('O1CN01CYtPWu1MUBqQAUK9D') === -1) {
-                                            if (url.indexOf('alicdn.com') !== -1 && urls.indexOf(url) === -1) {
-                                                urls.push(url);
+                    if is_1688:
+                        detail_urls = _collect_1688_detail_images(platform_context.get('detail_url'))
+                        app.logger.info(f"1688 detail image URLs: {len(detail_urls) if detail_urls else 0}")
+                    else:
+                        detail_urls = page.run_js('''
+                                var selectors = [
+                                    '#container .descV8-singleImage img',
+                                    '#container .descV8-container img',
+                                    '#container img',
+                                    '#description img',
+                                    '.detail-content img',
+                                    '.desc-root img'
+                                ];
+
+                                var urls = [];
+                                var foundImgs = false;
+
+                                for (var i = 0; i < selectors.length; i++) {
+                                    var imgs = document.querySelectorAll(selectors[i]);
+                                    if (imgs.length > 0) {
+                                        console.log('detail selector matched: ' + selectors[i] + ', count: ' + imgs.length);
+                                        imgs.forEach(function(img) {
+                                            var dataSrc = img.getAttribute('data-src');
+                                            var src = img.getAttribute('src');
+                                            var url = dataSrc || src;
+                                            if (url && url.indexOf('s.gif') === -1 && url.indexOf('O1CN01CYtPWu1MUBqQAUK9D') === -1) {
+                                                if (url.indexOf('alicdn.com') !== -1 && urls.indexOf(url) === -1) {
+                                                    urls.push(url);
+                                                }
                                             }
-                                        }
-                                    });
-                                    foundImgs = true;
-                                    break;  // 找到就停止
+                                        });
+                                        foundImgs = true;
+                                        break;
+                                    }
                                 }
-                            }
-                            
-                            if (!foundImgs) {
-                                console.log('未找到任何详情图，尝试的选择器: ' + selectors.join(', '));
-                            }
-                            
-                            return urls;
-                        ''')
-                        
-                    app.logger.info(f"🔍 JavaScript提取到 {len(detail_urls) if detail_urls else 0} 个详情图URL")
-                    
+
+                                if (!foundImgs) {
+                                    console.log('detail selectors exhausted: ' + selectors.join(', '));
+                                }
+
+                                return urls;
+                            ''')
+                        app.logger.info(f"JavaScript detail image URLs: {len(detail_urls) if detail_urls else 0}")
+
                     if detail_urls:
                         for idx, url in enumerate(detail_urls):
                             try:
-                                # 使用统一的URL清洗函数
                                 clean_url = clean_alicdn_url(url)
-                                
-                                # 验证是否为阿里云CDN图片
                                 if clean_url and ('alicdn.com' in clean_url or 'img.alicdn.com' in clean_url):
                                     if clean_url not in product_data['detail_images']:
                                         product_data['detail_images'].append(clean_url)
                                         if len(product_data['detail_images']) <= 5 or len(product_data['detail_images']) % 10 == 0:
-                                            app.logger.info(f"✅ 详情图 {len(product_data['detail_images'])}: {clean_url[:100]}...")
+                                            app.logger.info(f"Detail image {len(product_data['detail_images'])}: {clean_url[:100]}...")
                             except Exception as img_e:
                                 if idx < 5:
-                                    app.logger.warning(f"⚠️ 处理图{idx+1}失败: {img_e}")
-                    
-                    app.logger.info(f"✅ 共提取详情图: {len(product_data['detail_images'])} 张")
-                    
+                                    app.logger.warning(f"Detail image processing failed for item {idx + 1}: {img_e}")
+
+                    app.logger.info(f"Detail images extracted: {len(product_data['detail_images'])}")
                     if len(product_data['detail_images']) == 0:
-                        app.logger.warning("⚠️ 详情图提取结果为0，该商品可能没有详情图或页面结构变化")
-                    
+                        app.logger.warning("Detail image extraction returned 0 items")
                 except Exception as e:
-                    app.logger.error(f"❌ 详情图提取失败: {e}")
+                    app.logger.error(f"Detail image extraction failed: {e}")
                     app.logger.error(traceback.format_exc())
-                
-                # 🔧 提取SKU信息（优化版：直接使用JavaScript，跳过慢速选择器）
-                app.logger.info("📦 开始提取SKU信息...")
+
+                # Extract SKU information
+                app.logger.info("Start extracting SKU info...")
                 if options.get('extract_sku', True):
                     try:
-                        # 1. 快速滚动到SKU区域（使用JavaScript）
-                        try:
-                            page.run_js('''
-                                var skuArea = document.querySelector('.skuWrapper--iKSsnB_s') || document.getElementById('skuOptionsArea');
-                                if (skuArea) {
-                                    skuArea.scrollIntoView({behavior: "instant", block: "center"});
-                                }
-                            ''')
-                            system_time.sleep(0.2)  # 从0.3秒减少到0.2秒
-                        except Exception as e:
-                            app.logger.warning(f"⚠️ SKU区域滚动失败: {e}")
-                        
-                        # 2. 提取SKU数据和价格（改进版：点击SKU获取真实价格）
-                        app.logger.info("📦 开始提取SKU价格...")
-                        
-                        # 先获取基础SKU信息
-                        sku_data_list = page.run_js('''
-                                var skuItems = document.querySelectorAll('#skuOptionsArea .skuItem--Z2AJB9Ew');
-                                var result = [];
-                                
-                                // 获取当前显示的价格（作为默认价格）
-                                var defaultPrice = 0;
-                                try {
-                                    var priceElem = document.querySelector('.highlightPrice--asfw5V1e') || document.querySelector('.tb-rmb-num');
-                                    if (priceElem) {
-                                        var priceText = priceElem.textContent || priceElem.innerText;
-                                        var priceMatch = priceText.match(/(\d+\.?\d*)/);
-                                        if (priceMatch) {
-                                            defaultPrice = parseFloat(priceMatch[1]);
-                                        }
+                        if is_1688:
+                            default_price = product_data['price'].get('current', 0) or _parse_capture_price(platform_context.get('price_display'))
+                            sku_data_list = _build_1688_sku_info(platform_context, clean_alicdn_url, default_price)
+                            app.logger.info(f"1688 SKU entries extracted: {len(sku_data_list) if sku_data_list else 0}")
+                        else:
+                            try:
+                                page.run_js('''
+                                    var skuArea = document.querySelector('.skuWrapper--iKSsnB_s') || document.getElementById('skuOptionsArea');
+                                    if (skuArea) {
+                                        skuArea.scrollIntoView({behavior: "instant", block: "center"});
                                     }
-                                } catch(e) {
-                                    console.log('提取默认价格失败:', e);
-                                }
-                                
-                                skuItems.forEach(function(skuItem, skuIdx) {
-                                    // 获取SKU类型标题
-                                    var titleElem = skuItem.querySelector('.ItemLabel--psS1SOyC span');
-                                    var skuTitle = titleElem ? titleElem.textContent.trim() : '';
-                                    
-                                    // 获取该类型下的所有选项
-                                    var valueItems = skuItem.querySelectorAll('.valueItem--smR4pNt4');
-                                    
-                                    valueItems.forEach(function(valueItem, valIdx) {
-                                        // 提取名称
-                                        var nameElem = valueItem.querySelector('span[title]');
-                                        var skuName = nameElem ? nameElem.getAttribute('title') : valueItem.textContent.trim();
-                                        
-                                        // 提取图片
-                                        var imgElem = valueItem.querySelector('.valueItemImg--GC9bH5my, img');
-                                        var skuImage = '';
-                                        if (imgElem) {
-                                            skuImage = imgElem.getAttribute('data-src') || imgElem.getAttribute('src') || '';
+                                ''')
+                                system_time.sleep(0.2)
+                            except Exception as e:
+                                app.logger.warning(f"SKU area scroll failed: {e}")
+
+                            app.logger.info("Start extracting Taobao/Tmall SKU prices...")
+                            sku_data_list = page.run_js(r'''
+                                    function parsePriceText(raw) {
+                                        if (raw === null || raw === undefined) return 0;
+                                        var match = String(raw).replace(/[,，]/g, '').match(/(\d+(?:\.\d+)?)/);
+                                        return match ? parseFloat(match[1]) : 0;
+                                    }
+
+                                    function extractPriceFromDom() {
+                                        var selectors = [
+                                            '.highlightPrice--asfw5V1e',
+                                            '.tb-rmb-num',
+                                            '[class*="highlightPrice"]',
+                                            '[class*="priceText"]',
+                                            '[class*="PriceText"]',
+                                            '[class*="salesPrice"]',
+                                            '[class*="mainPrice"]',
+                                            '[class*="price--"]',
+                                            '[class*="Price--"]',
+                                            '[data-testid*="price"]',
+                                            '.price--Ls68DZ8a',
+                                            '.priceText--cH6s-0s0',
+                                            '.price-value',
+                                            '.tb-property-cont .price'
+                                        ];
+                                        for (var i = 0; i < selectors.length; i++) {
+                                            var elem = document.querySelector(selectors[i]);
+                                            var price = parsePriceText(elem ? (elem.textContent || elem.innerText || '') : '');
+                                            if (price > 0) return price;
                                         }
-                                        
-                                        // 提取vid
-                                        var vid = valueItem.getAttribute('data-vid') || '';
-                                        
-                                        if (skuName) {
-                                            result.push({
-                                                type: skuTitle,
-                                                name: skuName,
-                                                vid: vid,
-                                                image: skuImage,
-                                                price: defaultPrice,  // 先使用默认价格
-                                                index: valIdx + 1
+                                        return 0;
+                                    }
+
+                                    function extractPriceFromState() {
+                                        var roots = [
+                                            window.Hub,
+                                            window.__INIT_DATA__,
+                                            window.__GLOBAL_DATA__,
+                                            window.__DETAIL_DATA__,
+                                            window.g_config
+                                        ].filter(Boolean);
+                                        var visited = new WeakSet();
+                                        var candidates = [];
+
+                                        function walk(node, depth) {
+                                            if (!node || depth > 4) return;
+                                            if (typeof node === 'string' || typeof node === 'number') {
+                                                var parsed = parsePriceText(node);
+                                                if (parsed > 0 && parsed < 100000) {
+                                                    candidates.push(parsed);
+                                                }
+                                                return;
+                                            }
+                                            if (typeof node !== 'object') return;
+                                            if (visited.has(node)) return;
+                                            visited.add(node);
+
+                                            if (Array.isArray(node)) {
+                                                for (var i = 0; i < node.length; i++) {
+                                                    walk(node[i], depth + 1);
+                                                }
+                                                return;
+                                            }
+
+                                            Object.keys(node).forEach(function(key) {
+                                                var value = node[key];
+                                                if (/price|promotion|sale/i.test(String(key))) {
+                                                    var parsed = parsePriceText(value);
+                                                    if (parsed > 0 && parsed < 100000) {
+                                                        candidates.push(parsed);
+                                                    }
+                                                }
+                                                walk(value, depth + 1);
                                             });
                                         }
+
+                                        roots.forEach(function(root) { walk(root, 0); });
+                                        if (!candidates.length) return 0;
+                                        candidates.sort(function(a, b) { return a - b; });
+                                        return candidates[0];
+                                    }
+
+                                    var skuItems = document.querySelectorAll('#skuOptionsArea .skuItem--Z2AJB9Ew');
+                                    var result = [];
+
+                                    var defaultPrice = extractPriceFromDom() || extractPriceFromState();
+
+                                    skuItems.forEach(function(skuItem) {
+                                        var titleElem = skuItem.querySelector('.ItemLabel--psS1SOyC span');
+                                        var skuTitle = titleElem ? titleElem.textContent.trim() : '';
+                                        var valueItems = skuItem.querySelectorAll('.valueItem--smR4pNt4');
+
+                                        valueItems.forEach(function(valueItem, valIdx) {
+                                            var nameElem = valueItem.querySelector('span[title]');
+                                            var skuName = nameElem ? nameElem.getAttribute('title') : valueItem.textContent.trim();
+                                            var imgElem = valueItem.querySelector('.valueItemImg--GC9bH5my, img');
+                                            var skuImage = '';
+                                            if (imgElem) {
+                                                skuImage = imgElem.getAttribute('data-src') || imgElem.getAttribute('src') || '';
+                                            }
+                                            var vid = valueItem.getAttribute('data-vid') || '';
+                                            if (skuName) {
+                                                result.push({
+                                                    type: skuTitle,
+                                                    name: skuName,
+                                                    vid: vid,
+                                                    image: skuImage,
+                                                    price: defaultPrice,
+                                                    index: valIdx + 1
+                                                });
+                                            }
+                                        });
                                     });
-                                });
-                                
-                                return result;
-                            ''')
-                        
-                        # 3. 尝试点击每个SKU选项获取准确价格（优化：仅点击第一个SKU类型）
-                        if sku_data_list and len(sku_data_list) > 0:
-                            app.logger.info("💰 开始获取SKU准确价格...")
-                            try:
-                                # 只处理第一个SKU类型（通常是颜色）
-                                first_sku_type = sku_data_list[0].get('type', '')
-                                same_type_skus = [s for s in sku_data_list if s.get('type') == first_sku_type]
-                                
-                                for sku_index, sku_data in enumerate(same_type_skus[:10]):  # 最多点击10个，避免过长
-                                    try:
-                                        vid = sku_data.get('vid')
-                                        if vid:
-                                            # 点击SKU选项
-                                            click_result = page.run_js(f'''
-                                                var targetItem = document.querySelector('.valueItem--smR4pNt4[data-vid="{vid}"]');
-                                                if (targetItem && !targetItem.classList.contains('valueItem--disabled--YJfp_5JE')) {{
-                                                    targetItem.click();
-                                                    return true;
-                                                }}
-                                                return false;
-                                            ''')
-                                            
-                                            if click_result:
-                                                system_time.sleep(0.3)  # 等待价格更新
-                                                
-                                                # 获取更新后的价格
-                                                current_price = page.run_js('''
-                                                    var priceElem = document.querySelector('.highlightPrice--asfw5V1e') || document.querySelector('.tb-rmb-num');
-                                                    if (priceElem) {
-                                                        var priceText = priceElem.textContent || priceElem.innerText;
-                                                        var priceMatch = priceText.match(/(\d+\.?\d*)/);
-                                                        if (priceMatch) {
-                                                            return parseFloat(priceMatch[1]);
-                                                        }
-                                                    }
-                                                    return 0;
+
+                                    return result;
+                                ''')
+
+                            if sku_data_list and len(sku_data_list) > 0:
+                                app.logger.info("Start refining Taobao/Tmall SKU prices...")
+                                try:
+                                    first_sku_type = sku_data_list[0].get('type', '')
+                                    same_type_skus = [s for s in sku_data_list if s.get('type') == first_sku_type]
+
+                                    for sku_index, sku_data in enumerate(same_type_skus[:10]):
+                                        try:
+                                            vid = sku_data.get('vid')
+                                            if vid:
+                                                click_result = page.run_js(f'''
+                                                    var targetItem = document.querySelector('.valueItem--smR4pNt4[data-vid="{vid}"]');
+                                                    if (targetItem && !targetItem.classList.contains('valueItem--disabled--YJfp_5JE')) {{
+                                                        targetItem.click();
+                                                        return true;
+                                                    }}
+                                                    return false;
                                                 ''')
-                                                
-                                                if current_price and current_price > 0:
-                                                    sku_data['price'] = current_price
-                                                    if sku_index < 3:  # 只打印前3个
-                                                        app.logger.info(f"💰 SKU「{sku_data['name']}」价格: ¥{current_price}")
-                                    except Exception as price_e:
-                                        if sku_index < 3:
-                                            app.logger.warning(f"⚠️ 获取SKU价格失败: {price_e}")
-                                
-                                app.logger.info(f"✅ SKU价格获取完成")
-                            except Exception as e:
-                                app.logger.warning(f"⚠️ SKU价格批量获取失败，使用默认价格: {e}")
-                            
-                        app.logger.info(f"🔍 JavaScript提取到 {len(sku_data_list) if sku_data_list else 0} 个SKU选项")
-                        
+
+                                                if click_result:
+                                                    system_time.sleep(0.3)
+                                                    current_price = page.run_js(r'''
+                                                        function parsePriceText(raw) {
+                                                            if (raw === null || raw === undefined) return 0;
+                                                            var match = String(raw).replace(/[,，]/g, '').match(/(\d+(?:\.\d+)?)/);
+                                                            return match ? parseFloat(match[1]) : 0;
+                                                        }
+
+                                                        function extractPriceFromDom() {
+                                                            var selectors = [
+                                                                '.highlightPrice--asfw5V1e',
+                                                                '.tb-rmb-num',
+                                                                '[class*="highlightPrice"]',
+                                                                '[class*="priceText"]',
+                                                                '[class*="PriceText"]',
+                                                                '[class*="salesPrice"]',
+                                                                '[class*="mainPrice"]',
+                                                                '[class*="price--"]',
+                                                                '[class*="Price--"]',
+                                                                '[data-testid*="price"]',
+                                                                '.price--Ls68DZ8a',
+                                                                '.priceText--cH6s-0s0',
+                                                                '.price-value',
+                                                                '.tb-property-cont .price'
+                                                            ];
+                                                            for (var i = 0; i < selectors.length; i++) {
+                                                                var elem = document.querySelector(selectors[i]);
+                                                                var price = parsePriceText(elem ? (elem.textContent || elem.innerText || '') : '');
+                                                                if (price > 0) return price;
+                                                            }
+                                                            return 0;
+                                                        }
+
+                                                        return extractPriceFromDom();
+                                                    ''')
+                                                    if current_price and current_price > 0:
+                                                        sku_data['price'] = current_price
+                                                        if sku_index < 3:
+                                                            app.logger.info(f"SKU price refined: {sku_data['name']} => {current_price}")
+                                        except Exception as price_e:
+                                            if sku_index < 3:
+                                                app.logger.warning(f"SKU price refinement failed: {price_e}")
+
+                                    app.logger.info("Taobao/Tmall SKU price refinement finished")
+                                except Exception as e:
+                                    app.logger.warning(f"SKU price refinement fell back to default price: {e}")
+
+                            app.logger.info(f"Taobao/Tmall SKU entries extracted: {len(sku_data_list) if sku_data_list else 0}")
+
                         if sku_data_list:
                             for sku_data in sku_data_list:
                                 try:
-                                    # 清洗SKU图片URL
                                     if sku_data.get('image'):
                                         raw_url = sku_data['image']
-                                        # 跳过占位图
                                         if 's.gif' not in raw_url and 'O1CN01CYtPWu1MUBqQAUK9D' not in raw_url:
                                             sku_data['image'] = clean_alicdn_url(raw_url)
-                                            if len(product_data['sku_info']) < 3:  # 只打印前3个
-                                                app.logger.info(f"🔍 SKU原始: {raw_url[:80]}...")
-                                                app.logger.info(f"✅ SKU清洗: {sku_data['image'][:80]}...")
+                                            if len(product_data['sku_info']) < 3 and sku_data['image']:
+                                                app.logger.info(f"Raw SKU image: {raw_url[:80]}...")
+                                                app.logger.info(f"Cleaned SKU image: {sku_data['image'][:80]}...")
                                         else:
-                                            sku_data['image'] = ''  # 占位图，设为空
-                                    
+                                            sku_data['image'] = ''
+
                                     product_data['sku_info'].append(sku_data)
-                                    
                                     if len(product_data['sku_info']) <= 5 or len(product_data['sku_info']) % 10 == 0:
-                                        price_info = f", 价格: ¥{sku_data.get('price', 0)}" if sku_data.get('price') else ""
-                                        app.logger.info(f"✅ SKU {len(product_data['sku_info'])}: {sku_data['type']} - {sku_data['name'][:30]}{price_info}")
+                                        price_value = sku_data.get('price', 0)
+                                        price_info = f", price: {price_value}" if price_value else ''
+                                        app.logger.info(f"SKU {len(product_data['sku_info'])}: {sku_data['type']} - {sku_data['name'][:30]}{price_info}")
                                 except Exception as sku_e:
-                                    app.logger.warning(f"⚠️ 处理SKU失败: {sku_e}")
-                            
-                            app.logger.info(f"✅ 共提取SKU: {len(product_data['sku_info'])} 个")
+                                    app.logger.warning(f"SKU processing failed: {sku_e}")
+
+                            app.logger.info(f"SKU entries extracted: {len(product_data['sku_info'])}")
                         else:
-                            app.logger.warning("⚠️ 未找到SKU，该商品可能无规格选项或页面结构变化")
-                        
+                            app.logger.warning("No SKU entries found for current product")
                     except Exception as e:
-                        app.logger.error(f"❌ SKU提取失败: {e}")
+                        app.logger.error(f"SKU extraction failed: {e}")
                         app.logger.error(traceback.format_exc())
+
+                if is_1688 and options.get('extract_params', True):
+                    try:
+                        product_data['parameters'] = _extract_1688_parameters(platform_context)
+                        app.logger.info(f"1688 attributes extracted: {len(product_data['parameters'])}")
+                    except Exception as e:
+                        app.logger.warning(f"1688 attribute extraction failed: {e}")
+
                 
                 # 🔧 下载图片（改进版：按文件夹分类）
                 capture_tasks[task_id]['progress'] = 70
@@ -4437,6 +5581,10 @@ def start_capture():
         response_data = {
             'success': True,
             'task_id': task_id,
+            'data': {
+                'task_id': task_id,
+                'url': url,
+            },
             'message': '采集任务已启动'
         }
         app.logger.info(f"📤 准备返回响应: {response_data}")
@@ -4542,6 +5690,9 @@ def import_capture_result():
         
         task_id = data.get('task_id')
         product_data = data.get('product_data')
+        task = capture_tasks.get(task_id) if task_id else None
+        if task and task.get('result'):
+            product_data = task.get('result')
         
         if not task_id or not product_data:
             return jsonify({
@@ -4589,6 +5740,10 @@ def import_capture_result():
                 'message': error_msg
             })
         
+        # 从采集结果中获取SKU信息（包含价格）
+        captured_sku_info = product_data.get('sku_info', [])
+        captured_main_images = product_data.get('main_images', [])
+
         # 查找SKU目录（符合拖拽导入格式）
         sku_path = None
         for folder_name in os.listdir(download_path):
@@ -4611,6 +5766,90 @@ def import_capture_result():
                     if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
                         result.append(os.path.join(root, filename))
             return result
+
+        def backfill_capture_sku_images(target_dir):
+            """When SKU files are missing, rebuild them from local main images or captured URLs."""
+            if not captured_sku_info:
+                return []
+
+            import requests
+            import shutil
+
+            def infer_image_ext(image_url: str) -> str:
+                lower_url = (image_url or '').lower()
+                if '.png' in lower_url:
+                    return '.png'
+                if '.gif' in lower_url:
+                    return '.gif'
+                if '.webp' in lower_url:
+                    return '.webp'
+                if '.jpeg' in lower_url or '.jpg' in lower_url:
+                    return '.jpg'
+                return '.jpg'
+
+            def find_local_main_images():
+                local_main_dir = None
+                for folder_name in os.listdir(download_path):
+                    if '主图' in folder_name:
+                        local_main_dir = os.path.join(download_path, folder_name)
+                        break
+                if not local_main_dir or not os.path.exists(local_main_dir):
+                    return []
+                return list_files_recursive(local_main_dir)
+
+            session = requests.Session()
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            }
+            source_url = product_data.get('url', '')
+            if source_url:
+                headers['Referer'] = source_url
+            session.headers.update(headers)
+
+            restored_files = []
+            fallback_main_url = captured_main_images[0] if captured_main_images else ''
+            local_main_images = find_local_main_images()
+
+            for idx, captured_sku in enumerate(captured_sku_info, start=1):
+                safe_name = re.sub(r'[\\/:*?"<>|]', '_', str(captured_sku.get('name') or f'SKU_{idx}')[:50])
+                local_main_file = local_main_images[(idx - 1) % len(local_main_images)] if local_main_images else ''
+                remote_img_url = (captured_sku or {}).get('image') or fallback_main_url
+                ext = infer_image_ext(remote_img_url or local_main_file)
+                file_path = os.path.join(target_dir, f"{idx:02d}_{safe_name}{ext}")
+
+                if os.path.exists(file_path):
+                    restored_files.append(file_path)
+                    continue
+
+                if local_main_file and os.path.exists(local_main_file):
+                    try:
+                        shutil.copyfile(local_main_file, file_path)
+                        restored_files.append(file_path)
+                        continue
+                    except Exception as copy_error:
+                        app.logger.warning(f"⚠️ 复制主图回填SKU图片失败: idx={idx}, error={copy_error}")
+
+                img_url = remote_img_url
+                if not img_url:
+                    continue
+
+                if img_url.startswith('//'):
+                    img_url = 'https:' + img_url
+
+                try:
+                    response = session.get(img_url, timeout=20)
+                    if response.status_code == 200 and len(response.content) >= 100:
+                        with open(file_path, 'wb') as img_file:
+                            img_file.write(response.content)
+                        restored_files.append(file_path)
+                    else:
+                        app.logger.warning(
+                            f"⚠️ 无法回填SKU图片: idx={idx}, status={response.status_code}, bytes={len(response.content)}"
+                        )
+                except Exception as restore_error:
+                    app.logger.warning(f"⚠️ 回填SKU图片失败: idx={idx}, error={restore_error}")
+
+            return restored_files
         
         try:
             image_files = list_files_recursive(sku_path)
@@ -4621,32 +5860,74 @@ def import_capture_result():
             })
         
         if not image_files:
+            app.logger.warning("⚠️ SKU目录中没有图片，尝试根据采集结果回填")
+            image_files = backfill_capture_sku_images(sku_path)
+        
+        if not image_files:
             return jsonify({
                 'success': False,
                 'message': '未找到图片文件'
             })
         
-        # 从采集结果中获取SKU信息（包含价格）
-        captured_sku_info = product_data.get('sku_info', [])
-        
         # 创建SKU列表（符合拖拽导入格式）
         sku_list = []
+
+        def parse_downloaded_sku_file_name(file_stem: str):
+            raw_name = html.unescape(str(file_stem or '')).strip()
+            match = re.match(r'^(?:SKU[_\-\s]*)?(\d{1,4})[_\-\s]*(.*)$', raw_name, flags=re.IGNORECASE)
+            if not match:
+                return None, raw_name
+            try:
+                index_value = int(match.group(1))
+            except Exception:
+                index_value = None
+            stripped_name = (match.group(2) or '').strip() or raw_name
+            return index_value, stripped_name
+
+        def normalize_capture_sku_name(value):
+            raw = html.unescape(str(value or ''))
+            raw = raw.replace('&gt;', '>').replace('＞', '>').replace('/', '').replace('\\', '').replace('_', '')
+            raw = re.sub(r'^(?:SKU)?\d+', '', raw, flags=re.IGNORECASE)
+            raw = re.sub(r'[\s\-\+\(\)\[\]【】（）<>「」『』·.,，。:：;；!！?？"“”‘’]', '', raw)
+            return raw
+
+        captured_sku_by_index = {}
+        for enum_idx, captured_sku in enumerate(captured_sku_info, start=1):
+            try:
+                sku_index = int(captured_sku.get('index') or enum_idx)
+            except Exception:
+                sku_index = enum_idx
+            captured_sku_by_index.setdefault(sku_index, captured_sku)
+
         for sku_file in image_files:
             file_name = os.path.basename(sku_file).split('.')[0]
             dir_name = os.path.basename(os.path.dirname(sku_file))
             
-            # 提取名称（去掉序号前缀，如 "01_" ）
-            name = file_name
-            if '_' in file_name and file_name.split('_')[0].isdigit():
-                name = '_'.join(file_name.split('_')[1:])
-            
+            # 提取名称（兼容 "01_xxx" / "SKU_01_xxx" 等命名）
+            file_index, name = parse_downloaded_sku_file_name(file_name)
+             
             # 从采集结果中查找对应的价格
             sku_price = ''
-            for captured_sku in captured_sku_info:
-                if captured_sku.get('name') == name or captured_sku.get('name') in name:
-                    sku_price = captured_sku.get('price', '')
-                    break
-            
+            matched_sku = captured_sku_by_index.get(file_index) if file_index is not None else None
+
+            if matched_sku:
+                sku_price = matched_sku.get('price', '')
+                if matched_sku.get('name'):
+                    name = str(matched_sku.get('name')).strip()
+            else:
+                normalized_name = normalize_capture_sku_name(name)
+                for captured_sku in captured_sku_info:
+                    captured_name = normalize_capture_sku_name(captured_sku.get('name'))
+                    if captured_name and (
+                        captured_name == normalized_name
+                        or captured_name in normalized_name
+                        or normalized_name in captured_name
+                    ):
+                        sku_price = captured_sku.get('price', '')
+                        if captured_sku.get('name'):
+                            name = str(captured_sku.get('name')).strip()
+                        break
+             
             sku_list.append({
                 'file_name': file_name,
                 'dir_name': dir_name,
@@ -4701,7 +5982,12 @@ def import_capture_result():
             'success': True,
             'message': '商品已添加到待上传列表',
             'record_id': record.id,
-            'record_name': folder_name
+            'record_name': folder_name,
+            'data': {
+                'record_id': record.id,
+                'record_name': folder_name,
+                'sku_count': len(sku_list),
+            }
         })
         
     except Exception as e:
@@ -4769,7 +6055,7 @@ if __name__ == '__main__':
                 # 浏览器初始化失败不影响GUI显示
         
         # 在后台线程中初始化浏览器
-        Thread(init_browser).start()
+        threading.Thread(target=init_browser, daemon=True).start()
         
         # Thread(wakeup_listen).start()  # 🔧 暂时禁用自动唤醒功能
         print("💡 启动GUI界面...")
@@ -4787,26 +6073,3 @@ if __name__ == '__main__':
             
             traceback.print_exc()
             sys.exit(1)
-if getattr(sys, 'frozen', False):
-    base_dir = os.path.dirname(sys.executable)
-    try:
-        os.add_dll_directory(base_dir)
-        internal_dir = os.path.join(base_dir, '_internal')
-        if os.path.isdir(internal_dir):
-            os.add_dll_directory(internal_dir)
-            os.add_dll_directory(os.path.join(internal_dir, 'PySide6'))
-            os.add_dll_directory(os.path.join(internal_dir, 'shiboken6'))
-            os.environ['QT_PLUGIN_PATH'] = os.path.join(internal_dir, 'PySide6', 'plugins')
-            os.environ['PATH'] = internal_dir + os.pathsep + os.path.join(internal_dir, 'PySide6') + os.pathsep + os.path.join(internal_dir, 'shiboken6') + os.pathsep + os.environ.get('PATH', '')
-        else:
-            meipass = getattr(sys, '_MEIPASS', base_dir)
-            os.add_dll_directory(meipass)
-            os.add_dll_directory(os.path.join(meipass, 'PySide6'))
-            os.add_dll_directory(os.path.join(meipass, 'shiboken6'))
-            os.environ['QT_PLUGIN_PATH'] = os.path.join(meipass, 'PySide6', 'plugins')
-            os.environ['PATH'] = meipass + os.pathsep + os.path.join(meipass, 'PySide6') + os.pathsep + os.path.join(meipass, 'shiboken6') + os.pathsep + os.environ.get('PATH', '')
-    except Exception:
-        pass
-
-from src.thread import Thread
-from src.gui import Gui

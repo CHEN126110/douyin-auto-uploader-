@@ -1,6 +1,6 @@
 {
   "name": "douyin-sock-publisher",
-  "version": "4.0.0",
+  "version": "4.0.6",
   "description": "抖音袜子发布工具 - Tauri + Vue 3 版本",
   "author": "Dyin",
   "license": "MIT",
@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "package:release": "powershell -ExecutionPolicy Bypass -File ./package-release.ps1"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",

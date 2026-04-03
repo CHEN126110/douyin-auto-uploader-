@@ -1,71 +1,55 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-PyInstaller 打包脚本 - 生成 Tauri Sidecar 可执行文件
-"""
+
+"""Build the Python sidecar executable used by the Tauri app."""
+
+from __future__ import annotations
 
 import os
-import sys
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
-# 配置
-SCRIPT_DIR = Path(__file__).parent.absolute()
-PROJECT_ROOT = SCRIPT_DIR.parent.parent  # 项目根目录
-OUTPUT_DIR = SCRIPT_DIR.parent / "src-tauri" / "sidecar"
+SCRIPT_DIR = Path(__file__).resolve().parent
+TAURI_APP_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = TAURI_APP_DIR.parent
+OUTPUT_DIR = TAURI_APP_DIR / "src-tauri" / "sidecar"
 MAIN_SCRIPT = SCRIPT_DIR / "app.py"
 
-# 需要包含的数据文件
-DATA_FILES = [
-    # (源路径, 目标路径)
+DATA_FILES: list[tuple[Path, str]] = [
     (PROJECT_ROOT / "src", "src"),
     (PROJECT_ROOT / "sqlite.db", "."),
     (PROJECT_ROOT / "cfg.yaml", "."),
     (PROJECT_ROOT / "pricing_config.json", "."),
+    (TAURI_APP_DIR / "user_settings.json", "."),
+    (PROJECT_ROOT / "trending_keywords.db", "."),
 ]
 
-# 隐藏导入
 HIDDEN_IMPORTS = [
-    # Flask 相关
     "peewee",
     "flask",
     "flask_cors",
     "werkzeug",
-    # 图像处理
     "PIL",
     "PIL.Image",
     "PIL.ImageDraw",
     "PIL.ImageFont",
-    # 配置
     "yaml",
+    "py7zr",
     "requests",
     "urllib3",
     "psutil",
-    # DrissionPage 和浏览器自动化
     "DrissionPage",
-    "DrissionPage.chromium_page",
-    "DrissionPage.chromium_element",
-    "DrissionPage.chromium_tab",
-    "DrissionPage.commons",
-    "DrissionPage.commons.web",
-    "DrissionPage.commons.keys",
-    "DrissionPage.configs",
-    "DrissionPage.configs.chromium_options",
-    "DrissionPage.configs.session_options",
-    "DrissionPage.errors",
-    "DrissionPage._base",
-    "DrissionPage._pages",
-    "DrissionPage._units",
     "websocket",
     "websocket._core",
     "websocket._abnf",
     "certifi",
-    # src 模块
     "src",
     "src.orm",
     "src.config",
     "src.utils",
+    "src.runtime_paths",
     "src.chrome_manager",
     "src.enhanced_category_selector",
     "src.smart_pricing_engine",
@@ -76,7 +60,7 @@ HIDDEN_IMPORTS = [
     "src.confidence_scorer",
     "src.quantity_extraction_enhanced",
     "src.post_interaction_validator",
-    # 其他
+    "natsort",
     "dataclasses",
     "typing",
     "pathlib",
@@ -93,123 +77,108 @@ HIDDEN_IMPORTS = [
     "subprocess",
 ]
 
+EXCLUDED_MODULES = [
+    "PyQt5",
+    "PyQt6",
+    "PySide2",
+    "tkinter",
+    "matplotlib",
+    "IPython",
+    "sphinx",
+    "notebook",
+    "jupyter",
+]
 
-def build_sidecar():
-    """构建 Sidecar 可执行文件"""
+
+def build_sidecar() -> bool:
     print("=" * 60)
-    print("[BUILD] 开始构建 Python Sidecar")
+    print("[BUILD] Building Python sidecar")
     print("=" * 60)
-    
-    # 确保输出目录存在
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # 构建 PyInstaller 命令
+
     cmd = [
-        sys.executable, "-m", "PyInstaller",
+        sys.executable,
+        "-m",
+        "PyInstaller",
         "--onefile",
-        "--noconsole",  # 隐藏控制台窗口
-        "--name", "python-backend",
-        "--distpath", str(OUTPUT_DIR),
-        "--workpath", str(SCRIPT_DIR / "build"),
-        "--specpath", str(SCRIPT_DIR),
+        "--name",
+        "python-backend",
+        "--distpath",
+        str(OUTPUT_DIR),
+        "--workpath",
+        str(SCRIPT_DIR / "build"),
+        "--specpath",
+        str(SCRIPT_DIR),
         "--clean",
         "--noconfirm",
-        # 添加 src 目录到 Python 路径
-        "--paths", str(PROJECT_ROOT),
-        # 收集 DrissionPage 的所有子模块
-        "--collect-submodules", "DrissionPage",
-        "--collect-data", "DrissionPage",
-        # 收集 src 的所有子模块
-        "--collect-submodules", "src",
-        # 排除 Qt 相关模块避免冲突
-        "--exclude-module", "PyQt5",
-        "--exclude-module", "PySide6",
-        "--exclude-module", "PyQt6",
-        "--exclude-module", "PySide2",
-        "--exclude-module", "tkinter",
-        "--exclude-module", "matplotlib",
-        "--exclude-module", "IPython",
-        "--exclude-module", "sphinx",
-        "--exclude-module", "notebook",
-        "--exclude-module", "jupyter",
+        "--paths",
+        str(PROJECT_ROOT),
+        "--collect-submodules",
+        "DrissionPage",
+        "--collect-data",
+        "DrissionPage",
     ]
-    
-    # 添加隐藏导入
+
+    for module in EXCLUDED_MODULES:
+        cmd.extend(["--exclude-module", module])
+
     for module in HIDDEN_IMPORTS:
         cmd.extend(["--hidden-import", module])
-    
-    # 添加数据文件
+
     for src, dest in DATA_FILES:
-        if Path(src).exists():
-            if Path(src).is_dir():
-                cmd.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
-            else:
-                cmd.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
-    
-    # 添加主脚本
+        if src.exists():
+            cmd.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
+
     cmd.append(str(MAIN_SCRIPT))
-    
-    print(f"[CMD] 执行命令: {' '.join(cmd)}")
-    print()
-    
-    # 执行打包
+
+    print(f"[CMD] {' '.join(cmd)}")
+
     try:
-        result = subprocess.run(cmd, check=True, capture_output=False)
-        print()
+        subprocess.run(cmd, check=True)
         print("=" * 60)
-        print("[OK] Sidecar 构建成功!")
-        print(f"[OUTPUT] 输出位置: {OUTPUT_DIR / 'python-backend.exe'}")
+        print("[OK] Sidecar build complete")
+        print(f"[OUTPUT] {OUTPUT_DIR / 'python-backend.exe'}")
         print("=" * 60)
         return True
-    except subprocess.CalledProcessError as e:
-        print()
+    except subprocess.CalledProcessError as exc:
         print("=" * 60)
-        print(f"[ERROR] 构建失败: {e}")
+        print(f"[ERROR] Sidecar build failed: {exc}")
         print("=" * 60)
         return False
 
 
-def copy_resources():
-    """复制必要的资源文件到 sidecar 目录"""
-    print("\n[COPY] 复制资源文件...")
-    
-    resources = [
-        ("sqlite.db", "sqlite.db"),
-        ("cfg.yaml", "cfg.yaml"),
-        ("pricing_config.json", "pricing_config.json"),
-    ]
-    
-    for src_name, dest_name in resources:
-        src = PROJECT_ROOT / src_name
-        dest = OUTPUT_DIR / dest_name
-        if src.exists():
-            shutil.copy2(src, dest)
-            print(f"  [OK] {src_name} -> {dest_name}")
+def copy_resources() -> None:
+    print("[COPY] Copying resource files...")
+
+    resource_sources = {
+        "sqlite.db": PROJECT_ROOT / "sqlite.db",
+        "cfg.yaml": PROJECT_ROOT / "cfg.yaml",
+        "pricing_config.json": PROJECT_ROOT / "pricing_config.json",
+        "user_settings.json": TAURI_APP_DIR / "user_settings.json",
+        "trending_keywords.db": PROJECT_ROOT / "trending_keywords.db",
+    }
+
+    for target_name, source_path in resource_sources.items():
+        target_path = OUTPUT_DIR / target_name
+        if source_path.exists():
+            shutil.copy2(source_path, target_path)
+            print(f"  [OK] {source_path.name} -> {target_name}")
         else:
-            print(f"  [WARN] {src_name} 不存在，跳过")
+            print(f"  [WARN] Missing resource: {source_path}")
 
 
-def main():
-    """主函数"""
-    print("\n[START] Python Sidecar 构建工具\n")
-    
-    # 检查主脚本是否存在
+def main() -> None:
+    print("[START] Python sidecar build tool")
+
     if not MAIN_SCRIPT.exists():
-        print(f"[ERROR] 错误: 找不到主脚本 {MAIN_SCRIPT}")
-        sys.exit(1)
-    
-    # 构建
-    success = build_sidecar()
-    
-    if success:
-        # 复制资源
-        copy_resources()
-        
-        print("\n[INFO] 后续步骤:")
-        print("  1. 确保 src-tauri/tauri.conf.json 中配置了 externalBin")
-        print("  2. 运行 npm run tauri:build 构建完整应用")
-    else:
-        sys.exit(1)
+        raise FileNotFoundError(f"Main script not found: {MAIN_SCRIPT}")
+
+    if not build_sidecar():
+        raise SystemExit(1)
+
+    copy_resources()
+    print("[NEXT] Run `npm run tauri:build` to create the installer.")
 
 
 if __name__ == "__main__":

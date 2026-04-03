@@ -28,6 +28,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsDialog: typeof import('./components/SettingsDialog.vue')['default']
+    SettingsPanel: typeof import('./components/SettingsPanel.vue')['default']
     SkuList: typeof import('./components/SkuList.vue')['default']
   }
   export interface ComponentCustomProperties {

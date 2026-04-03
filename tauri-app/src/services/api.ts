@@ -32,6 +32,38 @@ const http = axios.create({
   },
 });
 
+type CaptureStartPayload = {
+  task_id?: string;
+  url?: string;
+};
+
+type CaptureStartResponse = ApiResponse<CaptureStartPayload> & {
+  task_id?: string;
+  url?: string;
+};
+
+function normalizeCaptureStartResponse(
+  response: CaptureStartResponse
+): CaptureStartResponse {
+  const taskId = response?.data?.task_id || response?.task_id;
+  const resolvedUrl = response?.data?.url || response?.url;
+
+  if (!taskId) {
+    return response;
+  }
+
+  return {
+    ...response,
+    task_id: taskId,
+    url: resolvedUrl,
+    data: {
+      ...(response?.data || {}),
+      task_id: taskId,
+      url: resolvedUrl,
+    },
+  };
+}
+
 function shouldLogApiError(error: unknown) {
   const config = (error as { config?: { __silentError?: boolean } })?.config;
   return !config?.__silentError;
@@ -342,8 +374,12 @@ export const api = {
   startCapture(
     url: string,
     options?: Record<string, unknown>
-  ): Promise<{ success: boolean; data?: { task_id: string; url: string } }> {
-    return http.post("/api/capture/start", { url, options });
+  ): Promise<CaptureStartResponse> {
+    return http
+      .post("/api/capture/start", { url, options })
+      .then((response) =>
+        normalizeCaptureStartResponse(response as unknown as CaptureStartResponse)
+      );
   },
 
   /** 获取采集状态 */
@@ -405,6 +441,25 @@ export const api = {
   /** 更新设置 */
   updateSettings(settings: Partial<Settings>): Promise<ApiResponse> {
     return http.post("/settings", settings);
+  },
+
+  /** 导入自动化设置中的合格证图片 */
+  importAutomationCertificate(sourcePath: string): Promise<
+    ApiResponse<{
+      stored_path: string;
+      file_name: string;
+    }>
+  > {
+    return http.post("/settings/automation/certificate/import", {
+      source_path: sourcePath,
+    });
+  },
+
+  /** 删除自动化设置中的合格证图片 */
+  removeAutomationCertificate(storedPath?: string): Promise<ApiResponse> {
+    return http.post("/settings/automation/certificate/remove", {
+      stored_path: storedPath || "",
+    });
   },
 
   /** 重置设置 */

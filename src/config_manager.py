@@ -16,6 +16,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from contextlib import contextmanager
 import logging
+from .runtime_paths import resolve_data_file
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -125,7 +126,8 @@ class JSONFileStorage(ConfigStorage):
     """JSON文件存储实现"""
     
     def __init__(self, storage_dir: str = "config"):
-        self.storage_dir = Path(storage_dir)
+        legacy_path = storage_dir if os.path.isabs(storage_dir) else storage_dir
+        self.storage_dir = Path(resolve_data_file(storage_dir, legacy_fallback=legacy_path))
         self.storage_dir.mkdir(exist_ok=True)
     
     def save(self, key: str, data: Dict[str, Any]) -> bool:
@@ -175,7 +177,8 @@ class SQLiteStorage(ConfigStorage):
     """SQLite数据库存储实现"""
     
     def __init__(self, db_path: str = "config/app_config.db"):
-        self.db_path = Path(db_path)
+        legacy_path = db_path if os.path.isabs(db_path) else db_path
+        self.db_path = Path(resolve_data_file(db_path, legacy_fallback=legacy_path))
         self.db_path.parent.mkdir(exist_ok=True)
         self._init_database()
         self._lock = threading.Lock()

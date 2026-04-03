@@ -4,8 +4,24 @@ import json
 from ruamel.yaml import YAML
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, List, Optional
+from .runtime_paths import resolve_data_file
 
 default = "\nbase:\n  name: 抖音袜子发布工具\n  version: 4.0.0\n  access_token: ''\n"
+
+PLATFORM_MATERIAL_OPTIONS = [
+    '棉',
+    '氨纶',
+    '锦纶',
+    '聚酯纤维',
+    '涤纶',
+    '粘纤',
+    '莫代尔',
+    '腈纶',
+    '羊毛',
+    '兔毛',
+    '桑蚕丝',
+    '再生纤维素纤维'
+]
 
 
 class Config():
@@ -14,7 +30,8 @@ class Config():
     def __init__(self, file: str, data: str = default) -> None:
         '"""__init__函数.\n\n:param args:\n:param kwargs:\n:return:\n"""'
         self.factory = YAML()
-        self.file = file
+        legacy_path = file if os.path.isabs(file) else file
+        self.file = str(resolve_data_file(file, legacy_fallback=legacy_path))
         self.data = self.factory.load(data)
         (self.load() if os.path.exists(self.file) else self.dump())
 
@@ -97,6 +114,8 @@ class AutomationConfig:
     shipping_template: str = "中通包邮"  # 当前选中的运费模板
     shipping_templates: Optional[List[str]] = None  # 运费模板列表
     material_compositions: Optional[List[Dict[str, Any]]] = None
+    material_options: Optional[List[str]] = None
+    qualification_certificate_path: Optional[str] = None
     
     def __post_init__(self):
         if self.shipping_templates is None:
@@ -106,6 +125,10 @@ class AutomationConfig:
                 {"material": "棉", "percentage": 75},
                 {"material": "氨纶", "percentage": 25},
             ]
+        if self.material_options is None:
+            self.material_options = list(PLATFORM_MATERIAL_OPTIONS)
+        if self.qualification_certificate_path:
+            self.qualification_certificate_path = str(self.qualification_certificate_path).strip() or None
 
 
 @dataclass
@@ -144,7 +167,9 @@ class UserSettings:
                 'material_compositions': [
                     {'material': '棉', 'percentage': 75},
                     {'material': '氨纶', 'percentage': 25}
-                ]
+                ],
+                'material_options': list(PLATFORM_MATERIAL_OPTIONS),
+                'qualification_certificate_path': None,
             }
 
 
@@ -152,7 +177,8 @@ class SettingsManager:
     """设置管理器"""
     
     def __init__(self, settings_file='user_settings.json'):
-        self.settings_file = settings_file
+        legacy_path = settings_file if os.path.isabs(settings_file) else settings_file
+        self.settings_file = str(resolve_data_file(settings_file, legacy_fallback=legacy_path))
         self.settings = self.load_settings()
 
     @staticmethod
@@ -163,7 +189,9 @@ class SettingsManager:
             'material_compositions': [
                 {'material': '棉', 'percentage': 75},
                 {'material': '氨纶', 'percentage': 25}
-            ]
+            ],
+            'material_options': list(PLATFORM_MATERIAL_OPTIONS),
+            'qualification_certificate_path': None,
         }
         if not isinstance(data, dict):
             return default_config
@@ -181,6 +209,19 @@ class SettingsManager:
         if shipping_template not in shipping_templates:
             shipping_templates.append(shipping_template)
 
+        material_options = data.get('material_options')
+        if isinstance(material_options, list) and len(material_options) > 0:
+            material_options = [
+                str(item).strip()
+                for item in material_options
+                if str(item).strip() in default_config['material_options']
+            ]
+        else:
+            material_options = list(default_config['material_options'])
+        if len(material_options) == 0:
+            material_options = list(default_config['material_options'])
+
+        option_set = set(material_options)
         materials = data.get('material_compositions')
         normalized_materials = []
         if isinstance(materials, list):
@@ -192,15 +233,19 @@ class SettingsManager:
                     percentage = int(float(item.get('percentage')))
                 except Exception:
                     percentage = 0
-                if material and percentage > 0:
+                if material and material in option_set and percentage > 0:
                     normalized_materials.append({'material': material, 'percentage': percentage})
         if len(normalized_materials) == 0:
             normalized_materials = default_config['material_compositions']
 
+        qualification_certificate_path = str(data.get('qualification_certificate_path') or '').strip() or None
+
         return {
             'shipping_template': shipping_template,
             'shipping_templates': shipping_templates,
-            'material_compositions': normalized_materials
+            'material_compositions': normalized_materials,
+            'material_options': material_options,
+            'qualification_certificate_path': qualification_certificate_path,
         }
     
     def load_settings(self) -> UserSettings:

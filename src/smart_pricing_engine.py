@@ -10,10 +10,13 @@
 import json
 import re
 import math
+import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PricingConfig:
@@ -216,11 +219,11 @@ class SmartPricingEngine:
                 # 加载自定义成本项目
                 self.custom_cost_items = template_config.get('base_cost_items', [])
                 
-                print(f"✅ 从配置文件加载配置成功: {len(self.custom_cost_items)}个自定义成本项目")
+                logger.info("从配置文件加载配置成功: %s个自定义成本项目", len(self.custom_cost_items))
                 return config
                 
             except Exception as e:
-                print(f"⚠️ 配置文件加载失败: {e}，使用默认配置")
+                logger.warning("配置文件加载失败，使用默认配置: %s", e)
         
         # 使用默认配置
         self.custom_cost_items = []
@@ -730,7 +733,7 @@ class SmartPricingEngine:
                 result = self.calculate_price(sku_name)
                 results.append(result)
             except Exception as e:
-                print(f"❌ 计算SKU '{sku_name}' 价格时出错: {e}")
+                logger.error("计算SKU '%s' 价格时出错: %s", sku_name, e)
         
         return results
     
@@ -738,7 +741,7 @@ class SmartPricingEngine:
         """保存当前配置"""
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(asdict(self.config), f, ensure_ascii=False, indent=2)
-        print(f"✅ 配置已保存到: {file_path}")
+        logger.info("配置已保存到: %s", file_path)
     
     def generate_pricing_report(self, results: List[PricingResult], output_file: str):
         """生成价格分析报告"""
@@ -789,4 +792,4 @@ class SmartPricingEngine:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(report_content)
         
-        print(f"📊 价格分析报告已生成: {output_file}")
+        logger.info("价格分析报告已生成: %s", output_file)

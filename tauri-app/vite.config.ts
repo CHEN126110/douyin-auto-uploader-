@@ -4,10 +4,14 @@ import { fileURLToPath, URL } from "node:url";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import packageJson from "./package.json";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "./",
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version),
+  },
   plugins: [
     vue(),
     AutoImport({
