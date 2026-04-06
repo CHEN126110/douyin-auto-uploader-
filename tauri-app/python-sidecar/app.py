@@ -147,7 +147,7 @@ if getattr(sys, 'frozen', False) and _EARLY_SIDECAR_MODE not in ('1', 'true', 'y
     except Exception:
         pass
 _bootstrap_log('import flask start')
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 _bootstrap_log('import flask done')
 
@@ -263,6 +263,7 @@ def get_runtime_data_path(file_name, legacy_fallback=None):
 
 
 _AUTOMATION_ASSETS_DIR_NAME = 'automation_assets'
+_WASH_LABEL_TAG_IMAGE_BASENAME = 'wash_label_tag_image'
 _QUALIFICATION_CERTIFICATE_BASENAME = 'qualification_certificate'
 _ALLOWED_AUTOMATION_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
 
@@ -282,10 +283,10 @@ def _is_path_within_dir(path_value, directory):
         return False
 
 
-def _delete_managed_qualification_certificate_files():
+def _delete_managed_automation_image_files(base_name):
     assets_dir = _get_automation_assets_dir()
     for file_name in os.listdir(assets_dir):
-        if not file_name.startswith(f'{_QUALIFICATION_CERTIFICATE_BASENAME}.'):
+        if not file_name.startswith(f'{base_name}.'):
             continue
         file_path = os.path.join(assets_dir, file_name)
         try:
@@ -295,12 +296,28 @@ def _delete_managed_qualification_certificate_files():
             continue
 
 
-def _resolve_managed_qualification_certificate_path(source_path):
+def _resolve_managed_automation_image_path(source_path, base_name, label):
     extension = os.path.splitext(source_path)[1].lower()
     if extension not in _ALLOWED_AUTOMATION_IMAGE_EXTENSIONS:
-        raise ValueError('仅支持 jpg、jpeg、png、bmp、webp 格式的合格证图片')
-    file_name = f'{_QUALIFICATION_CERTIFICATE_BASENAME}{extension}'
+        raise ValueError(f'仅支持 jpg、jpeg、png、bmp、webp 格式的{label}')
+    file_name = f'{base_name}{extension}'
     return os.path.join(_get_automation_assets_dir(), file_name)
+
+
+def _delete_managed_qualification_certificate_files():
+    _delete_managed_automation_image_files(_QUALIFICATION_CERTIFICATE_BASENAME)
+
+
+def _resolve_managed_qualification_certificate_path(source_path):
+    return _resolve_managed_automation_image_path(source_path, _QUALIFICATION_CERTIFICATE_BASENAME, '合格证图片')
+
+
+def _delete_managed_wash_label_tag_image_files():
+    _delete_managed_automation_image_files(_WASH_LABEL_TAG_IMAGE_BASENAME)
+
+
+def _resolve_managed_wash_label_tag_image_path(source_path):
+    return _resolve_managed_automation_image_path(source_path, _WASH_LABEL_TAG_IMAGE_BASENAME, '水洗标/吊牌图')
 
 
 def _get_runtime_log_dir():
@@ -667,6 +684,26 @@ def _collect_browser_page_bits(tab, max_fields=30, max_controls=30):
         role: el.getAttribute('role') || '',
         text: normalize(el.innerText || el.getAttribute('aria-label') || '', 220)
       }));
+    const hasVisibleNode = (selectors) => selectors.some((selector) => {
+      try {
+        return Array.from(document.querySelectorAll(selector)).some(isVisible);
+      } catch (error) {
+        return false;
+      }
+    });
+    const uploadSignals = {
+      upload_busy: hasVisibleNode(['.ecom-g-btn-loading-icon']) || /上传中/.test(document.body ? document.body.innerText || '' : ''),
+      crop_popup_visible: hasVisibleNode(['.ecom-g-modal-title', '.ecom-g-modal']),
+      ai_material_tool_visible: hasVisibleNode(['.auxo-drawer-wrapper-body', '.ecom-g-modal', '[class*="drawer"]', '[class*="Drawer"]']),
+      smart_crop_prompt_visible: hasVisibleNode(['[role="dialog"]', '.ecom-g-modal']),
+      visible_local_upload_count: Array.from(document.querySelectorAll('label, button, div'))
+        .filter(isVisible)
+        .filter((el) => normalize(el.innerText || el.getAttribute('aria-label') || '', 40).includes('本地上传'))
+        .length
+    };
+    uploadSignals.crop_popup_visible = uploadSignals.crop_popup_visible && /图片裁剪/.test(document.body ? document.body.innerText || '' : '');
+    uploadSignals.ai_material_tool_visible = uploadSignals.ai_material_tool_visible && /AI素材工具/.test(document.body ? document.body.innerText || '' : '');
+    uploadSignals.smart_crop_prompt_visible = uploadSignals.smart_crop_prompt_visible && /智能裁剪为1:1主图|当前还有.*不是1:1比例/.test(document.body ? document.body.innerText || '' : '');
     return {
       url: location.href,
       title: document.title,
@@ -674,7 +711,8 @@ def _collect_browser_page_bits(tab, max_fields=30, max_controls=30):
       scroll: { x: window.scrollX, y: window.scrollY },
       field_items: fieldItems,
       control_items: controlItems,
-      overlay_items: overlayItems
+      overlay_items: overlayItems,
+      upload_signals: uploadSignals
     };
     """ % (max_fields, max_controls)
 
@@ -806,6 +844,7 @@ def _snapshot_browser_context(tab, locator=None, locator_type='raw', limit=5, in
         'visible_fields': page_bits.get('field_items') or [],
         'visible_controls': page_bits.get('control_items') or [],
         'visible_overlays': page_bits.get('overlay_items') or [],
+        'upload_signals': page_bits.get('upload_signals') or {},
     }
 
     if locator:
@@ -1465,7 +1504,7 @@ def _load_upload_runtime_config():
     user_settings = settings_manager.get_settings()
     automation_config = settings_manager.normalize_automation_config(user_settings.automation_config)
     shipping_template_name = str(automation_config.get('shipping_template') or '中通包邮').strip() or '中通包邮'
-    qualification_certificate_path = str(automation_config.get('qualification_certificate_path') or '').strip()
+    wash_label_tag_image_path = str(automation_config.get('wash_label_tag_image_path') or '').strip()
     configured_materials = []
     for item in automation_config.get('material_compositions') or []:
         if not isinstance(item, dict):
@@ -1482,10 +1521,10 @@ def _load_upload_runtime_config():
     configured_materials = [item for item in configured_materials if item[0] and item[1]]
     if not configured_materials:
         configured_materials = [('棉', '75'), ('氨纶', '25')]
-    if qualification_certificate_path and not os.path.isfile(qualification_certificate_path):
-        print(f'自动化设置中的合格证图片不存在，已跳过: {qualification_certificate_path}')
-        qualification_certificate_path = ''
-    return shipping_template_name, configured_materials, qualification_certificate_path
+    if wash_label_tag_image_path and not os.path.isfile(wash_label_tag_image_path):
+        print(f'自动化设置中的水洗标/吊牌图不存在，已跳过: {wash_label_tag_image_path}')
+        wash_label_tag_image_path = ''
+    return shipping_template_name, configured_materials, wash_label_tag_image_path
 
 
 def _ensure_publish_session(report_progress):
@@ -1699,24 +1738,82 @@ def _get_title_input(main_tab, timeout=0.3):
     return None
 
 
-def _is_publish_page_ready(main_tab):
-    try:
-        current_url = str(main_tab.url or '')
-    except Exception:
-        current_url = ''
+_PUBLISH_STEP1_SELECTORS = [
+    'xpath://button[.//span[text()="下一步"]]',
+    'xpath://span[text()="下一步"]/..',
+    'xpath://div[contains(@class,"categorySelectorV2")]',
+    'xpath://span[text()="手动选择"]/..',
+]
 
+_PUBLISH_STEP2_SELECTORS = [
+    'xpath://div[@attr-field-id="价格与库存"]',
+    'xpath://div[@attr-field-id="主图3:4"]',
+    'xpath://div[@attr-field-id="主图视频"]',
+    'xpath://div[@attr-field-id="商品类目"]//*[text()="修改"]',
+    'xpath://div[@attr-field-id="类目属性"]',
+]
+
+
+def _get_current_tab_url(main_tab):
+    try:
+        return str(main_tab.url or '')
+    except Exception:
+        return ''
+
+
+def _is_any_selector_visible(main_tab, selectors, timeout=0.05):
+    return _find_first_visible_element(main_tab, selectors, timeout=timeout) is not None
+
+
+def _detect_publish_page_stage(main_tab):
+    current_url = _get_current_tab_url(main_tab)
     if '/ffa/g/create' not in current_url:
+        return 'outside'
+
+    if _is_any_selector_visible(main_tab, _PUBLISH_STEP2_SELECTORS, timeout=0.05):
+        return 'step2'
+
+    step1_selectors = list(_PUBLISH_STEP1_SELECTORS)
+    title_input = _get_title_input(main_tab, timeout=0.05)
+    if title_input:
+        step1_selectors.append('xpath://div[@attr-field-id="商品标题"]')
+
+    if _is_any_selector_visible(main_tab, step1_selectors, timeout=0.05):
+        return 'step1'
+
+    return 'unknown'
+
+
+def _is_publish_page_ready(main_tab):
+    stage = _detect_publish_page_stage(main_tab)
+    return stage in ('step1', 'step2')
+
+
+def _ensure_publish_step1_page(main_tab, report_progress):
+    stage = _detect_publish_page_stage(main_tab)
+    current_url = _get_current_tab_url(main_tab)
+    print(f'当前发布页阶段: {stage}, url={current_url}')
+
+    if stage == 'step1':
+        return True
+
+    if stage in ('outside', 'unknown'):
+        report_progress(22, '正在打开商品发布第一页')
+    else:
+        report_progress(22, '检测到停留在第二页面，正在返回第一页')
+
+    main_tab.get(_PUBLISH_CREATE_URL)
+    ready = _wait_until(
+        lambda: _detect_publish_page_stage(main_tab) == 'step1',
+        timeout=10,
+        interval=0.1
+    )
+    if not ready:
+        print(f'返回发布第一页失败，当前阶段: {_detect_publish_page_stage(main_tab)}, url={_get_current_tab_url(main_tab)}')
         return False
 
-    try:
-        return bool(
-            _get_title_input(main_tab, timeout=0.05) or
-            main_tab.ele('xpath://div[@attr-field-id="商品标题"]', timeout=0.05) or
-            main_tab.ele('xpath://span[text()="主图上传"]', timeout=0.05) or
-            main_tab.ele('xpath://button//span[text()="下一步"]', timeout=0.05)
-        )
-    except Exception:
-        return False
+    print(f'已进入商品发布第一页: url={_get_current_tab_url(main_tab)}')
+    return True
 
 
 def _open_publish_page(main_tab, report_progress):
@@ -1731,6 +1828,9 @@ def _open_publish_page(main_tab, report_progress):
         interval=0.1
     )
     if not ready:
+        return False
+
+    if not _ensure_publish_step1_page(main_tab, report_progress):
         return False
 
     _dismiss_interfering_overlays(main_tab, context='open_publish_page')
@@ -1792,7 +1892,13 @@ def _select_category_and_prepare_attributes(main_tab, record, diaopai_pic):
 
     _dismiss_interfering_overlays(main_tab, context='after_short_title')
 
-    if diaopai_pic and str(record.clazz) != '0':
+    wash_tag_field_exists = False
+    try:
+        wash_tag_field_exists = bool(main_tab.ele('xpath://div[@attr-field-id="水洗标/吊牌图"]', timeout=0.3))
+    except Exception:
+        wash_tag_field_exists = False
+
+    if diaopai_pic and str(record.clazz) != '0' and not wash_tag_field_exists:
         print('处理其他类目吊牌上传...')
         upload_file(main_tab, [diaopai_pic], '吊牌')
         for _ in range(30):
@@ -1803,39 +1909,111 @@ def _select_category_and_prepare_attributes(main_tab, record, diaopai_pic):
             time.sleep(0.1)
 
 
-def _upload_qualification_certificate(main_tab, qualification_certificate_path):
-    if not qualification_certificate_path:
-        print('未配置合格证图片，跳过合格证上传')
-        return
-    if not os.path.isfile(qualification_certificate_path):
-        print(f'合格证图片不存在，跳过上传: {qualification_certificate_path}')
-        return
-
-    qualification_area = None
+def _upload_wash_label_or_tag_image(main_tab, diaopai_pic, configured_wash_label_tag_image_path):
+    wash_tag_area = None
     try:
-        qualification_area = main_tab.ele('xpath://div[@attr-field-id="合格证"]', timeout=0.5)
+        wash_tag_area = main_tab.ele('xpath://div[@attr-field-id="水洗标/吊牌图"]', timeout=0.5)
     except Exception:
-        qualification_area = None
+        wash_tag_area = None
 
-    if not qualification_area:
-        print('当前页面未发现“合格证”上传区域，跳过合格证上传')
-        return
+    if not wash_tag_area:
+        return False
 
-    print('开始上传自动化设置中的合格证图片...')
+    upload_path = ''
+    if diaopai_pic and os.path.isfile(diaopai_pic):
+        upload_path = diaopai_pic
+    elif configured_wash_label_tag_image_path and os.path.isfile(configured_wash_label_tag_image_path):
+        upload_path = configured_wash_label_tag_image_path
+
+    if not upload_path:
+        print('当前未提供吊牌/水洗标图片，将跳过图片上传并改为依赖面料材质配置')
+        return False
+
+    print('开始上传水洗标/吊牌图...')
     upload_file(
         main_tab,
-        [qualification_certificate_path],
-        '合格证',
-        target_field_id='合格证',
+        [upload_path],
+        '水洗标/吊牌图',
+        target_field_id='水洗标/吊牌图',
         wait_for_finish=False,
     )
+    return True
 
 
-def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pic, qualification_certificate_path):
+# 与仓库根目录「吊牌.HTML」中抖音商品发布页一致：OCR 未解析材质时的固定提示
+_WASH_LABEL_MANUAL_MATERIAL_TIP = '图片中未识别到材质信息，请手动填写'
+
+
+def _wash_label_manual_material_tip_visible(main_tab):
+    try:
+        return bool(
+            main_tab.ele(
+                f'xpath://div[@attr-field-id="水洗标/吊牌图"]'
+                f'//*[contains(normalize-space(.),"{_WASH_LABEL_MANUAL_MATERIAL_TIP}")]',
+                timeout=0.06,
+            )
+        )
+    except Exception:
+        return False
+
+
+def _wash_label_material_ocr_spinning(main_tab):
+    try:
+        return bool(
+            main_tab.ele(
+                'xpath://div[@attr-field-id="水洗标/吊牌图"]'
+                '//*[contains(@class,"ecom-g-spin-spinning") or contains(@class,"ant-spin-spinning")]',
+                timeout=0.05,
+            )
+        )
+    except Exception:
+        return False
+
+
+def _wash_label_needs_configured_material_fill(main_tab, max_wait_sec=10.0, poll_sec=0.1):
+    """
+    先等「水洗标/吊牌图」区块内 Ant Spin 结束（表示 OCR 一轮结束），再判断是否出现固定提示。
+    成功识别时不会出现该文案，可尽快结束；失败时文案在 attr-field-id 区块内，与吊牌.HTML 结构一致。
+    """
+    deadline = system_time.time() + max_wait_sec
+    consecutive_idle = 0
+    while system_time.time() < deadline:
+        if _wash_label_manual_material_tip_visible(main_tab):
+            return True
+        if _wash_label_material_ocr_spinning(main_tab):
+            consecutive_idle = 0
+        else:
+            consecutive_idle += 1
+            if consecutive_idle >= 2:
+                for _ in range(5):
+                    if _wash_label_manual_material_tip_visible(main_tab):
+                        return True
+                    system_time.sleep(poll_sec)
+                return False
+        system_time.sleep(poll_sec)
+    return _wash_label_manual_material_tip_visible(main_tab)
+
+
+def _fill_fabric_material_if_wash_label_unrecognized(main_tab, configured_materials):
+    if not _wash_label_needs_configured_material_fill(main_tab):
+        return
+    print('水洗标/吊牌图未识别到材质信息，按自动化配置填写面料材质')
+    if not configured_materials:
+        raise Exception('吊牌未识别到材质，但未配置面料材质（material_compositions）')
+    material_ok = set_material_composition(main_tab, configured_materials)
+    if not material_ok:
+        raise Exception('面料材质填写失败（吊牌未识别且配置写入失败）')
+
+
+def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pic, wash_label_tag_image_path):
     _dismiss_interfering_overlays(main_tab, context='fill_category_attributes')
     current_category_text = get_current_category_text(main_tab)
     current_sock_height = infer_sock_height_value(current_category_text, record.clazz)
     is_ship_socks = '船袜' in current_category_text
+    has_wash_label_asset = bool(
+        (diaopai_pic and os.path.isfile(diaopai_pic))
+        or (wash_label_tag_image_path and os.path.isfile(wash_label_tag_image_path))
+    )
     print(f'当前页面类目: {current_category_text or "未识别"}')
     if current_sock_height:
         print(f'当前页面筒高目标值: {current_sock_height}')
@@ -1858,8 +2036,8 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
         except Exception as e:
             print(f'船袜类目材质填写失败: {str(e)}')
 
-    elif diaopai_pic:
-        print('处理其他类目属性（有吊牌）...')
+    elif has_wash_label_asset:
+        print('处理其他类目属性（有可用吊牌/水洗标图）...')
         main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
         time.sleep(0.1)
 
@@ -1875,7 +2053,7 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             select_text(main_tab, '筒高', current_sock_height)
 
     else:
-        print('处理其他类目属性（无吊牌）...')
+        print('处理其他类目属性（无吊牌/水洗标图，改走面料材质配置）...')
         main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
         time.sleep(0.1)
         material_ok = set_material_composition(main_tab, configured_materials)
@@ -1887,11 +2065,18 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
         if current_sock_height:
             select_text(main_tab, '筒高', current_sock_height)
 
-    _dismiss_interfering_overlays(main_tab, context='before_qualification_certificate')
-    _upload_qualification_certificate(main_tab, qualification_certificate_path)
+    _dismiss_interfering_overlays(main_tab, context='before_wash_label_upload')
+    uploaded_wash_label = _upload_wash_label_or_tag_image(main_tab, diaopai_pic, wash_label_tag_image_path)
+    if uploaded_wash_label:
+        _fill_fabric_material_if_wash_label_unrecognized(main_tab, configured_materials)
 
 
 def _upload_media_assets(main_tab, sub_pic_list, my_video, white_pic, detail_pic_list):
+    """
+    媒体上传阶段顺序：3:4 主图（或智能裁剪）→ 主图视频 → 白底图（含 AI 侧栏收尾）→ 商品详情图。
+    潜在长耗时点：白底图后 handle_white_bg_post_upload_prompts、详情懒加载、主图/详情 wait_for_finish 为 True 时的裁剪链。
+    整单各阶段毫秒数见运行目录下 upload-stage-timing.jsonl（_append_stage_timing_log 写入）。
+    """
     _dismiss_interfering_overlays(main_tab, context='upload_media_assets')
     if len(sub_pic_list) > 0:
         upload_file(
@@ -1940,6 +2125,10 @@ def _upload_media_assets(main_tab, sub_pic_list, my_video, white_pic, detail_pic
         target_field_id='白底图',
         wait_for_finish=False
     )
+    try:
+        handle_white_bg_post_upload_prompts(main_tab, timeout=4.0)
+    except Exception as e:
+        print(f'处理白底图上传后AI素材工具失败: {e}')
     time.sleep(0.5)
     _dismiss_interfering_overlays(main_tab, context='before_detail_upload')
     try:
@@ -1953,6 +2142,13 @@ def _upload_media_assets(main_tab, sub_pic_list, my_video, white_pic, detail_pic
             main_tab.ele('xpath://div[text()="AI智能做主图"]/../../../..//span[text()="上传"]/..', timeout=1).click()
             time.sleep(0.5)
     except:
+        pass
+    try:
+        detail_block = main_tab.ele('xpath://div[@attr-field-id="商品详情"]', timeout=2)
+        if detail_block:
+            detail_block.scroll.to_see()
+            time.sleep(0.22)
+    except Exception:
         pass
     upload_file(main_tab, detail_pic_list, '图片', extra=True, target_field_id='商品详情')
 
@@ -2138,11 +2334,83 @@ def _submit_publish(main_tab, record):
         record.save()
         return True
 
-    print('发布失败！！！')
-    return False
+    failure_messages = []
+
+    try:
+        field_nodes = main_tab.eles(
+            'xpath://div[@attr-field-id and (.//*[contains(@class,"style_errorSubTitle__")] or .//*[contains(@class,"ant-form-item-explain-error")] or contains(@class,"has-error"))]',
+            timeout=0.5
+        )
+    except Exception:
+        field_nodes = []
+
+    for field_node in field_nodes:
+        try:
+            field_id = str(field_node.attr('attr-field-id') or '').strip()
+        except Exception:
+            field_id = ''
+
+        error_texts = []
+        try:
+            error_nodes = field_node.eles(
+                'xpath:.//*[contains(@class,"style_errorSubTitle__") or contains(@class,"ant-form-item-explain-error") or contains(text(),"请输入") or contains(text(),"请上传") or contains(text(),"请选择")]',
+                timeout=0.2
+            )
+        except Exception:
+            error_nodes = []
+
+        for error_node in error_nodes:
+            try:
+                raw_text = str(error_node.text or '').strip()
+            except Exception:
+                raw_text = ''
+            normalized = ' '.join(raw_text.split())
+            if normalized and normalized not in error_texts:
+                error_texts.append(normalized)
+
+        if error_texts:
+            if field_id:
+                failure_messages.append(f'{field_id}: {error_texts[0]}')
+            else:
+                failure_messages.append(error_texts[0])
+
+    if not failure_messages:
+        try:
+            error_nodes = main_tab.eles(
+                'xpath://span[contains(@class,"style_errorSubTitle__")] | //div[contains(@class,"ant-form-item-explain-error")]//*[string-length(normalize-space()) > 0]',
+                timeout=0.5
+            )
+        except Exception:
+            error_nodes = []
+
+        for error_node in error_nodes:
+            try:
+                raw_text = str(error_node.text or '').strip()
+            except Exception:
+                raw_text = ''
+            normalized = ' '.join(raw_text.split())
+            if normalized and normalized not in failure_messages:
+                failure_messages.append(normalized)
+            if len(failure_messages) >= 5:
+                break
+
+    if failure_messages:
+        failure_reason = '提交校验失败：' + '；'.join(failure_messages[:5])
+    else:
+        failure_reason = '提交发布后未检测到成功结果'
+
+    print(f'发布失败：{failure_reason}')
+    raise Exception(failure_reason)
 
 
 def _execute_upload_flow(record_id=None, progress_callback=None):
+    """
+    单条商品自动化流水线（顺序即耗时复盘基准）：
+    open_publish_page → fill_title → upload_main_images → select_category → fill_category_attributes
+    → upload_media_assets → configure_sku_entries → configure_sku_structure →（价格库存等）→ submit。
+    显性固定停顿：每条 record 结束后 sleep(3)（防请求过快）；详情前 AI 主图分支内 sleep(3)；
+    采集任务等非本流水线另有 sleep(2~3)。阶段耗时查运行目录下 upload-stage-timing.jsonl。
+    """
     msg_list = []
 
     def _report_progress(progress, message):
@@ -2161,7 +2429,7 @@ def _execute_upload_flow(record_id=None, progress_callback=None):
             return api_error(msg=load_error)
         _report_progress(12, '已读取上传任务，正在初始化自动化参数')
 
-        shipping_template_name, configured_materials, qualification_certificate_path = _load_upload_runtime_config()
+        shipping_template_name, configured_materials, wash_label_tag_image_path = _load_upload_runtime_config()
         main_tab, session_error = _ensure_publish_session(_report_progress)
         if session_error:
             return api_error(session_error)
@@ -2235,7 +2503,7 @@ def _execute_upload_flow(record_id=None, progress_callback=None):
                     record,
                     configured_materials,
                     record_assets['diaopai_pic'],
-                    qualification_certificate_path,
+                    wash_label_tag_image_path,
                 )
 
                 current_stage = 'upload_media_assets'
@@ -2862,6 +3130,71 @@ def remove_automation_certificate():
     except Exception as e:
         traceback.print_exc()
         return api_error(f'删除合格证图片失败: {str(e)}')
+
+
+@app.post('/settings/automation/wash-label/import')
+def import_automation_wash_label_tag_image():
+    """导入自动化设置中的水洗标/吊牌图到应用数据目录"""
+    try:
+        data = request.get_json(silent=True) or {}
+        source_path = os.path.abspath(str(data.get('source_path') or '').strip())
+        if not source_path:
+            return api_error('缺少水洗标/吊牌图路径')
+        if not os.path.isfile(source_path):
+            return api_error('水洗标/吊牌图不存在')
+
+        try:
+            target_path = _resolve_managed_wash_label_tag_image_path(source_path)
+        except ValueError as exc:
+            return api_error(str(exc))
+
+        _delete_managed_wash_label_tag_image_files()
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+        return api_ok(msg='水洗标/吊牌图导入成功', data={
+            'stored_path': target_path,
+            'file_name': os.path.basename(target_path),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f'导入水洗标/吊牌图失败: {str(e)}')
+
+
+@app.get('/settings/automation/wash-label/preview')
+def preview_automation_wash_label_tag_image():
+    """返回当前配置的水洗标/吊牌图文件"""
+    try:
+        user_settings = settings_manager.get_settings()
+        ac = settings_manager.normalize_automation_config(user_settings.automation_config)
+        img_path = str(ac.get('wash_label_tag_image_path') or '').strip()
+        if not img_path or not os.path.isfile(img_path):
+            return '', 404
+        return send_file(img_path)
+    except Exception:
+        return '', 404
+
+
+@app.post('/settings/automation/wash-label/remove')
+def remove_automation_wash_label_tag_image():
+    """删除自动化设置中的水洗标/吊牌图"""
+    try:
+        data = request.get_json(silent=True) or {}
+        stored_path = os.path.abspath(str(data.get('stored_path') or '').strip()) if data.get('stored_path') else ''
+        assets_dir = _get_automation_assets_dir()
+
+        if stored_path:
+            if not _is_path_within_dir(stored_path, assets_dir):
+                return api_error('只能删除应用数据目录中的水洗标/吊牌图')
+            if os.path.isfile(stored_path):
+                os.remove(stored_path)
+        else:
+            _delete_managed_wash_label_tag_image_files()
+
+        return api_ok(msg='水洗标/吊牌图已删除')
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f'删除水洗标/吊牌图失败: {str(e)}')
 
 
 @app.post('/settings/reset')
@@ -4351,6 +4684,25 @@ def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
         'finalPrice',
     )
 
+    disallowed_key_fragments = (
+        'stock',
+        'count',
+        'quantity',
+        'qty',
+        'book',
+        'inventory',
+    )
+
+    def _looks_like_price_key(key) -> bool:
+        key_text = str(key or '').strip().lower()
+        if not key_text:
+            return False
+        if key_text in {str(name).lower() for name in preferred_keys}:
+            return True
+        if any(fragment in key_text for fragment in disallowed_key_fragments):
+            return False
+        return 'price' in key_text
+
     for key in preferred_keys:
         price = _parse_capture_price(item.get(key))
         if price > 0:
@@ -4358,7 +4710,7 @@ def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
 
     seen = set()
 
-    def walk(value, depth: int = 0) -> float:
+    def walk(value, depth: int = 0, allow_scalar: bool = False) -> float:
         if depth > 4 or value is None:
             return 0.0
         value_id = id(value)
@@ -4367,7 +4719,7 @@ def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
         seen.add(value_id)
 
         if isinstance(value, (int, float, str)):
-            return _parse_capture_price(value)
+            return _parse_capture_price(value) if allow_scalar else 0.0
 
         if isinstance(value, dict):
             for key in preferred_keys:
@@ -4375,19 +4727,17 @@ def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
                 if price > 0:
                     return price
             for nested_key, nested_value in value.items():
-                if 'price' in str(nested_key).lower():
-                    price = walk(nested_value, depth + 1)
+                if _looks_like_price_key(nested_key):
+                    price = walk(nested_value, depth + 1, allow_scalar=True)
                     if price > 0:
                         return price
-            for nested_value in value.values():
-                price = walk(nested_value, depth + 1)
-                if price > 0:
-                    return price
             return 0.0
 
         if isinstance(value, (list, tuple)):
             for nested_value in value:
-                price = walk(nested_value, depth + 1)
+                if not isinstance(nested_value, (dict, list, tuple)):
+                    continue
+                price = walk(nested_value, depth + 1, allow_scalar=allow_scalar)
                 if price > 0:
                     return price
         return 0.0
@@ -5224,10 +5574,12 @@ def start_capture():
 
                                     var defaultPrice = extractPriceFromDom() || extractPriceFromState();
 
+                                    var parsedSkuItems = [];
                                     skuItems.forEach(function(skuItem) {
                                         var titleElem = skuItem.querySelector('.ItemLabel--psS1SOyC span');
                                         var skuTitle = titleElem ? titleElem.textContent.trim() : '';
                                         var valueItems = skuItem.querySelectorAll('.valueItem--smR4pNt4');
+                                        var values = [];
 
                                         valueItems.forEach(function(valueItem, valIdx) {
                                             var nameElem = valueItem.querySelector('span[title]');
@@ -5239,7 +5591,7 @@ def start_capture():
                                             }
                                             var vid = valueItem.getAttribute('data-vid') || '';
                                             if (skuName) {
-                                                result.push({
+                                                values.push({
                                                     type: skuTitle,
                                                     name: skuName,
                                                     vid: vid,
@@ -5248,6 +5600,26 @@ def start_capture():
                                                     index: valIdx + 1
                                                 });
                                             }
+                                        });
+
+                                        if (values.length) {
+                                            parsedSkuItems.push({
+                                                title: skuTitle,
+                                                values: values
+                                            });
+                                        }
+                                    });
+
+                                    var effectiveSkuItems = parsedSkuItems.filter(function(item) {
+                                        return item.values.length > 1;
+                                    });
+                                    if (!effectiveSkuItems.length) {
+                                        effectiveSkuItems = parsedSkuItems;
+                                    }
+
+                                    effectiveSkuItems.forEach(function(item) {
+                                        item.values.forEach(function(value) {
+                                            result.push(value);
                                         });
                                     });
 

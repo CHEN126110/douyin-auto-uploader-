@@ -503,7 +503,9 @@ async function syncExternalUploadTask(options: { silent?: boolean } = {}) {
   }
 
   try {
-    const response = await api.getUploadTasks();
+    const response = await api.getUploadTasks({
+      silentError: !!options.silent,
+    });
     const tasks = response.data?.tasks || [];
     const currentTaskId = response.data?.browser_status?.current_task || null;
     const activeTask =
@@ -881,8 +883,6 @@ onUnmounted(() => {
       :position="contextMenuPosition"
       @action="handleContextMenuAction"
     />
-
-    <!-- 设置弹窗 -->
 
     <!-- 智能填充结果弹窗 -->
     <el-dialog

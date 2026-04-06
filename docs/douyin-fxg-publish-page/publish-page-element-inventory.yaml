@@ -1,0 +1,286 @@
+# =============================================================================
+# 抖店（飞鸽）商品创建页 — 元素整理与自动化对照
+# =============================================================================
+# 用途：后续查 XPath / 无障碍 / 业务模块时快速对照，不替代运行时 DOM。
+#
+# 数据来源（本次落盘）：
+#   - Cursor MCP「cursor-ide-browser」→ browser_snapshot（viewId: e3a8cd）
+#   - 页面 URL: https://fxg.jinritemai.com/ffa/g/create?
+#   - 抓取时刻（文档记录）: 2026-04-06
+#
+# 原始快照全文见同目录：mcp-a11y-snapshot-raw.txt
+# （该文件保留 MCP 输出原样，可能含重复 key，勿用严格 YAML 解析器打开。）
+# =============================================================================
+
+meta:
+  product_path: "/ffa/g/create"
+  full_url_example: "https://fxg.jinritemai.com/ffa/g/create?"
+  mcp_tool: "cursor-ide-browser / browser_snapshot"
+  snapshot_max_depth_used: 50
+  total_refs_reported: 153
+  interactive_refs_reported: 127
+
+# -----------------------------------------------------------------------------
+# 关于「隐藏元素」与完整 DOM
+# -----------------------------------------------------------------------------
+# MCP 的 browser_snapshot 基于 Chromium 无障碍树（AX Tree），通常：
+#   - 不包含：display:none、visibility:hidden（且未暴露给 a11y）、多数纯装饰节点
+#   - 不完整包含：Shadow DOM 内未转发 a11y 的节点、Canvas、部分自定义组件
+#   - Popover / 悬停才出现的「本地上传」等，仅在悬停后快照会更完整
+# 若需要「含隐藏节点的完整 HTML」请在 DrissionPage 内对 document.documentElement
+# 或指定容器执行 outerHTML 导出（体积极大，建议按 attr-field-id 分区截取）。
+# -----------------------------------------------------------------------------
+
+limitations:
+  - "无障碍树为扁平/弱层级列表，nth 仅表示同 role+同名下的序号，非 DOM 兄弟索引。"
+  - "树末常出现与上方重复的 name/ref（平台对 label/控件双重暴露），自动化以 DOM/XPath 为准。"
+  - "本清单中商品标题等当前值已脱敏，避免误提交隐私；对照逻辑请以 placeholder/role 为准。"
+
+# -----------------------------------------------------------------------------
+# 本项目自动化中常用的 DOM 锚点（来自 src/utils.py / app.py，运行时才有）
+# -----------------------------------------------------------------------------
+# 下列选择器不一定出现在 MCP 无障碍快照里，但 DrissionPage 自动化依赖它们。
+automation_dom_hints:
+
+  attr_field_id:
+    description: "抖音表单区块常用 data 属性，用于 upload_file、类目、材质等"
+    examples:
+      - "主图3:4"
+      - "主图视频"
+      - "白底图"
+      - "商品详情"
+      - "面料材质"
+      - "水洗标/吊牌图"
+      - "商品类目"
+
+  element_id:
+    description: "颜色分类 SKU 区域"
+    examples:
+      - "skuValue-颜色分类"
+      - "skuValue-码数"
+
+  sku_upload_popover:
+    description: "SKU 悬停后 Popover 内「本地上传」label，class 可能随构建哈希变化"
+    note: "代码中匹配 ecom-g-popover + input[type=file] + 文案「本地上传」"
+
+# -----------------------------------------------------------------------------
+# 业务分区 → MCP 节点（按无障碍 name/role 归纳，便于人类阅读）
+# -----------------------------------------------------------------------------
+regions:
+
+  top_tabs:
+    comment: "整页顶部 Tab，对应「提升建议 / 基础信息 / 图文信息 / 价格库存 …」"
+    mcp_refs: ["e0", "e1", "e2", "e3", "e4", "e5", "e6"]
+    items:
+      - { ref: e0, role: tab, name: "提升建议", note: "states 常带 selected，与 e1/e2 并存时需以视觉选中为准" }
+      - { ref: e1, role: tab, name: "基础信息" }
+      - { ref: e2, role: tab, name: "图文信息" }
+      - { ref: e3, role: tab, name: "价格库存", note: "自动化里常 scroll.to_see 后操作价格与库存" }
+      - { ref: e4, role: tab, name: "尺码表" }
+      - { ref: e5, role: tab, name: "服务与履约" }
+      - { ref: e6, role: tab, name: "其他信息" }
+
+  basic_title:
+    comment: "标题、短标题、品牌勾选、类目下拉等"
+    mcp_refs: ["e7", "e8", "e9", "e10", "e11"]
+    items:
+      - { ref: e7, role: switch, name: null, note: "无 name，可能为短标题旁开关类控件" }
+      - { ref: e8, role: textbox, name: "长标题（15-60 字符提示）", value_redacted: true }
+      - { ref: e9, role: checkbox, name: "使用品牌名" }
+      - { ref: e10, role: textbox, name: "短标题建议文案" }
+      - { ref: e11, role: combobox, name: null, note: "类目或关联下拉，只读态常见" }
+
+  category_and_material:
+    comment: "类目属性、面料材质、水洗标相关上传区等（部分为 combobox 连排）"
+    mcp_refs: ["e12", "e13", "e14", "e15", "e16", "e17", "e18", "e19", "e20", "e21", "e22", "e23", "e24", "e25", "e26", "e27"]
+    items:
+      - { ref: e12, role: button, name: "存储模板" }
+      - { ref: e13, role: generic, name: "上传图片", note: "可能对应类目图/资质类上传区块" }
+      - { ref: e14, role: combobox, nth: 1 }
+      - { ref: e15, role: textbox, name: "请输入", note: "材质比例等" }
+      - { ref: e16, role: button, name: "添加材质" }
+      - { ref: e17, role: combobox, nth: 2 }
+      - { ref: e18, role: textbox, name: "请输入", nth: 1 }
+      - { ref: e19, role: combobox, nth: 3 }
+      - { ref: e20, role: combobox, nth: 4 }
+      - { ref: e21, role: combobox, nth: 5 }
+      - { ref: e22, role: combobox, nth: 6 }
+      - { ref: e23, role: combobox, nth: 7 }
+      - { ref: e24, role: combobox, nth: 8, states: [readonly] }
+      - { ref: e25, role: combobox, nth: 9, states: [readonly] }
+      - { ref: e26, role: combobox, nth: 10, states: [readonly] }
+      - { ref: e27, role: combobox, nth: 11 }
+
+  main_and_detail_media:
+    comment: "主图、辅图、视频、白底图、商详上传、智能裁剪等"
+    mcp_refs: ["e28", "e29", "e30", "e31", "e32", "e33", "e34", "e35", "e36", "e37", "e38", "e39", "e40", "e41", "e42", "e43", "e44"]
+    items:
+      - { ref: e28, role: button, name: null, note: "无 name，可能为工具条图标" }
+      - { ref: e29, role: button, name: null, nth: 1 }
+      - { ref: e30, role: button, name: null, nth: 2 }
+      - { ref: e31, role: button, name: null, nth: 3 }
+      - { ref: e32, role: button, name: null, nth: 4 }
+      - { ref: e33, role: button, name: "从1:1主图智能裁剪" }
+      - { ref: e34, role: generic, name: "商品正面图 上传主图" }
+      - { ref: e35, role: generic, name: "上传辅助图" }
+      - { ref: e36, role: generic, name: "上传辅助图", nth: 1 }
+      - { ref: e37, role: generic, name: "上传辅助图", nth: 2 }
+      - { ref: e38, role: generic, name: "上传辅助图", nth: 3 }
+      - { ref: e39, role: generic, name: "主图视频" }
+      - { ref: e40, role: generic, name: "上传白底图" }
+      - { ref: e41, role: button, name: "从主图填入" }
+      - { ref: e42, role: generic, name: "上传图片", nth: 1, note: "常为商品详情/商详区域上传入口" }
+      - { ref: e43, role: button, name: "高级编辑" }
+      - { ref: e44, role: button, name: "| |", note: "名称异常，可能为工具栏占位" }
+
+  shipping_time:
+    comment: "发货模式、现货/预售、发货时效单选"
+    mcp_refs: ["e45", "e46", "e47", "e48", "e49"]
+    items:
+      - { ref: e45, role: radio, name: "现货发货模式", value: "0", states: [checked, readonly] }
+      - { ref: e46, role: radio, name: "现货+预售发货模式", value: "4" }
+      - { ref: e47, role: radio, name: "次日发 推荐", value: "1", states: [checked, readonly] }
+      - { ref: e48, role: radio, name: "48小时", value: "2", note: "自动化常点击「48小时」" }
+      - { ref: e49, role: radio, name: "当日发", value: "9999" }
+
+  sku_and_specs:
+    comment: "规格类型、规格值、备注、添加规格、SKU 行开关等（DOM 上多在 #skuValue-颜色分类）"
+    mcp_refs: ["e50", "e51", "e52", "e53", "e54", "e55", "e56", "e57", "e58", "e59", "e60", "e61", "e62", "e63", "e64", "e65", "e66", "e67", "e68"]
+    items:
+      - { ref: e50, role: button, name: "存储模板", nth: 1 }
+      - { ref: e51, role: link, name: "查看标准化规格文档" }
+      - { ref: e52, role: switch, nth: 1 }
+      - { ref: e53, role: generic, name: null }
+      - { ref: e54, role: textbox, name: null }
+      - { ref: e55, role: switch, nth: 2 }
+      - { ref: e56, role: generic, name: null, nth: 1 }
+      - { ref: e57, role: textbox, name: null, nth: 1 }
+      - { ref: e58, role: switch, nth: 3 }
+      - { ref: e59, role: combobox, nth: 12 }
+      - { ref: e60, role: textbox, name: "备注" }
+      - { ref: e61, role: switch, nth: 4 }
+      - { ref: e62, role: textbox, name: "填写并新增规格值" }
+      - { ref: e63, role: textbox, name: "备注", nth: 1 }
+      - { ref: e64, role: button, name: "添加规格类型（4/5）", states: [disabled] }
+      - { ref: e65, role: button, name: "规格预览", states: [disabled] }
+      - { ref: e66, role: link, name: "点击了解" }
+      - { ref: e67, role: combobox, nth: 13 }
+      - { ref: e68, role: generic, name: "0/1", note: "可能为字数或规格计数展示" }
+
+  size_chart:
+    comment: "尺码表列选择、多行尺码输入、上移下移删除"
+    mcp_refs: ["e69", "e70", "e71", "e72", "e73", "e74", "e75", "e76", "e77", "e78", "e79", "e80", "e81", "e82", "e83", "e84", "e85", "e86", "e87", "e88", "e89", "e90", "e91", "e92", "e93", "e94", "e95", "e96", "e97"]
+    items:
+      - { ref: e69, role: checkbox, name: "脚长(cm)", states: [checked, readonly] }
+      - { ref: e70, role: checkbox, name: "脚宽(cm)", states: [checked, readonly] }
+      - { ref: e71, role: checkbox, name: "靴筒高(cm)", states: [checked, readonly] }
+      - { ref: e72, role: checkbox, name: "鞋跟高(cm)" }
+      - { ref: e73, role: checkbox, name: "靴筒围(cm)" }
+      - { ref: e74, role: checkbox, name: "鞋底厚(cm)" }
+      - { ref: e75, role: textbox, name: "请输入", nth: 2, sample_value: "XS" }
+      - { ref: e76, role: textbox, name: "请输入", nth: 3 }
+      - { ref: e77, role: textbox, name: "请输入", nth: 4 }
+      - { ref: e78, role: textbox, name: "请输入", nth: 5 }
+      - { ref: e79, role: button, name: "上移", states: [disabled] }
+      - { ref: e80, role: button, name: "下移" }
+      - { ref: e81, role: button, name: "删除" }
+      - { ref: e82, role: textbox, name: "请输入", nth: 6, sample_value: "S" }
+      - { ref: e83, role: textbox, name: "请输入", nth: 7 }
+      - { ref: e84, role: textbox, name: "请输入", nth: 8 }
+      - { ref: e85, role: textbox, name: "请输入", nth: 9 }
+      - { ref: e86, role: button, name: "上移", nth: 1 }
+      - { ref: e87, role: button, name: "下移", nth: 1 }
+      - { ref: e88, role: button, name: "删除", nth: 1 }
+      - { ref: e89, role: textbox, name: "请输入", nth: 10, sample_value: "M" }
+      - { ref: e90, role: textbox, name: "请输入", nth: 11 }
+      - { ref: e91, role: textbox, name: "请输入", nth: 12 }
+      - { ref: e92, role: textbox, name: "请输入", nth: 13 }
+      - { ref: e93, role: button, name: "上移", nth: 2 }
+      - { ref: e94, role: button, name: "下移", nth: 2, states: [disabled] }
+      - { ref: e95, role: button, name: "删除", nth: 2 }
+      - { ref: e96, role: button, name: "添加行" }
+      - { ref: e97, role: checkbox, name: "另存为模版" }
+
+  stock_payment_service:
+    comment: "库存、支付方式、分期、服务承诺等"
+    mcp_refs: ["e98", "e99", "e100", "e101", "e102", "e103", "e104", "e105", "e106", "e107", "e108", "e109", "e110", "e111", "e112", "e113", "e114", "e115", "e116", "e117", "e118", "e119", "e120", "e121", "e122"]
+    items:
+      - { ref: e98, role: switch, nth: 5 }
+      - { ref: e99, role: textbox, nth: 2, states: [disabled, readonly] }
+      - { ref: e100, role: switch, nth: 6 }
+      - { ref: e101, role: radio, name: "下单减库存", value: "1", states: [checked, readonly] }
+      - { ref: e102, role: radio, name: "付款减库存", value: "2" }
+      - { ref: e103, role: checkbox, name: "3期免息（费率1.65%）" }
+      - { ref: e104, role: checkbox, name: "6期免息（费率4.00%）" }
+      - { ref: e105, role: checkbox, name: "12期免息（费率6.00%）" }
+      - { ref: e106, role: checkbox, name: "24期免息（费率10.00%）" }
+      - { ref: e107, role: link, name: "点击了解", nth: 1 }
+      - { ref: e108, role: combobox, nth: 14, states: [readonly] }
+      - { ref: e109, role: checkbox, name: "订单完成15天内售后保障", states: [checked, disabled, readonly] }
+      - { ref: e110, role: combobox, nth: 15, states: [readonly] }
+      - { ref: e111, role: link, name: "点击了解", nth: 2 }
+      - { ref: e112, role: radio, name: "不包含", states: [checked, readonly] }
+      - { ref: e113, role: radio, name: "提供更长的售后有效期", value: "2" }
+      - { ref: e114, role: radio, name: "上架", value: "0", states: [checked, readonly] }
+      - { ref: e115, role: radio, name: "下架", value: "1" }
+      - { ref: e116, role: textbox, name: "限购提示文案" }
+      - { ref: e117, role: textbox, name: "请输入", nth: 14 }
+      - { ref: e118, role: combobox, nth: 16, states: [readonly] }
+      - { ref: e119, role: generic, name: "0/20" }
+      - { ref: e120, role: generic, name: "0/20", nth: 1 }
+      - { ref: e121, role: switch, nth: 7, states: [disabled] }
+      - { ref: e122, role: link, name: "前往查看" }
+
+  footer_actions:
+    comment: "底部发布、草稿、检查"
+    mcp_refs: ["e123", "e124", "e125", "e126"]
+    items:
+      - { ref: e123, role: button, name: "发布商品" }
+      - { ref: e124, role: button, name: "保存草稿" }
+      - { ref: e125, role: button, name: null, nth: 5 }
+      - { ref: e126, role: button, name: "填写检查" }
+
+  # 以下 ref 在 MCP 输出中与上文存在「同名重复暴露」，单独列出便于检索，勿与 DOM 一一强绑定
+  a11y_duplicate_labels:
+    comment: "无障碍层对同一表单项的重复 label/镜像节点（e127–e150）"
+    mcp_refs: ["e127", "e128", "e129", "e130", "e131", "e132", "e133", "e134", "e135", "e136", "e137", "e138", "e139", "e140", "e141", "e142", "e143", "e144", "e145", "e146", "e147", "e148", "e149", "e150"]
+    items:
+      - { ref: e127, name: "使用品牌名" }
+      - { ref: e128, name: "现货发货模式" }
+      - { ref: e129, name: "现货+预售发货模式" }
+      - { ref: e130, name: "次日发 推荐" }
+      - { ref: e131, name: "48小时" }
+      - { ref: e132, name: "当日发" }
+      - { ref: e133, name: "脚长(cm)" }
+      - { ref: e134, name: "脚宽(cm)" }
+      - { ref: e135, name: "靴筒高(cm)" }
+      - { ref: e136, name: "鞋跟高(cm)" }
+      - { ref: e137, name: "靴筒围(cm)" }
+      - { ref: e138, name: "鞋底厚(cm)" }
+      - { ref: e139, name: "另存为模版" }
+      - { ref: e140, name: "下单减库存" }
+      - { ref: e141, name: "付款减库存" }
+      - { ref: e142, name: "3期免息（费率1.65%）" }
+      - { ref: e143, name: "6期免息（费率4.00%）" }
+      - { ref: e144, name: "12期免息（费率6.00%）" }
+      - { ref: e145, name: "24期免息（费率10.00%）" }
+      - { ref: e146, name: "订单完成15天内售后保障" }
+      - { ref: e147, name: "不包含" }
+      - { ref: e148, name: "提供更长的售后有效期" }
+      - { ref: e149, name: "上架" }
+      - { ref: e150, name: "下架" }
+
+  upload_actions_flat:
+    comment: "快照末尾单独列出的上传类按钮（可能与 Popover 状态有关）"
+    mcp_refs: ["e151", "e152"]
+    items:
+      - { ref: e151, role: button, name: "本地替换" }
+      - { ref: e152, role: button, name: "本地上传", note: "SKU/图片区悬停后常见；自动化多匹配 Popover 内 label+file input" }
+
+# -----------------------------------------------------------------------------
+# 更新方式（建议）
+# -----------------------------------------------------------------------------
+# 1. 在 MCP 浏览器中进入目标页面（或悬停 SKU 后再抓一次 Popover）。
+# 2. 执行 browser_snapshot，将输出追加为新文件 mcp-a11y-snapshot-YYYYMMDD.txt。
+# 3. 按需同步修改本 YAML 的 regions / meta。
+# -----------------------------------------------------------------------------

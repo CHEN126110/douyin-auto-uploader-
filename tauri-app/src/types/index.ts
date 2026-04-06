@@ -146,7 +146,7 @@ export interface AutomationConfig {
   shipping_templates: string[];
   material_compositions: MaterialComposition[];
   material_options?: string[];
-  qualification_certificate_path?: string | null;
+  wash_label_tag_image_path?: string | null;
 }
 
 export interface Settings {

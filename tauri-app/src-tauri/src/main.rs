@@ -80,10 +80,9 @@ fn resolve_runtime_log_dir(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(debug_assertions)]
     {
         let _ = app;
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("runtime")
-            .join("logs")
+        let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let parent = base.parent().map(Path::to_path_buf).unwrap_or(base);
+        parent.join("runtime").join("logs")
     }
 
     #[cfg(not(debug_assertions))]

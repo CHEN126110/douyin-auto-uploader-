@@ -266,7 +266,7 @@ export const api = {
   },
 
   /** 获取上传任务列表 */
-  getUploadTasks(): Promise<{
+  getUploadTasks(options: { silentError?: boolean } = {}): Promise<{
     success: boolean;
     data?: {
       tasks: UploadTaskSummary[];
@@ -277,7 +277,9 @@ export const api = {
       };
     };
   }> {
-    return http.get("/api/upload/tasks");
+    return http.get("/api/upload/tasks", {
+      __silentError: !!options.silentError,
+    } as any);
   },
 
   // ========== 智能标题 ==========
@@ -443,21 +445,21 @@ export const api = {
     return http.post("/settings", settings);
   },
 
-  /** 导入自动化设置中的合格证图片 */
-  importAutomationCertificate(sourcePath: string): Promise<
+  /** 导入自动化设置中的水洗标/吊牌图 */
+  importAutomationWashLabelTagImage(sourcePath: string): Promise<
     ApiResponse<{
       stored_path: string;
       file_name: string;
     }>
   > {
-    return http.post("/settings/automation/certificate/import", {
+    return http.post("/settings/automation/wash-label/import", {
       source_path: sourcePath,
     });
   },
 
-  /** 删除自动化设置中的合格证图片 */
-  removeAutomationCertificate(storedPath?: string): Promise<ApiResponse> {
-    return http.post("/settings/automation/certificate/remove", {
+  /** 删除自动化设置中的水洗标/吊牌图 */
+  removeAutomationWashLabelTagImage(storedPath?: string): Promise<ApiResponse> {
+    return http.post("/settings/automation/wash-label/remove", {
       stored_path: storedPath || "",
     });
   },

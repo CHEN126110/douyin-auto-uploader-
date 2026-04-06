@@ -1,0 +1,19 @@
+---
+description: Use local Windows files as source of truth when repo-external copies or runtime files are involved
+alwaysApply: true
+---
+
+# Local File Source Of Truth
+
+Apply this rule when work involves repo-external local files, OpenClaw workspaces, wrapper scripts, local config files, or other Windows file-system copies that may differ from the git workspace.
+
+- Treat the local Windows file system as the primary source of truth for those tasks.
+- Read the actual local file or runtime copy first before trusting the repository copy.
+- Use git only to inspect what changed, not to decide which copy is authoritative.
+- If a repo file and a local runtime copy differ, prefer syncing the repository from the verified local file unless the user says otherwise.
+- When reporting conclusions, clearly distinguish:
+  - local runtime copy
+  - local system/config file
+  - repository file
+  - git diff/history
+- Do not assume the repository is the only active copy when OpenClaw workspaces, `.openclaw` files, global tools, or wrapper scripts are involved.

@@ -115,6 +115,7 @@ class AutomationConfig:
     shipping_templates: Optional[List[str]] = None  # 运费模板列表
     material_compositions: Optional[List[Dict[str, Any]]] = None
     material_options: Optional[List[str]] = None
+    wash_label_tag_image_path: Optional[str] = None
     qualification_certificate_path: Optional[str] = None
     
     def __post_init__(self):
@@ -127,6 +128,8 @@ class AutomationConfig:
             ]
         if self.material_options is None:
             self.material_options = list(PLATFORM_MATERIAL_OPTIONS)
+        if self.wash_label_tag_image_path:
+            self.wash_label_tag_image_path = str(self.wash_label_tag_image_path).strip() or None
         if self.qualification_certificate_path:
             self.qualification_certificate_path = str(self.qualification_certificate_path).strip() or None
 
@@ -169,6 +172,7 @@ class UserSettings:
                     {'material': '氨纶', 'percentage': 25}
                 ],
                 'material_options': list(PLATFORM_MATERIAL_OPTIONS),
+                'wash_label_tag_image_path': None,
                 'qualification_certificate_path': None,
             }
 
@@ -191,6 +195,7 @@ class SettingsManager:
                 {'material': '氨纶', 'percentage': 25}
             ],
             'material_options': list(PLATFORM_MATERIAL_OPTIONS),
+            'wash_label_tag_image_path': None,
             'qualification_certificate_path': None,
         }
         if not isinstance(data, dict):
@@ -238,13 +243,18 @@ class SettingsManager:
         if len(normalized_materials) == 0:
             normalized_materials = default_config['material_compositions']
 
+        wash_label_tag_image_path = str(data.get('wash_label_tag_image_path') or '').strip() or None
         qualification_certificate_path = str(data.get('qualification_certificate_path') or '').strip() or None
+        if not wash_label_tag_image_path and qualification_certificate_path:
+            # 历史版本只有合格证图片入口，用户可能已把水洗标/吊牌图配置在该字段中。
+            wash_label_tag_image_path = qualification_certificate_path
 
         return {
             'shipping_template': shipping_template,
             'shipping_templates': shipping_templates,
             'material_compositions': normalized_materials,
             'material_options': material_options,
+            'wash_label_tag_image_path': wash_label_tag_image_path,
             'qualification_certificate_path': qualification_certificate_path,
         }
     

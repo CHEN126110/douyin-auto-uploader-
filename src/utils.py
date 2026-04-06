@@ -371,6 +371,195 @@ def set_material_composition(new_tab, materials) -> bool:
 
 new_btn_xpath = '//div[not(contains(@class,"ecom-g-cascader-menus-hidden"))]/div/div[@style="padding-bottom: 8px;"]/div[starts-with(@class,"styles_addSKUName__")]/span'
 
+_SKU_SPEC_INPUT_XPATH = 'xpath://input[@placeholder="请输入规格值"]'
+_SKU_REMARK_INPUT_XPATH = 'xpath://div[@id="skuValue-颜色分类"]//input[@placeholder="备注"]'
+_SKU_CONFIRM_BOTTOM_XPATHS = (
+    'xpath://div[contains(@class,"styles_popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
+    'xpath://div[contains(@class,"popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
+    'xpath://button[contains(@class,"ecom-g-btn-primary")][.//span[contains(normalize-space(.),"确定")]]',
+)
+
+
+def _sku_spec_input_visible_count(tab):
+    return len(_get_visible_elements(tab, _SKU_SPEC_INPUT_XPATH, timeout=0.05))
+
+
+def _sku_find_visible_confirm_icon(tab):
+    """与原先内联逻辑一致：多枚「确认」时取最后一个可见（通常为当前规格行）。"""
+    try:
+        icons = tab.eles('xpath://span[@data-kora="确认"]', timeout=0.05)
+    except Exception:
+        icons = []
+    last = None
+    for icon in icons:
+        try:
+            if icon and icon.states.is_displayed:
+                last = icon
+        except Exception:
+            continue
+    return last
+
+
+def _sku_find_visible_confirm_bottom(tab):
+    for selector in _SKU_CONFIRM_BOTTOM_XPATHS:
+        try:
+            buttons = tab.eles(selector, timeout=0.05)
+        except Exception:
+            buttons = []
+        for btn in buttons:
+            try:
+                if btn and btn.states.is_displayed and btn.states.is_enabled:
+                    return btn
+            except Exception:
+                continue
+    return None
+
+
+def _sku_cascader_shows_name(tab, literal: str) -> bool:
+    for selector in (
+        f'xpath://div[contains(@class,"ecom-g-cascader-menus")]//li[.//*[contains(normalize-space(.), {literal})]]',
+        f'xpath://div[contains(@class,"ecom-g-cascader-menus")]//*[contains(normalize-space(.), {literal})]',
+    ):
+        try:
+            for item in tab.eles(selector, timeout=0.05):
+                if item and item.states.is_displayed:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
+def _sku_finish_spec_confirmation(new_tab, sku_name: str, before_spec_count: int) -> None:
+    """
+    规格值填写后：点小勾 → 如有底部「确定」则点掉关闭弹层。
+    逻辑与原先内联实现一致，仅抽出以降低主流程噪音、避免重复选择器散落。
+    """
+    literal = _xpath_literal(sku_name)
+
+    def _after_icon_progress():
+        return (
+            _sku_spec_input_visible_count(new_tab) <= before_spec_count
+            or _sku_find_visible_confirm_bottom(new_tab) is not None
+            or _sku_cascader_shows_name(new_tab, literal)
+        )
+
+    confirm_icon = _sku_find_visible_confirm_icon(new_tab)
+    if not confirm_icon:
+        raise Exception("未找到规格确认按钮")
+
+    icon_confirmed = False
+    for action in (
+        lambda: confirm_icon.click(),
+        lambda: confirm_icon.click(by_js=True),
+        lambda: confirm_icon.run_js(
+            "['mousedown','mouseup','click'].forEach(function(type){"
+            "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
+            "}, this);"
+        ),
+    ):
+        try:
+            action()
+        except Exception:
+            continue
+        if _wait_until(_after_icon_progress, timeout=2.0, interval=0.05):
+            icon_confirmed = True
+            break
+
+    if not icon_confirmed:
+        raise Exception("创建类型后未成功确认规格值")
+
+    _wait_until(
+        lambda: bool(_sku_find_visible_confirm_bottom(new_tab))
+        or _sku_spec_input_visible_count(new_tab) <= before_spec_count,
+        timeout=1.2,
+        interval=0.05,
+    )
+    confirm_bottom = _sku_find_visible_confirm_bottom(new_tab)
+
+    def _confirm_popup_closed():
+        visible_n = _sku_spec_input_visible_count(new_tab)
+        if visible_n <= before_spec_count:
+            return True
+        for selector in _SKU_CONFIRM_BOTTOM_XPATHS:
+            try:
+                buttons = new_tab.eles(selector, timeout=0.05)
+            except Exception:
+                buttons = []
+            for btn in buttons:
+                try:
+                    if btn and btn.states.is_displayed:
+                        return False
+                except Exception:
+                    continue
+        return visible_n <= before_spec_count
+
+    confirmed = False
+    if confirm_bottom:
+        try:
+            confirm_bottom.scroll.to_center()
+        except Exception:
+            pass
+        for action in (
+            lambda: confirm_bottom.click(),
+            lambda: confirm_bottom.click(by_js=True),
+            lambda: confirm_bottom.run_js(
+                "['mousedown','mouseup','click'].forEach(function(type){"
+                "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
+                "}, this);"
+            ),
+        ):
+            try:
+                action()
+            except Exception:
+                continue
+            if _wait_until(_confirm_popup_closed, timeout=1.5, interval=0.05):
+                confirmed = True
+                break
+    else:
+        confirmed = _confirm_popup_closed()
+
+    if not confirmed:
+        raise Exception("规格确认弹窗未关闭，确定按钮未生效")
+
+
+def _sku_unique_hover_targets(upload_trigger, hover_target, sku_anchor):
+    """同一 DOM 节点只悬停一次，减少无效 hover 与等待。"""
+    out = []
+    seen = set()
+    for t in (upload_trigger, hover_target, sku_anchor):
+        if not t:
+            continue
+        tid = id(t)
+        if tid in seen:
+            continue
+        seen.add(tid)
+        out.append(t)
+    return out
+
+
+def _sku_resolve_local_upload_label(new_tab, sku_name: str, sku_anchor, hover_target):
+    """
+    对 SKU 行悬停直至 Popover 内出现「本地上传」label。
+    每轮刷新 upload_trigger，避免新插入行后仍持有旧引用。
+    悬停后轮询若干次：Popover 动画/重排时单次快照易漏检（尤其列表靠后 SKU）。
+    """
+    upload_trigger = _find_sku_upload_trigger(new_tab, sku_name)
+    for target in _sku_unique_hover_targets(upload_trigger, hover_target, sku_anchor):
+        try:
+            target.scroll.to_center()
+        except Exception:
+            pass
+        try:
+            target.hover()
+        except Exception:
+            continue
+        for _ in range(5):
+            _time.sleep(0.07)
+            btn = _find_sku_local_upload_button(new_tab)
+            if btn and btn.states.is_displayed:
+                return btn
+    return None
+
 
 def api_ok(msg, data=None):
     return {'success': True, 'msg': msg, 'data': data}
@@ -1025,9 +1214,9 @@ def handle_crop_popup(new_tab):
             timeout=0.2  # 优化：减少超时
         )
         if not crop_title:
-            return  # 快速返回，不打印日志
-    except:
-        return
+            return False
+    except Exception:
+        return False
 
     try:
         # 查找 "-" 按钮
@@ -1049,9 +1238,308 @@ def handle_crop_popup(new_tab):
         if confirm_btn:
             confirm_btn.click(by_js=True)
             time.sleep(0.15)  # 优化：0.5s -> 0.15s
+        return True
 
     except Exception as e:
         print(f"处理裁剪弹窗异常:{e}")
+        return False
+
+
+def _is_crop_popup_visible(new_tab) -> bool:
+    selectors = [
+        'xpath://div[@class="ecom-g-modal-title" and contains(text(),"图片裁剪")]',
+        'xpath://div[contains(@class,"ecom-g-modal")][.//*[contains(normalize-space(.),"图片裁剪")]]',
+    ]
+    for selector in selectors:
+        try:
+            modal = new_tab.ele(selector, timeout=0.05)
+        except Exception:
+            modal = None
+        if not modal:
+            continue
+        try:
+            if modal.states.is_displayed:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def handle_main_image_smart_crop_prompt(new_tab, timeout: float = 0.2) -> bool:
+    """处理主图上传后的 1:1 智能裁剪确认弹窗。"""
+    prompt_selectors = [
+        'xpath://div[@role="dialog"][.//*[contains(normalize-space(.),"智能裁剪为1:1主图")]]',
+        'xpath://div[contains(@class,"ecom-g-modal")][.//*[contains(normalize-space(.),"智能裁剪为1:1主图")]]',
+        'xpath://div[contains(@class,"ecom-g-modal")][.//*[contains(normalize-space(.),"当前还有") and contains(normalize-space(.),"不是1:1比例")]]',
+    ]
+    confirm_selectors = [
+        'xpath:.//button[.//span[normalize-space(.)="确定"]]',
+        'xpath:.//*[normalize-space(.)="确定"]/ancestor::button[1]',
+    ]
+
+    modal = _wait_for_first_visible(new_tab, prompt_selectors, timeout=timeout, interval=0.05)
+    if not modal:
+        return False
+
+    confirm_btn = None
+    for selector in confirm_selectors:
+        try:
+            btn = modal.ele(selector, timeout=0.1)
+        except Exception:
+            btn = None
+        if btn and btn.states.is_displayed:
+            confirm_btn = btn
+            break
+
+    if not confirm_btn:
+        print('检测到1:1主图智能裁剪弹窗，但未找到“确定”按钮')
+        return False
+
+    try:
+        confirm_btn.click(by_js=True)
+    except Exception:
+        try:
+            confirm_btn.click()
+        except Exception as e:
+            print(f'点击1:1主图智能裁剪弹窗“确定”失败: {e}')
+            return False
+
+    _time.sleep(0.15)
+    print('已自动确认1:1主图智能裁剪弹窗')
+    return True
+
+
+def _find_ai_material_tool_panel(new_tab, timeout: float = 0.2):
+    panel_selectors = [
+        'xpath://div[contains(@class,"auxo-drawer-wrapper-body")][.//*[contains(normalize-space(.),"AI素材工具")]]',
+        'xpath://div[contains(@class,"ecom-g-modal")][.//*[contains(normalize-space(.),"AI素材工具")]]',
+        'xpath://div[contains(@class,"drawer") or contains(@class,"Drawer")][.//*[contains(normalize-space(.),"AI素材工具")]]',
+        'xpath://div[.//*[contains(normalize-space(.),"AI素材工具")] and (.//*[contains(normalize-space(.),"全部上传")] or .//*[contains(normalize-space(.),"上传")])]',
+    ]
+    return _wait_for_first_visible(new_tab, panel_selectors, timeout=timeout, interval=0.05)
+
+
+def _click_text_button(container, texts, timeout_each: float = 0.08):
+    for text in texts:
+        selectors = [
+            f'xpath:.//button[normalize-space(.)="{text}" or .//span[normalize-space(.)="{text}"]]',
+            f'xpath:.//*[normalize-space(.)="{text}"]/ancestor::button[1]',
+        ]
+        for selector in selectors:
+            try:
+                btn = container.ele(selector, timeout=timeout_each)
+            except Exception:
+                btn = None
+            if not btn:
+                continue
+            try:
+                if not btn.states.is_displayed:
+                    continue
+                btn_class = (btn.attr('class') or '').lower()
+                if 'disabled' in btn_class:
+                    continue
+            except Exception:
+                pass
+            try:
+                btn.click(by_js=True)
+            except Exception:
+                try:
+                    btn.click()
+                except Exception:
+                    continue
+            return text
+    return ''
+
+
+def close_ai_material_tool_panel(new_tab, timeout: float = 0.2) -> bool:
+    """关闭 AI素材工具 面板，避免遮挡后续 SKU 上传区域。"""
+    panel = _find_ai_material_tool_panel(new_tab, timeout=timeout)
+    if not panel:
+        return False
+
+    close_selectors = [
+        'xpath:.//button[contains(@class,"auxo-drawer-close")]',
+        'xpath:.//button[@aria-label="Close" or @aria-label="关闭"]',
+        'xpath:.//*[contains(@class,"anticon-close")]/ancestor::button[1]',
+        'xpath:.//button[contains(@title,"关闭") or contains(@aria-label,"close") or contains(@aria-label,"Close")]',
+    ]
+
+    for selector in close_selectors:
+        try:
+            btn = panel.ele(selector, timeout=0.08)
+        except Exception:
+            btn = None
+        if not btn:
+            continue
+        try:
+            btn.click(by_js=True)
+        except Exception:
+            try:
+                btn.click()
+            except Exception:
+                continue
+        _time.sleep(0.12)
+        if not _find_ai_material_tool_panel(new_tab, timeout=0.12):
+            print('已关闭AI素材工具面板')
+            return True
+    return False
+
+
+def handle_main_image_ai_tool_upload(new_tab, timeout: float = 0.2) -> bool:
+    """处理 AI素材工具 面板中的“全部上传/上传”按钮。"""
+    panel = _find_ai_material_tool_panel(new_tab, timeout=timeout)
+    if not panel:
+        return False
+
+    clicked_text = _click_text_button(panel, ('全部上传', '上传'))
+    if not clicked_text:
+        print('检测到AI素材工具面板，但未找到“全部上传/上传”按钮')
+        return False
+
+    _time.sleep(0.15)
+    print(f'已触发AI素材工具“{clicked_text}”')
+    return True
+
+
+def handle_white_bg_ai_tool_upload(new_tab, timeout: float = 0.3) -> bool:
+    """处理白底图阶段 AI素材工具：优先应用，再上传。"""
+    panel = _find_ai_material_tool_panel(new_tab, timeout=timeout)
+    if not panel:
+        return False
+
+    white_related = False
+    for marker in ('白底图', '一键抠图', '无损放大'):
+        try:
+            if panel.ele(f'xpath:.//*[contains(normalize-space(.),"{marker}")]', timeout=0.05):
+                white_related = True
+                break
+        except Exception:
+            pass
+    if not white_related:
+        return False
+
+    try:
+        _click_text_button(panel, ('应用',), timeout_each=0.06)
+    except Exception:
+        pass
+
+    _time.sleep(0.12)
+    clicked_text = _click_text_button(panel, ('上传', '全部上传'))
+    if not clicked_text:
+        print('检测到白底图AI素材工具面板，但未找到“上传”按钮')
+        return False
+
+    _time.sleep(0.18)
+    # 平台在白底图场景下可能不会自动收起抽屉，主动尝试关闭，避免遮挡 SKU 上传。
+    try:
+        close_ai_material_tool_panel(new_tab, timeout=0.12)
+    except Exception:
+        pass
+    print(f'已触发白底图AI素材工具“{clicked_text}”并尝试收起面板')
+    return True
+
+
+def handle_main_image_post_upload_prompts(new_tab, timeout: float = 8.0) -> bool:
+    """主图上传后处理弹窗链：AI素材工具 -> 全部上传 -> 1:1智能裁剪确认。"""
+    start = _time.time()
+    idle_checks = 0
+    handled_any = False
+    seen_prompt = False
+
+    while _time.time() - start < timeout:
+        acted = False
+        try:
+            if handle_main_image_ai_tool_upload(new_tab, timeout=0.12):
+                acted = True
+                handled_any = True
+        except Exception:
+            pass
+
+        try:
+            if handle_main_image_smart_crop_prompt(new_tab, timeout=0.12):
+                acted = True
+                handled_any = True
+        except Exception:
+            pass
+
+        if not acted:
+            try:
+                if _find_ai_material_tool_panel(new_tab, timeout=0.05):
+                    seen_prompt = True
+            except Exception:
+                pass
+            try:
+                if _is_upload_busy(new_tab):
+                    seen_prompt = True
+            except Exception:
+                pass
+
+        if acted:
+            seen_prompt = True
+            idle_checks = 0
+            continue
+
+        idle_checks += 1
+        if idle_checks >= (2 if not seen_prompt else 4):
+            break
+        _time.sleep(0.08)
+
+    return handled_any
+
+
+def handle_white_bg_post_upload_prompts(new_tab, timeout: float = 6.0) -> bool:
+    """白底图上传后处理 AI素材工具侧边栏与残留确认弹窗。"""
+    start = _time.time()
+    idle_checks = 0
+    handled_any = False
+    seen_prompt = False
+
+    while _time.time() - start < timeout:
+        acted = False
+        try:
+            if handle_white_bg_ai_tool_upload(new_tab, timeout=0.12):
+                acted = True
+                handled_any = True
+        except Exception:
+            pass
+
+        try:
+            if close_ai_material_tool_panel(new_tab, timeout=0.08):
+                acted = True
+                handled_any = True
+        except Exception:
+            pass
+
+        try:
+            if handle_main_image_smart_crop_prompt(new_tab, timeout=0.1):
+                acted = True
+                handled_any = True
+        except Exception:
+            pass
+
+        if not acted:
+            try:
+                if _find_ai_material_tool_panel(new_tab, timeout=0.05):
+                    seen_prompt = True
+            except Exception:
+                pass
+            try:
+                if _is_upload_busy(new_tab):
+                    seen_prompt = True
+            except Exception:
+                pass
+
+        if acted:
+            seen_prompt = True
+            idle_checks = 0
+            continue
+
+        idle_checks += 1
+        if idle_checks >= (2 if not seen_prompt else 4):
+            break
+        _time.sleep(0.08)
+
+    return handled_any
 
 
 def smart_find_upload_button(tab, context="SKU"):
@@ -1207,6 +1695,12 @@ def _wait_for_upload_complete(tab, timeout=90.0, interval=0.25):
     seen_busy = False
     idle_checks = 0
     while _time.time() - start < timeout:
+        try:
+            handle_main_image_ai_tool_upload(tab, timeout=0.1)
+            handle_white_bg_ai_tool_upload(tab, timeout=0.08)
+            handle_main_image_smart_crop_prompt(tab, timeout=0.1)
+        except Exception:
+            pass
         busy = _is_upload_busy(tab)
         if busy:
             seen_busy = True
@@ -1216,6 +1710,53 @@ def _wait_for_upload_complete(tab, timeout=90.0, interval=0.25):
             if idle_checks >= (2 if seen_busy else 4):
                 return True
         time.sleep(interval)
+    return False
+
+
+def _wait_for_sku_upload_settled(new_tab, timeout=12.0, interval=0.08):
+    start = _time.time()
+    seen_busy = False
+    idle_checks = 0
+
+    while _time.time() - start < timeout:
+        crop_visible = _is_crop_popup_visible(new_tab)
+        if crop_visible:
+            seen_busy = True
+            idle_checks = 0
+            try:
+                handle_crop_popup(new_tab)
+            except Exception:
+                pass
+            time.sleep(max(0.05, interval))
+            continue
+
+        panel = None
+        try:
+            panel = _find_ai_material_tool_panel(new_tab, timeout=0.05)
+        except Exception:
+            panel = None
+        if panel:
+            seen_busy = True
+            idle_checks = 0
+            try:
+                close_ai_material_tool_panel(new_tab, timeout=0.08)
+            except Exception:
+                pass
+            time.sleep(max(0.05, interval))
+            continue
+
+        busy = _is_upload_busy(new_tab)
+        if busy:
+            seen_busy = True
+            idle_checks = 0
+            time.sleep(interval)
+            continue
+
+        idle_checks += 1
+        if idle_checks >= (2 if seen_busy else 3):
+            return True
+        time.sleep(interval)
+
     return False
 
 
@@ -1230,51 +1771,48 @@ def _xpath_literal(value: str) -> str:
 
 
 def _find_sku_local_upload_button(new_tab):
-    popover_selectors = [
+    """
+    颜色分类悬停后的 Popover 内「本地上传」。
+    与 smart_find_upload_button 中精确定位一致：避免仅用 normalize-space(text())=\"本地上传\"
+    时子节点换行/嵌套 span 导致匹配失败（多 SKU、靠下几行时更易触发）。
+    """
+    selectors = (
         'xpath://div[contains(@class,"ecom-g-popover")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and .//*[normalize-space(text())="本地上传"]]',
-        'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"] and .//*[contains(normalize-space(.),"本地上传")]]',
-        'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"]]',
-        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[contains(@class,"index-module_actionBefore")]',
-        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[.//input[@type="file"]]',
-        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[.//div[contains(normalize-space(.),"本地上传")]]',
-        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//*[contains(normalize-space(.),"本地上传")]/ancestor::label[1]',
-    ]
-
-    for selector in popover_selectors:
+        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//label[contains(@class,"index-module_actionBefore") and .//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+        'xpath://div[contains(@class,"ecom-g-popover")]//label[.//input[@type="file"] and contains(normalize-space(.),"本地上传")]',
+        'xpath://div[contains(@class,"ecom-g-popover-inner-content")]//*[contains(normalize-space(.),"本地上传")]/ancestor::label[1][.//input[@type="file"]]',
+    )
+    for selector in selectors:
         try:
             buttons = new_tab.eles(selector, timeout=0.3)
-        except:
+        except Exception:
             buttons = []
         for btn in buttons:
             try:
                 if btn and btn.states.is_displayed:
                     return btn
-            except:
+            except Exception:
                 continue
-
     return None
 
 
 def _find_sku_upload_trigger(new_tab, sku_name: str):
     literal = _xpath_literal(sku_name)
-    trigger_selectors = [
-        f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]/ancestor::*[.//div[contains(@class,"material-button") and contains(@class,"material-upload-button")]][1]//div[contains(@class,"material-button") and contains(@class,"material-upload-button")][1]',
-        f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]/ancestor::*[.//div[contains(@class,"material-upload-button")]][1]//div[contains(@class,"material-upload-button")][1]',
-        f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]/following::div[contains(@class,"material-button") and contains(@class,"material-upload-button")][1]',
-        f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]/following::div[contains(@class,"material-upload-button")][1]',
-    ]
-
-    for selector in trigger_selectors:
+    selector = (
+        f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]/ancestor::*'
+        f'[.//div[contains(@class,"material-button") and contains(@class,"material-upload-button")]][1]'
+        f'//div[contains(@class,"material-button") and contains(@class,"material-upload-button")][1]'
+    )
+    try:
+        elements = new_tab.eles(selector, timeout=0.12)
+    except Exception:
+        elements = []
+    for item in elements:
         try:
-            elements = new_tab.eles(selector, timeout=0.1)
-        except:
-            elements = []
-        for item in elements:
-            try:
-                if item and item.states.is_displayed:
-                    return item
-            except:
-                continue
+            if item and item.states.is_displayed:
+                return item
+        except Exception:
+            continue
     return None
 
 
@@ -1286,16 +1824,7 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
         if not sku_name:
             raise Exception("SKU名称为空")
 
-        spec_input_selector = 'xpath://input[@placeholder="请输入规格值"]'
-        remark_input_selector = 'xpath://div[@id="skuValue-颜色分类"]//input[@placeholder="备注"]'
-        confirm_bottom_selectors = [
-            'xpath://div[contains(@class,"styles_popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
-            'xpath://div[contains(@class,"popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
-            'xpath://button[contains(@class,"ecom-g-btn-primary")][.//span[contains(normalize-space(.),"确定")]]',
-        ]
-
-        new_tab.set.upload_files(sku['path'])
-        before_spec_count = len(_get_visible_elements(new_tab, spec_input_selector, timeout=0.05))
+        before_spec_count = _sku_spec_input_visible_count(new_tab)
 
         color_inputs = _get_visible_elements(new_tab, 'xpath://div[@id="skuValue-颜色分类"]//input', timeout=0.2)
         if not color_inputs:
@@ -1313,7 +1842,7 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
 
         def _probe_spec_input():
             nonlocal spec_input
-            inputs = _get_visible_elements(new_tab, spec_input_selector, timeout=0.05)
+            inputs = _get_visible_elements(new_tab, _SKU_SPEC_INPUT_XPATH, timeout=0.05)
             if not inputs:
                 return False
             if len(inputs) > before_spec_count:
@@ -1328,7 +1857,7 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
         spec_input.click(by_js=True)
         try:
             spec_input.clear(by_js=True)
-        except:
+        except Exception:
             pass
         spec_input.input(sku_name, clear=True)
 
@@ -1339,147 +1868,16 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
         ):
             raise Exception(f'规格值 "{sku_name}" 未成功写入')
 
-        literal = _xpath_literal(sku_name)
-
-        def _find_visible_confirm_icon():
-            confirm_icons = new_tab.eles('xpath://span[@data-kora="确认"]', timeout=0.05)
-            visible_icons = []
-            for icon in confirm_icons:
-                try:
-                    if icon and icon.states.is_displayed:
-                        visible_icons.append(icon)
-                except:
-                    continue
-            return visible_icons[-1] if visible_icons else None
-
-        def _find_visible_confirm_bottom():
-            for selector in confirm_bottom_selectors:
-                try:
-                    buttons = new_tab.eles(selector, timeout=0.05)
-                except:
-                    buttons = []
-                for btn in buttons:
-                    try:
-                        if btn and btn.states.is_displayed and btn.states.is_enabled:
-                            return btn
-                    except:
-                        continue
-            return None
-
-        def _created_option_visible():
-            created_selectors = [
-                f'xpath://div[contains(@class,"ecom-g-cascader-menus")]//li[.//*[contains(normalize-space(.), {literal})]]',
-                f'xpath://div[contains(@class,"ecom-g-cascader-menus")]//*[contains(normalize-space(.), {literal})]',
-            ]
-            for selector in created_selectors:
-                try:
-                    elements = new_tab.eles(selector, timeout=0.05)
-                except:
-                    elements = []
-                for item in elements:
-                    try:
-                        if item and item.states.is_displayed:
-                            return True
-                    except:
-                        continue
-            return False
-
-        confirm_icon = _find_visible_confirm_icon()
-        if not confirm_icon:
-            raise Exception("未找到规格确认按钮")
-
-        icon_confirmed = False
-        for action in (
-            lambda: confirm_icon.click(),
-            lambda: confirm_icon.click(by_js=True),
-            lambda: confirm_icon.run_js(
-                "['mousedown','mouseup','click'].forEach(function(type){"
-                "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
-                "}, this);"
-            ),
-        ):
-            try:
-                action()
-            except:
-                continue
-            if _wait_until(
-                lambda: len(_get_visible_elements(new_tab, spec_input_selector, timeout=0.05)) <= before_spec_count
-                or _find_visible_confirm_bottom() is not None
-                or _created_option_visible(),
-                timeout=2.0,
-                interval=0.05
-            ):
-                icon_confirmed = True
-                break
-
-        if not icon_confirmed:
-            raise Exception("创建类型后未成功确认规格值")
-
-        confirm_bottom = None
-        _wait_until(
-            lambda: bool(_find_visible_confirm_bottom())
-            or len(_get_visible_elements(new_tab, spec_input_selector, timeout=0.05)) <= before_spec_count,
-            timeout=1.2,
-            interval=0.05
-        )
-        confirm_bottom = _find_visible_confirm_bottom()
-
-        def _confirm_popup_closed():
-            visible_inputs = _get_visible_elements(new_tab, spec_input_selector, timeout=0.05)
-            if len(visible_inputs) <= before_spec_count:
-                return True
-
-            for selector in confirm_bottom_selectors:
-                try:
-                    buttons = new_tab.eles(selector, timeout=0.05)
-                except:
-                    buttons = []
-                for btn in buttons:
-                    try:
-                        if btn and btn.states.is_displayed:
-                            return False
-                    except:
-                        continue
-            return len(visible_inputs) <= before_spec_count
-
-        confirmed = False
-        if confirm_bottom:
-            try:
-                confirm_bottom.scroll.to_center()
-            except:
-                pass
-
-            for action in (
-                lambda: confirm_bottom.click(),
-                lambda: confirm_bottom.click(by_js=True),
-                lambda: confirm_bottom.run_js(
-                    "['mousedown','mouseup','click'].forEach(function(type){"
-                    "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
-                    "}, this);"
-                ),
-            ):
-                try:
-                    action()
-                except:
-                    continue
-                if _wait_until(_confirm_popup_closed, timeout=1.5, interval=0.05):
-                    confirmed = True
-                    break
-        else:
-            confirmed = _confirm_popup_closed()
-
-        if not confirmed:
-            raise Exception("规格确认弹窗未关闭，确定按钮未生效")
-
-        time.sleep(0.05)
+        _sku_finish_spec_confirmation(new_tab, sku_name, before_spec_count)
 
         remark_text = str(remark or '').strip()
         if remark_text:
-            remark_inputs = _get_visible_elements(new_tab, remark_input_selector, timeout=0.1)
+            remark_inputs = _get_visible_elements(new_tab, _SKU_REMARK_INPUT_XPATH, timeout=0.1)
             if remark_inputs:
                 remark_inputs[-1].input(remark_text + '\n')
-                time.sleep(0.15)
+                time.sleep(0.12)
 
+        literal = _xpath_literal(sku_name)
         sku_anchor_selector = f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]'
         sku_anchor = None
 
@@ -1491,55 +1889,60 @@ def _set_sku_info_legacy(new_tab, index, sku, remark):
                 return True
             return False
 
-        if not _wait_until(_probe_sku_anchor, timeout=2.5, interval=0.08):
+        if not _wait_until(_probe_sku_anchor, timeout=2.5, interval=0.06):
             raise Exception(f'未找到 SKU "{sku_name}" 对应的悬停元素')
+
+        # 多规格时下方行常在视口外或未挂载完整，先滚整块「颜色分类」再滚锚点，避免悬停无 Popover
+        try:
+            sku_block = new_tab.ele('xpath://div[@id="skuValue-颜色分类"]', timeout=0.5)
+            if sku_block:
+                sku_block.scroll.to_see()
+        except Exception:
+            pass
+        try:
+            sku_anchor.scroll.to_see()
+            sku_anchor.scroll.to_center()
+        except Exception:
+            pass
+        _time.sleep(0.05)
 
         hover_target = sku_anchor
         try:
             anchor_container = sku_anchor.parent('xpath:ancestor::*[contains(@class,"index-module_")][1]')
             if anchor_container:
                 hover_target = anchor_container
-        except:
+        except Exception:
             pass
 
-        upload_trigger = _find_sku_upload_trigger(new_tab, sku_name)
-        active_hover_target = upload_trigger or hover_target
-        try:
-            active_hover_target.scroll.to_center()
-        except:
-            pass
-        time.sleep(0.03)
         upload_button = None
 
         def _probe_upload_button():
-            nonlocal upload_button, upload_trigger, active_hover_target
-            upload_trigger = _find_sku_upload_trigger(new_tab, sku_name) or upload_trigger
-            active_hover_target = upload_trigger or active_hover_target or hover_target
-            for target in (active_hover_target, hover_target, sku_anchor):
-                if not target:
-                    continue
-                try:
-                    target.hover()
-                except:
-                    continue
-                time.sleep(0.08)
-                btn = _find_sku_local_upload_button(new_tab)
-                if btn and btn.states.is_displayed:
-                    upload_button = btn
-                    return True
-            return False
+            nonlocal upload_button
+            upload_button = _sku_resolve_local_upload_label(new_tab, sku_name, sku_anchor, hover_target)
+            return upload_button is not None
 
-        if not _wait_until(_probe_upload_button, timeout=1.8, interval=0.08) or not upload_button:
+        if not _wait_until(_probe_upload_button, timeout=4.8, interval=0.08) or not upload_button:
             raise Exception("无法找到'本地上传'按钮")
 
+        sku_image_path = str(sku.get('path') or '').strip()
+        if not sku_image_path or not os.path.isfile(sku_image_path):
+            raise Exception(f'SKU 图片不存在或路径无效: {sku_image_path!r}')
+
+        # DrissionPage 约定：set.upload_files → 立刻点击触发「文件选择」的节点 → wait.upload_paths_inputted。
+        # 若在添加规格/确认弹窗等步骤之前就 set.upload_files，队列可能被页面上其它 file input 吃掉，
+        # 或在 React 重挂载后失效，表现为自动化已点「本地上传」但预览不出现，需人工再点一次才注入。
+        new_tab.set.upload_files(sku_image_path)
+        _time.sleep(0.05)
         try:
-            upload_button.click()
-        except:
             upload_button.click(by_js=True)
+        except Exception:
+            upload_button.click()
 
         new_tab.wait.upload_paths_inputted()
-        time.sleep(0.12)
+        _time.sleep(0.07)
         handle_crop_popup(new_tab)
+        if not _wait_for_sku_upload_settled(new_tab, timeout=12.0, interval=0.07):
+            raise Exception("SKU 图片调整或上传流程未完成")
         print(f"[成功] SKU {index + 1} 设置完成")
 
     except Exception as e:
@@ -1626,9 +2029,12 @@ def upload_file(
         print(f'  使用 attr-field-id="{target_field_id}" 定位上传区域')
         target_area_element = new_tab.ele(f'xpath://div[@attr-field-id="{target_field_id}"]', timeout=3)
         if target_area_element:
+            target_area_element.scroll.to_see()
             target_area_element.scroll.to_center()
             new_tab.scroll.up(50)
-            time.sleep(area_ready_wait)
+            # 商品详情编辑器常懒加载，悬停前多给一点时间；与「需人工先晃一下鼠标才出上传」同因
+            _detail_settle = 0.22 if (target_field_id == '商品详情' and not fast_mode) else area_ready_wait
+            time.sleep(_detail_settle)
             
             # ========== 关键修复：直接在目标区域内找到上传按钮并点击 ==========
             # 根据抖音页面结构，上传按钮是 label.index-module_button__st1_R 或 material-upload-button
@@ -1658,14 +2064,30 @@ def upload_file(
                     continue
             
             if upload_label:
-                # 悬停到上传按钮
+                try:
+                    upload_label.scroll.to_see()
+                except Exception:
+                    pass
                 upload_label.hover()
                 time.sleep(hover_wait)
+                if target_field_id == '商品详情':
+                    # 二次悬停：部分构建下首次 hover 只触发展开，第二次才稳定挂上 Popover/上传入口
+                    try:
+                        upload_label.hover()
+                    except Exception:
+                        pass
+                    time.sleep(0.16 if not fast_mode else 0.08)
                 print(f'  已悬停到"{target_field_id}"区域的上传按钮')
             else:
                 # 直接悬停到目标区域
                 target_area_element.hover()
                 time.sleep(hover_wait)
+                if target_field_id == '商品详情':
+                    try:
+                        target_area_element.hover()
+                    except Exception:
+                        pass
+                    time.sleep(0.16 if not fast_mode else 0.08)
         else:
             print(f'  警告: 未找到 attr-field-id="{target_field_id}" 区域，回退到默认定位')
             target_field_id = None  # 回退到默认逻辑
@@ -1830,5 +2252,3 @@ def upload_file(
             raise Exception(f'上传{key}超时失败!')
         print(f'上传{key}成功!')
         time.sleep(0.1)
-
-

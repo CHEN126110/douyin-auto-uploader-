@@ -1,4 +1,4 @@
 interface:
   display_name: "Douyin Publisher MCP"
   short_description: "Capture, price, validate, and upload local Douyin products through MCP"
-  default_prompt: "Use $douyin-publisher-mcp to inspect products and assets, review SKU quantities, generate or apply prices, capture products from one or many source links, fix upload blockers, validate readiness, and monitor local upload tasks through MCP."
+  default_prompt: "Use $douyin-publisher-mcp to operate the local Douyin publisher through MCP. Start with health_check, then follow the safe workflow for capture, folder import, product inspection, category or title edits, smart pricing, settings updates, upload validation, upload start, task monitoring, and troubleshooting. Keep OpenClaw mcporter usage in mind when that runtime is active, but support generic stdio or streamable_http MCP clients too."

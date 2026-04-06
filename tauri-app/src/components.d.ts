@@ -27,7 +27,6 @@ declare module 'vue' {
     OnboardingGuide: typeof import('./components/OnboardingGuide.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    SettingsDialog: typeof import('./components/SettingsDialog.vue')['default']
     SettingsPanel: typeof import('./components/SettingsPanel.vue')['default']
     SkuList: typeof import('./components/SkuList.vue')['default']
   }

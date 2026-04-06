@@ -1,0 +1,553 @@
+# MCP browser_snapshot 原始输出（未改写）
+# 来源: cursor-ide-browser / browser_snapshot
+# viewId: e3a8cd
+# URL: https://fxg.jinritemai.com/ffa/g/create?
+# maxDepth: 50, compact: false
+# 注意：以下 YAML 片段中部分节点含重复 key（如连续多个 name:），属 Chromium 无障碍导出特性，勿用严格 YAML 解析。
+
+- role: document
+  name: 抖店
+  ref: root
+  children:
+    - role: tab
+      name: 提升建议
+      ref: e0
+      states: [selected]
+    - role: tab
+      name: 基础信息
+      ref: e1
+    - role: tab
+      name: 图文信息
+      ref: e2
+      states: [selected]
+    - role: tab
+      name: 价格库存
+      ref: e3
+    - role: tab
+      name: 尺码表
+      ref: e4
+    - role: tab
+      name: 服务与履约
+      ref: e5
+    - role: tab
+      name: 其他信息
+      ref: e6
+    - role: switch
+      ref: e7
+    - role: textbox
+      name: 请输入15-60个字符（8-30个汉字）
+      ref: e8
+      value: "[已脱敏：当前页商品标题]"
+      placeholder: 请输入15-60个字符（8-30个汉字）
+    - role: checkbox
+      name: 使用品牌名
+      ref: e9
+      states: [readonly]
+    - role: textbox
+      name: 建议填写简明准确的标题内容，避免重复表达
+      ref: e10
+      placeholder: 建议填写简明准确的标题内容，避免重复表达
+    - role: combobox
+      ref: e11
+      states: [readonly]
+    - role: button
+      name: 存储模板
+      ref: e12
+    - role: generic
+      name: 上传图片
+      ref: e13
+    - role: combobox
+      ref: e14
+      nth: 1
+    - role: textbox
+      name: 请输入
+      ref: e15
+      placeholder: 请输入
+    - role: button
+      name: 添加材质
+      ref: e16
+    - role: combobox
+      ref: e17
+      nth: 2
+    - role: textbox
+      name: 请输入
+      ref: e18
+      nth: 1
+      placeholder: 请输入
+    - role: combobox
+      ref: e19
+      nth: 3
+    - role: combobox
+      ref: e20
+      nth: 4
+    - role: combobox
+      ref: e21
+      nth: 5
+    - role: combobox
+      ref: e22
+      nth: 6
+    - role: combobox
+      ref: e23
+      nth: 7
+    - role: combobox
+      ref: e24
+      nth: 8
+      states: [readonly]
+    - role: combobox
+      ref: e25
+      nth: 9
+      states: [readonly]
+    - role: combobox
+      ref: e26
+      nth: 10
+      states: [readonly]
+    - role: combobox
+      ref: e27
+      nth: 11
+    - role: button
+      ref: e28
+    - role: button
+      ref: e29
+      nth: 1
+    - role: button
+      ref: e30
+      nth: 2
+    - role: button
+      ref: e31
+      nth: 3
+    - role: button
+      ref: e32
+      nth: 4
+    - role: button
+      name: "从1:1主图智能裁剪"
+      ref: e33
+    - role: generic
+      name: 商品正面图 上传主图
+      ref: e34
+    - role: generic
+      name: 上传辅助图
+      ref: e35
+    - role: generic
+      name: 上传辅助图
+      ref: e36
+      nth: 1
+    - role: generic
+      name: 上传辅助图
+      ref: e37
+      nth: 2
+    - role: generic
+      name: 上传辅助图
+      ref: e38
+      nth: 3
+    - role: generic
+      name: 主图视频
+      ref: e39
+    - role: generic
+      name: 上传白底图
+      ref: e40
+    - role: button
+      name: 从主图填入
+      ref: e41
+    - role: generic
+      name: 上传图片
+      ref: e42
+      nth: 1
+    - role: button
+      name: 高级编辑
+      ref: e43
+    - role: button
+      name: | |
+      ref: e44
+    - role: radio
+      name: 现货发货模式
+      ref: e45
+      value: 0
+      states: [checked, readonly]
+    - role: radio
+      name: 现货+预售发货模式
+      ref: e46
+      value: 4
+      states: [readonly]
+    - role: radio
+      name: 次日发 推荐
+      ref: e47
+      value: 1
+      states: [checked, readonly]
+    - role: radio
+      name: 48小时
+      ref: e48
+      value: 2
+      states: [readonly]
+    - role: radio
+      name: 当日发
+      ref: e49
+      value: 9999
+      states: [readonly]
+    - role: button
+      name: 存储模板
+      ref: e50
+      nth: 1
+    - role: link
+      name: 查看标准化规格文档
+      ref: e51
+    - role: switch
+      ref: e52
+      nth: 1
+    - role: generic
+      ref: e53
+    - role: textbox
+      ref: e54
+    - role: switch
+      ref: e55
+      nth: 2
+    - role: generic
+      ref: e56
+      nth: 1
+    - role: textbox
+      ref: e57
+      nth: 1
+    - role: switch
+      ref: e58
+      nth: 3
+    - role: combobox
+      ref: e59
+      nth: 12
+    - role: textbox
+      name: 备注
+      ref: e60
+      placeholder: 备注
+    - role: switch
+      ref: e61
+      nth: 4
+    - role: textbox
+      name: 填写并新增规格值
+      ref: e62
+      placeholder: 填写并新增规格值
+    - role: textbox
+      name: 备注
+      ref: e63
+      nth: 1
+      placeholder: 备注
+    - role: button
+      name: 添加规格类型（4/5）
+      ref: e64
+      states: [disabled]
+    - role: button
+      name: 规格预览
+      ref: e65
+      states: [disabled]
+    - role: link
+      name: 点击了解
+      ref: e66
+    - role: combobox
+      ref: e67
+      nth: 13
+    - role: generic
+      name: 0/1
+      ref: e68
+    - role: checkbox
+      name: 脚长(cm)
+      ref: e69
+      value: 脚长(cm)
+      states: [checked, readonly]
+    - role: checkbox
+      name: 脚宽(cm)
+      ref: e70
+      value: 脚宽(cm)
+      states: [checked, readonly]
+    - role: checkbox
+      name: 靴筒高(cm)
+      ref: e71
+      value: 靴筒高(cm)
+      states: [checked, readonly]
+    - role: checkbox
+      name: 鞋跟高(cm)
+      ref: e72
+      value: 鞋跟高(cm)
+      states: [readonly]
+    - role: checkbox
+      name: 靴筒围(cm)
+      ref: e73
+      value: 靴筒围(cm)
+      states: [readonly]
+    - role: checkbox
+      name: 鞋底厚(cm)
+      ref: e74
+      value: 鞋底厚(cm)
+      states: [readonly]
+    - role: textbox
+      name: 请输入
+      ref: e75
+      nth: 2
+      value: XS
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e76
+      nth: 3
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e77
+      nth: 4
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e78
+      nth: 5
+      placeholder: 请输入
+    - role: button
+      name: 上移
+      ref: e79
+      states: [disabled]
+    - role: button
+      name: 下移
+      ref: e80
+    - role: button
+      name: 删除
+      ref: e81
+    - role: textbox
+      name: 请输入
+      ref: e82
+      nth: 6
+      value: S
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e83
+      nth: 7
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e84
+      nth: 8
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e85
+      nth: 9
+      placeholder: 请输入
+    - role: button
+      name: 上移
+      ref: e86
+      nth: 1
+    - role: button
+      name: 下移
+      ref: e87
+      nth: 1
+    - role: button
+      name: 删除
+      ref: e88
+      nth: 1
+    - role: textbox
+      name: 请输入
+      ref: e89
+      nth: 10
+      value: M
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e90
+      nth: 11
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e91
+      nth: 12
+      placeholder: 请输入
+    - role: textbox
+      name: 请输入
+      ref: e92
+      nth: 13
+      placeholder: 请输入
+    - role: button
+      name: 上移
+      ref: e93
+      nth: 2
+    - role: button
+      name: 下移
+      ref: e94
+      nth: 2
+      states: [disabled]
+    - role: button
+      name: 删除
+      ref: e95
+      nth: 2
+    - role: button
+      name: 添加行
+      ref: e96
+    - role: checkbox
+      name: 另存为模版
+      ref: e97
+      states: [readonly]
+    - role: switch
+      ref: e98
+      nth: 5
+    - role: textbox
+      ref: e99
+      nth: 2
+      states: [disabled, readonly]
+    - role: switch
+      ref: e100
+      nth: 6
+    - role: radio
+      name: 下单减库存
+      ref: e101
+      value: 1
+      states: [checked, readonly]
+    - role: radio
+      name: 付款减库存
+      ref: e102
+      value: 2
+      states: [readonly]
+    - role: checkbox
+      name: 3期免息（费率1.65%）
+      ref: e103
+      value: "3:1.65"
+      states: [readonly]
+    - role: checkbox
+      name: 6期免息（费率4.00%）
+      ref: e104
+      value: "6:4.00"
+      states: [readonly]
+    - role: checkbox
+      name: 12期免息（费率6.00%）
+      ref: e105
+      value: "12:6.00"
+      states: [readonly]
+    - role: checkbox
+      name: 24期免息（费率10.00%）
+      ref: e106
+      value: "24:10.00"
+      states: [readonly]
+    - role: link
+      name: 点击了解
+      ref: e107
+      nth: 1
+    - role: combobox
+      ref: e108
+      nth: 14
+      states: [readonly]
+    - role: checkbox
+      name: 订单完成15天内售后保障
+      ref: e109
+      states: [checked, disabled, readonly]
+    - role: combobox
+      ref: e110
+      nth: 15
+      states: [readonly]
+    - role: link
+      name: 点击了解
+      ref: e111
+      nth: 2
+    - role: radio
+      name: 不包含
+      ref: e112
+      states: [checked, readonly]
+    - role: radio
+      name: 提供更长的售后有效期
+      ref: e113
+      value: 2
+      states: [readonly]
+    - role: radio
+      name: 上架
+      ref: e114
+      value: 0
+      states: [checked, readonly]
+    - role: radio
+      name: 下架
+      ref: e115
+      value: 1
+      states: [readonly]
+    - role: textbox
+      name: 若未设置，则该类目商品每次限购量为30
+      ref: e116
+      placeholder: 若未设置，则该类目商品每次限购量为30
+    - role: textbox
+      name: 请输入
+      ref: e117
+      nth: 14
+      placeholder: 请输入
+    - role: combobox
+      ref: e118
+      nth: 16
+      states: [readonly]
+    - role: generic
+      name: 0/20
+      ref: e119
+    - role: generic
+      name: 0/20
+      ref: e120
+      nth: 1
+    - role: switch
+      ref: e121
+      nth: 7
+      states: [disabled]
+    - role: link
+      name: 前往查看
+      ref: e122
+    - role: button
+      name: 发布商品
+      ref: e123
+    - role: button
+      name: 保存草稿
+      ref: e124
+    - role: button
+      ref: e125
+      nth: 5
+    - role: button
+      name: 填写检查
+      ref: e126
+      name: 使用品牌名
+      ref: e127
+      name: 现货发货模式
+      ref: e128
+      name: 现货+预售发货模式
+      ref: e129
+      name: 次日发 推荐
+      ref: e130
+      name: 48小时
+      ref: e131
+      name: 当日发
+      ref: e132
+      name: 脚长(cm)
+      ref: e133
+      name: 脚宽(cm)
+      ref: e134
+      name: 靴筒高(cm)
+      ref: e135
+      name: 鞋跟高(cm)
+      ref: e136
+      name: 靴筒围(cm)
+      ref: e137
+      name: 鞋底厚(cm)
+      ref: e138
+      name: 另存为模版
+      ref: e139
+      name: 下单减库存
+      ref: e140
+      name: 付款减库存
+      ref: e141
+      name: 3期免息（费率1.65%）
+      ref: e142
+      name: 6期免息（费率4.00%）
+      ref: e143
+      name: 12期免息（费率6.00%）
+      ref: e144
+      name: 24期免息（费率10.00%）
+      ref: e145
+      name: 订单完成15天内售后保障
+      ref: e146
+      name: 不包含
+      ref: e147
+      name: 提供更长的售后有效期
+      ref: e148
+      name: 上架
+      ref: e149
+      name: 下架
+      ref: e150
+    - role: button
+      name: 本地替换
+      ref: e151
+      name: 本地上传
+      ref: e152

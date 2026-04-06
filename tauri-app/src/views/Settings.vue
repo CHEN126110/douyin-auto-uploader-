@@ -31,18 +31,23 @@ function goBack() {
       </div>
     </div>
 
-    <SettingsPanel mode="page" />
+    <SettingsPanel />
   </div>
 </template>
 
 <style lang="scss" scoped>
 .settings-page {
   padding: var(--container-padding);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   background: var(--background-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .page-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;

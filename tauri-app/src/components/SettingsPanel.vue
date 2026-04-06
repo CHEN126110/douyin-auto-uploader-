@@ -10,25 +10,6 @@ import type {
   Settings,
 } from "@/types";
 
-const props = withDefaults(
-  defineProps<{
-    mode?: "page" | "dialog";
-    showCloseButton?: boolean;
-    closeOnSave?: boolean;
-    closeButtonText?: string;
-  }>(),
-  {
-    mode: "page",
-    showCloseButton: false,
-    closeOnSave: false,
-    closeButtonText: "关闭",
-  }
-);
-
-const emit = defineEmits<{
-  (e: "close"): void;
-}>();
-
 type AppInfo = {
   name: string;
   version: string;
@@ -236,8 +217,8 @@ const materialCompositions = ref<MaterialComposition[]>([
   { material: "棉", percentage: 75 },
   { material: "氨纶", percentage: 25 },
 ]);
-const qualificationCertificatePath = ref("");
-const certificateLoading = ref(false);
+const washLabelTagImagePath = ref("");
+const washLabelTagImageLoading = ref(false);
 const newMaterialName = ref("");
 const newMaterialPercentage = ref(0);
 
@@ -271,12 +252,10 @@ const materialSettingsInvalid = computed(() => {
   );
   return materialPercentageTotal.value !== 100 || hasInvalidMaterial;
 });
-const qualificationCertificateName = computed(() => {
-  const currentPath = qualificationCertificatePath.value.trim();
-  if (!currentPath) {
-    return "";
-  }
-  return currentPath.split(/[\\/]/).pop() || currentPath;
+const washLabelTagImagePreviewUrl = computed(() => {
+  const p = washLabelTagImagePath.value.trim();
+  if (!p) return "";
+  return `http://127.0.0.1:5001/settings/automation/wash-label/preview?t=${Date.now()}`;
 });
 
 function addMaterialComposition() {
@@ -307,13 +286,13 @@ function removeMaterialComposition(index: number) {
   materialCompositions.value.splice(index, 1);
 }
 
-async function selectQualificationCertificate() {
+async function selectWashLabelTagImage() {
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       directory: false,
       multiple: false,
-      title: "选择合格证图片",
+      title: "选择水洗标/吊牌图",
       filters: [
         {
           name: "图片文件",
@@ -326,44 +305,44 @@ async function selectQualificationCertificate() {
       return;
     }
 
-    certificateLoading.value = true;
-    const response = await api.importAutomationCertificate(String(selected));
+    washLabelTagImageLoading.value = true;
+    const response = await api.importAutomationWashLabelTagImage(String(selected));
     if (response.success && response.data?.stored_path) {
-      qualificationCertificatePath.value = response.data.stored_path;
-      ElMessage.success(response.msg || "合格证图片导入成功");
+      washLabelTagImagePath.value = response.data.stored_path;
+      ElMessage.success(response.msg || "水洗标/吊牌图导入成功");
       return;
     }
-    ElMessage.error(response.msg || "合格证图片导入失败");
+    ElMessage.error(response.msg || "水洗标/吊牌图导入失败");
   } catch (error) {
-    console.error("选择合格证图片失败:", error);
-    ElMessage.error("无法选择合格证图片");
+    console.error("选择水洗标/吊牌图失败:", error);
+    ElMessage.error("无法选择水洗标/吊牌图");
   } finally {
-    certificateLoading.value = false;
+    washLabelTagImageLoading.value = false;
   }
 }
 
-async function clearQualificationCertificate() {
-  if (!qualificationCertificatePath.value) {
+async function clearWashLabelTagImage() {
+  if (!washLabelTagImagePath.value) {
     return;
   }
   try {
-    await ElMessageBox.confirm("确定清空当前合格证图片吗？", "提示", {
+    await ElMessageBox.confirm("确定清空当前水洗标/吊牌图吗？", "提示", {
       type: "warning",
     });
-    certificateLoading.value = true;
-    const response = await api.removeAutomationCertificate(qualificationCertificatePath.value);
+    washLabelTagImageLoading.value = true;
+    const response = await api.removeAutomationWashLabelTagImage(washLabelTagImagePath.value);
     if (!response.success) {
-      ElMessage.error(response.msg || "清空合格证图片失败");
+      ElMessage.error(response.msg || "清空水洗标/吊牌图失败");
       return;
     }
-    qualificationCertificatePath.value = "";
-    ElMessage.success(response.msg || "合格证图片已清空");
+    washLabelTagImagePath.value = "";
+    ElMessage.success(response.msg || "水洗标/吊牌图已清空");
   } catch (error) {
     if (error !== "cancel") {
-      console.error("清空合格证图片失败:", error);
+      console.error("清空水洗标/吊牌图失败:", error);
     }
   } finally {
-    certificateLoading.value = false;
+    washLabelTagImageLoading.value = false;
   }
 }
 
@@ -712,13 +691,13 @@ async function loadSettings() {
           materialOptions.value = [...defaultMaterialOptions];
         }
         materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
-        qualificationCertificatePath.value = String(ac.qualification_certificate_path || "").trim();
+        washLabelTagImagePath.value = String(ac.wash_label_tag_image_path || "").trim();
         console.log("[Settings] 加载自动化配置:", {
           templates: shippingTemplates.value,
           selected: selectedShippingTemplate.value,
           materialOptions: materialOptions.value,
           materials: materialCompositions.value,
-          qualificationCertificatePath: qualificationCertificatePath.value,
+          washLabelTagImagePath: washLabelTagImagePath.value,
         });
       }
     }
@@ -745,7 +724,7 @@ async function handleSave() {
         shipping_templates: shippingTemplates.value,
         material_options: materialOptions.value,
         material_compositions: normalizeMaterialCompositions(materialCompositions.value),
-        qualification_certificate_path: qualificationCertificatePath.value.trim() || null,
+        wash_label_tag_image_path: washLabelTagImagePath.value.trim() || null,
       },
     };
 
@@ -762,9 +741,6 @@ async function handleSave() {
 
     if (response.success) {
       ElMessage.success("设置保存成功");
-      if (props.closeOnSave) {
-        emit("close");
-      }
     } else {
       ElMessage.error(response.msg || "保存失败");
     }
@@ -776,17 +752,8 @@ async function handleSave() {
   }
 }
 
-// 关闭弹窗
-function handleClose() {
-  emit("close");
-}
-
 // 显示新手引导
 function showOnboarding() {
-  // 关闭设置弹窗
-  if (props.showCloseButton) {
-    emit("close");
-  }
   // 清除已查看标记，让引导重新显示
   localStorage.removeItem('onboarding_completed');
   // 刷新页面以显示引导
@@ -800,7 +767,7 @@ function resetOnboarding() {
   ElMessage.success('引导状态已重置，下次启动时将显示新手引导');
 }
 
-// 监听弹窗显示
+// 初始化设置页面
 onMounted(() => {
   loadAppInfo();
   loadSettings();
@@ -808,7 +775,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="settings-panel" :class="`mode-${props.mode}`">
+  <div class="settings-panel">
     <div v-loading="loading" class="settings-content">
       <el-tabs v-model="activeTab" class="settings-tabs">
         <!-- 价格设置标签页 -->
@@ -1260,28 +1227,31 @@ onMounted(() => {
               </div>
             </div>
 
-            <h3 class="section-title certificate-title">📄 合格证图片</h3>
+            <h3 class="section-title certificate-title">🏷️ 水洗标/吊牌图</h3>
             <div class="certificate-config-panel">
               <div class="certificate-file-info">
-                <template v-if="qualificationCertificatePath">
-                  <div class="certificate-file-name">{{ qualificationCertificateName }}</div>
-                  <div class="certificate-file-path">{{ qualificationCertificatePath }}</div>
+                <template v-if="washLabelTagImagePath">
+                  <img
+                    :src="washLabelTagImagePreviewUrl"
+                    class="certificate-preview-img"
+                    alt="水洗标/吊牌图"
+                  />
                 </template>
                 <div v-else class="certificate-empty-tip">
-                  当前未配置合格证图片。配置后，自动化流水线会在发布页存在“合格证”区域时直接上传这张图片。
+                  当前未配置水洗标/吊牌图。发布页出现“水洗标/吊牌图”必填项时，自动化会优先上传商品目录中的吊牌图片；若商品目录没有，则使用这里配置的全局图片。
                 </div>
               </div>
               <div class="certificate-actions">
                 <el-button
                   type="primary"
-                  :loading="certificateLoading"
-                  @click="selectQualificationCertificate"
+                  :loading="washLabelTagImageLoading"
+                  @click="selectWashLabelTagImage"
                 >
-                  {{ qualificationCertificatePath ? "重新选择图片" : "选择合格证图片" }}
+                  {{ washLabelTagImagePath ? "重新选择图片" : "选择水洗标/吊牌图" }}
                 </el-button>
                 <el-button
-                  :disabled="!qualificationCertificatePath || certificateLoading"
-                  @click="clearQualificationCertificate"
+                  :disabled="!washLabelTagImagePath || washLabelTagImageLoading"
+                  @click="clearWashLabelTagImage"
                 >
                   清空图片
                 </el-button>
@@ -1295,7 +1265,7 @@ onMounted(() => {
             <ul>
               <li>📋 <strong>运费模板</strong> - 管理可用的运费模板列表，选择上传时使用的模板</li>
               <li>🧵 <strong>面料材质</strong> - 仅可选择平台材质选项，并确保总和为100%</li>
-              <li>📄 <strong>合格证图片</strong> - 会复制到应用数据目录，发布时如果页面存在“合格证”区域则自动上传</li>
+              <li>🏷️ <strong>水洗标/吊牌图</strong> - 优先使用商品目录中的吊牌图片；没有则使用这里配置的全局图片；如果两者都没有，就按上面的材质配置填写面料材质</li>
               <li>🔍 <strong>自动匹配</strong> - 脚本会在抖音运费模板下拉列表中查找匹配的选项</li>
               <li>⚠️ <strong>注意</strong> - 模板名称需与抖音后台设置的完全一致</li>
             </ul>
@@ -1404,12 +1374,9 @@ onMounted(() => {
         </el-tab-pane>
       </el-tabs>
     </div>
-    <div class="dialog-footer">
+    <div class="settings-footer">
       <el-button type="primary" :loading="loading" @click="handleSave">
         保存设置
-      </el-button>
-      <el-button v-if="props.showCloseButton" @click="handleClose">
-        {{ props.closeButtonText }}
       </el-button>
     </div>
   </div>
@@ -1421,22 +1388,18 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 20px;
-}
-
-.settings-panel.mode-dialog {
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .settings-content {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 20px 0 10px;
-}
-
-.settings-panel.mode-dialog .settings-content {
-  max-height: min(calc(90vh - 140px), 650px);
 }
 
 .settings-tabs {
@@ -2158,18 +2121,14 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
-.certificate-file-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.certificate-file-path {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  word-break: break-all;
+.certificate-preview-img {
+  max-width: 200px;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid rgba(92, 124, 250, 0.15);
+  background: #fff;
+  padding: 4px;
 }
 
 .certificate-empty-tip {
@@ -2260,7 +2219,7 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-.dialog-footer {
+.settings-footer {
   display: flex;
   gap: 12px;
 }
