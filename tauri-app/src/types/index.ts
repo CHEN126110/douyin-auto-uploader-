@@ -114,6 +114,10 @@ export interface UploadTaskSummary {
   finished_at?: string | null;
 }
 
+export interface UploadStartOptions {
+  stopBeforeSubmit?: boolean;
+}
+
 export interface SettingsPricingConfig {
   target_gross_margin: number;
 }
@@ -147,7 +151,95 @@ export interface AutomationConfig {
   material_compositions: MaterialComposition[];
   material_options?: string[];
   wash_label_tag_image_path?: string | null;
+  runtime_category_keyword?: string | null;
+  runtime_matrix_keywords?: string | null;
+  publish_mode?: string;  // "protocol" | "official" | "dom"
 }
+
+export interface FxgRuntimeCategory {
+  path?: string;
+  leafId?: string;
+  enable?: boolean;
+  industry_status?: number;
+}
+
+export interface FxgRuntimeValueOption {
+  value_id?: string;
+  value_name?: string;
+  disabled?: boolean;
+}
+
+export interface FxgRuntimeCategoryProperty {
+  id: string;
+  label: string;
+  required?: boolean;
+  optionCount?: number;
+  optionPreview?: FxgRuntimeValueOption[];
+  hasMeasureTemplates?: boolean;
+}
+
+export interface FxgRuntimeSpecAxis {
+  id?: string;
+  cp_id?: number;
+  name: string;
+}
+
+export interface FxgRuntimeSkuColumn {
+  key: string;
+  label: string;
+  required?: boolean;
+  hidden?: boolean;
+}
+
+export interface FxgRuntimePublishControl {
+  key?: string;
+  label?: string;
+  required?: boolean;
+  optionCount?: number;
+  optionPreview?: FxgRuntimeValueOption[];
+  optionNames?: string[];
+}
+
+export interface FxgRuntimeFreight {
+  ok: boolean;
+  optionCount: number;
+  options?: FxgRuntimeValueOption[];
+  currentValue?: string;
+  hasCurrentValue?: boolean;
+  error?: string | null;
+}
+
+export interface FxgRuntimeSettingsReadiness {
+  canRenderCategorySettings?: boolean;
+  canRenderFreightSettings?: boolean;
+  issues?: string[];
+}
+
+export interface FxgRuntimeOptionsFields<TSpecAxis = FxgRuntimeSpecAxis[]> {
+  ok: boolean;
+  category?: FxgRuntimeCategory;
+  requiredCategoryProperties?: FxgRuntimeCategoryProperty[];
+  specAxes?: TSpecAxis;
+  skuColumns?: FxgRuntimeSkuColumn[];
+  publishControls?: Record<string, FxgRuntimePublishControl>;
+  freight?: FxgRuntimeFreight | null;
+  settingsReadiness?: FxgRuntimeSettingsReadiness;
+}
+
+export interface FxgRuntimeOptions extends FxgRuntimeOptionsFields {}
+
+export interface FxgRuntimeOptionsMatrixEntry extends FxgRuntimeOptionsFields<string[]> {
+  keyword: string;
+  error?: string;
+}
+
+export interface FxgRuntimeOptionsMatrix {
+  ok: boolean;
+  categoryKeywords: string[];
+  entries: FxgRuntimeOptionsMatrixEntry[];
+}
+
+export type FxgRuntimeOptionsResult = FxgRuntimeOptions | FxgRuntimeOptionsMatrix;
 
 export interface Settings {
   pricing_config?: SettingsPricingConfig;

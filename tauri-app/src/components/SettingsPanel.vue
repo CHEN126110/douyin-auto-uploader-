@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, tauriCommands } from "@/services/api";
 import type {
@@ -37,7 +38,14 @@ type AppInfo = {
 };
 
 // 当前选中的标签页
-const activeTab = ref("pricing");
+type SettingsTab = "pricing" | "model" | "automation" | "mcp";
+
+const SETTINGS_TABS: SettingsTab[] = ["pricing", "model", "automation", "mcp"];
+const route = useRoute();
+const routeTab = typeof route.query.tab === "string" ? route.query.tab : "";
+const activeTab = ref<SettingsTab>(
+  SETTINGS_TABS.includes(routeTab as SettingsTab) ? (routeTab as SettingsTab) : "pricing"
+);
 
 // 加载状态
 const loading = ref(false);
@@ -193,39 +201,23 @@ const costSummary = computed(() => {
 // ========== 自动化设置 ==========
 
 // 运费模板列表
-const shippingTemplates = ref<string[]>(["中通包邮"]);
+const shippingTemplates = ref<string[]>([]);
 // 当前选中的运费模板
-const selectedShippingTemplate = ref("中通包邮");
+const selectedShippingTemplate = ref("");
 // 新增模板名称
 const newTemplateName = ref("");
-const defaultMaterialOptions = [
-  "棉",
-  "氨纶",
-  "锦纶",
-  "聚酯纤维",
-  "涤纶",
-  "粘纤",
-  "莫代尔",
-  "腈纶",
-  "羊毛",
-  "兔毛",
-  "桑蚕丝",
-  "再生纤维素纤维",
-];
-const materialOptions = ref<string[]>([...defaultMaterialOptions]);
-const materialCompositions = ref<MaterialComposition[]>([
-  { material: "棉", percentage: 75 },
-  { material: "氨纶", percentage: 25 },
-]);
+const materialOptions = ref<string[]>([]);
+const materialCompositions = ref<MaterialComposition[]>([]);
 const washLabelTagImagePath = ref("");
 const washLabelTagImageLoading = ref(false);
+const publishMode = ref("dom");
 const newMaterialName = ref("");
 const newMaterialPercentage = ref(0);
 
 function normalizeMaterialCompositions(
   source?: Array<Partial<MaterialComposition>> | null
 ): MaterialComposition[] {
-  const normalized = Array.isArray(source)
+  return Array.isArray(source)
     ? source
         .map((item) => ({
           material: String(item?.material ?? "").trim(),
@@ -233,13 +225,6 @@ function normalizeMaterialCompositions(
         }))
         .filter((item) => item.material && Number.isFinite(item.percentage) && item.percentage > 0)
     : [];
-  if (!normalized.length) {
-    return [
-      { material: "棉", percentage: 75 },
-      { material: "氨纶", percentage: 25 },
-    ];
-  }
-  return normalized;
 }
 
 const materialPercentageTotal = computed(() =>
@@ -393,37 +378,145 @@ async function removeShippingTemplate(index: number) {
 
 // ========== 模型API设置 ==========
 
-const modelConfigs = ref<ModelConfig[]>([
-  {
+const DS_FREE_API_BASE_URL = "http://127.0.0.1:8000/v1";
+const DS_FREE_API_MODEL = "deepseek-v4-pro";
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const OPENAI_DEFAULT_MODEL = "gpt-3.5-turbo";
+const OLLAMA_BASE_URL = "http://localhost:11434";
+const OLLAMA_DEFAULT_MODEL = "qwen2.5:7b";
+const KNOWN_MODEL_BASE_URLS = new Set([DS_FREE_API_BASE_URL, OPENAI_BASE_URL, OLLAMA_BASE_URL]);
+const KNOWN_MODEL_NAMES = new Set([DS_FREE_API_MODEL, OPENAI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL]);
+const LEGACY_DEEPSEEK_MODEL_NAMES = new Set([
+  "deepseek-chat",
+  "deepseek-coder",
+  "deepseek-r1",
+  "deepseek-reasoner",
+  "deepseek-search",
+  "deepseek-r1-search",
+]);
+
+function createDsFreeApiModelConfig(): ModelConfig {
+  return {
+    id: "ds-free-api",
+    name: "DeepSeek V4 Pro（ds-free-api）",
+    provider: "ds-free-api",
+    api_key: "",
+    api_base: DS_FREE_API_BASE_URL,
+    model_name: DS_FREE_API_MODEL,
+    enabled: false,
+  };
+}
+
+function createOpenAiModelConfig(): ModelConfig {
+  return {
     id: "1",
     name: "OpenAI GPT",
     provider: "openai",
     api_key: "",
-    api_base: "https://api.openai.com/v1",
-    model_name: "gpt-3.5-turbo",
+    api_base: OPENAI_BASE_URL,
+    model_name: OPENAI_DEFAULT_MODEL,
     enabled: false,
-  },
-  {
+  };
+}
+
+function createOllamaModelConfig(): ModelConfig {
+  return {
     id: "2",
     name: "本地 Ollama",
     provider: "ollama",
     api_key: "",
-    api_base: "http://localhost:11434",
-    model_name: "qwen2.5:7b",
+    api_base: OLLAMA_BASE_URL,
+    model_name: OLLAMA_DEFAULT_MODEL,
     enabled: false,
-  },
-]);
+  };
+}
+
+function createNewModelConfig(): ModelConfig {
+  return {
+    id: "",
+    name: "",
+    provider: "ds-free-api",
+    api_key: "",
+    api_base: DS_FREE_API_BASE_URL,
+    model_name: DS_FREE_API_MODEL,
+    enabled: true,
+  };
+}
+
+function isLegacyDeepSeekConfig(config: ModelConfig): boolean {
+  const modelName = String(config.model_name || "").trim();
+  return config.provider === "deepseek" || LEGACY_DEEPSEEK_MODEL_NAMES.has(modelName);
+}
+
+function normalizeModelConfigs(source?: ModelConfig[] | null): ModelConfig[] {
+  const list = Array.isArray(source) ? source : [];
+  const normalized = list.map((config) => {
+    const next = { ...config };
+
+    if (isLegacyDeepSeekConfig(next)) {
+      next.provider = "ds-free-api";
+      next.api_base = DS_FREE_API_BASE_URL;
+      next.model_name = DS_FREE_API_MODEL;
+      if (!next.name.trim() || next.name.toLowerCase().includes("deepseek")) {
+        next.name = "DeepSeek V4 Pro（ds-free-api）";
+      }
+    }
+
+    return next;
+  });
+
+  const hasDsFreeApi = normalized.some(
+    (config) => config.provider === "ds-free-api" || config.model_name === DS_FREE_API_MODEL
+  );
+
+  return hasDsFreeApi ? normalized : [createDsFreeApiModelConfig(), ...normalized];
+}
+
+const modelConfigs = ref<ModelConfig[]>(
+  normalizeModelConfigs([createOpenAiModelConfig(), createOllamaModelConfig()])
+);
 
 // 新增模型配置
-const newModelConfig = ref<ModelConfig>({
-  id: "",
-  name: "",
-  provider: "openai",
-  api_key: "",
-  api_base: "",
-  model_name: "",
-  enabled: true,
-});
+const newModelConfig = ref<ModelConfig>(createNewModelConfig());
+
+function applyModelProviderDefaults(config: ModelConfig): void {
+  const shouldReplaceBaseUrl =
+    !config.api_base.trim() || KNOWN_MODEL_BASE_URLS.has(config.api_base.trim());
+  const shouldReplaceModel =
+    !config.model_name.trim() || KNOWN_MODEL_NAMES.has(config.model_name.trim());
+
+  switch (config.provider) {
+    case "ds-free-api":
+      if (!config.name.trim() || config.name === "OpenAI GPT" || config.name === "本地 Ollama") {
+        config.name = "DeepSeek V4 Pro（ds-free-api）";
+      }
+      config.api_base = DS_FREE_API_BASE_URL;
+      config.model_name = DS_FREE_API_MODEL;
+      break;
+    case "openai":
+      if (shouldReplaceBaseUrl) {
+        config.api_base = OPENAI_BASE_URL;
+      }
+      if (shouldReplaceModel) {
+        config.model_name = OPENAI_DEFAULT_MODEL;
+      }
+      break;
+    case "ollama":
+      if (shouldReplaceBaseUrl) {
+        config.api_base = OLLAMA_BASE_URL;
+      }
+      if (shouldReplaceModel) {
+        config.model_name = OLLAMA_DEFAULT_MODEL;
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+function handleModelProviderChange(config: ModelConfig): void {
+  applyModelProviderDefaults(config);
+}
 
 // 添加模型配置
 function addModelConfig() {
@@ -438,15 +531,7 @@ function addModelConfig() {
   });
 
   // 重置表单
-  newModelConfig.value = {
-    id: "",
-    name: "",
-    provider: "openai",
-    api_key: "",
-    api_base: "",
-    model_name: "",
-    enabled: true,
-  };
+  newModelConfig.value = createNewModelConfig();
 
   ElMessage.success("添加成功");
 }
@@ -578,7 +663,8 @@ const mcpClientConfig = computed(() => {
       "command": "${escapeForJson(mcpExecutablePath.value)}",
       "args": [],
       "env": {
-        "DOUYIN_BACKEND_URL": "${backendUrl.value}"
+        "DOUYIN_BACKEND_URL": "${backendUrl.value}",
+        "DOUYIN_CDP_LIST_URL": "http://127.0.0.1:9333/json/list"
       }
     }
   }
@@ -593,7 +679,8 @@ const mcpClientConfig = computed(() => {
         "${escapeForJson(appInfo.value.mcp_server_entry || "<your-mcp-server-entry>")}"
       ],
       "env": {
-        "DOUYIN_BACKEND_URL": "${backendUrl.value}"
+        "DOUYIN_BACKEND_URL": "${backendUrl.value}",
+        "DOUYIN_CDP_LIST_URL": "http://127.0.0.1:9333/json/list"
       }
     }
   }
@@ -667,7 +754,9 @@ async function loadSettings() {
       // 加载模型配置
       const apiModelConfigs = settings.model_configs ?? settings.model_apis;
       if (apiModelConfigs && Array.isArray(apiModelConfigs)) {
-        modelConfigs.value = apiModelConfigs;
+        modelConfigs.value = normalizeModelConfigs(apiModelConfigs);
+      } else {
+        modelConfigs.value = normalizeModelConfigs(modelConfigs.value);
       }
       
       // 加载自动化配置
@@ -675,7 +764,9 @@ async function loadSettings() {
         const ac = settings.automation_config as AutomationConfig;
         // 加载模板列表
         if (ac.shipping_templates && Array.isArray(ac.shipping_templates)) {
-          shippingTemplates.value = ac.shipping_templates;
+          shippingTemplates.value = ac.shipping_templates
+            .map((item) => String(item).trim())
+            .filter(Boolean);
         }
         // 加载当前选中的模板
         if (ac.shipping_template) {
@@ -685,13 +776,15 @@ async function loadSettings() {
             shippingTemplates.value.push(ac.shipping_template);
           }
         }
+        if (!selectedShippingTemplate.value) {
+          selectedShippingTemplate.value = shippingTemplates.value[0] || "";
+        }
         if (ac.material_options && Array.isArray(ac.material_options)) {
           materialOptions.value = ac.material_options;
-        } else {
-          materialOptions.value = [...defaultMaterialOptions];
         }
         materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
         washLabelTagImagePath.value = String(ac.wash_label_tag_image_path || "").trim();
+        publishMode.value = String(ac.publish_mode || "dom").trim();
         console.log("[Settings] 加载自动化配置:", {
           templates: shippingTemplates.value,
           selected: selectedShippingTemplate.value,
@@ -725,6 +818,7 @@ async function handleSave() {
         material_options: materialOptions.value,
         material_compositions: normalizeMaterialCompositions(materialCompositions.value),
         wash_label_tag_image_path: washLabelTagImagePath.value.trim() || null,
+        publish_mode: publishMode.value,
       },
     };
 
@@ -1008,7 +1102,12 @@ onMounted(() => {
                 <div class="model-details">
                   <div class="detail-row">
                     <label>服务商</label>
-                    <el-select v-model="config.provider" size="small">
+                    <el-select
+                      v-model="config.provider"
+                      size="small"
+                      @change="handleModelProviderChange(config)"
+                    >
+                      <el-option label="ds-free-api (DeepSeek V4 Pro)" value="ds-free-api" />
                       <el-option label="OpenAI" value="openai" />
                       <el-option label="Ollama (本地)" value="ollama" />
                       <el-option label="Azure OpenAI" value="azure" />
@@ -1028,7 +1127,7 @@ onMounted(() => {
                     <el-input
                       v-model="config.api_key"
                       type="password"
-                      placeholder="API Key（本地模型可留空）"
+                      placeholder="ds-free-api 填 userToken.value；本地模型可留空"
                       size="small"
                       show-password
                     />
@@ -1037,7 +1136,7 @@ onMounted(() => {
                     <label>模型名称</label>
                     <el-input
                       v-model="config.model_name"
-                      placeholder="如: gpt-3.5-turbo, qwen2.5:7b"
+                      placeholder="如: deepseek-v4-pro, gpt-3.5-turbo, qwen2.5:7b"
                       size="small"
                     />
                   </div>
@@ -1053,7 +1152,11 @@ onMounted(() => {
                   v-model="newModelConfig.name"
                   placeholder="配置名称"
                 />
-                <el-select v-model="newModelConfig.provider">
+                <el-select
+                  v-model="newModelConfig.provider"
+                  @change="handleModelProviderChange(newModelConfig)"
+                >
+                  <el-option label="ds-free-api (DeepSeek V4 Pro)" value="ds-free-api" />
                   <el-option label="OpenAI" value="openai" />
                   <el-option label="Ollama (本地)" value="ollama" />
                   <el-option label="Azure OpenAI" value="azure" />
@@ -1087,6 +1190,15 @@ onMounted(() => {
 
         <!-- 自动化设置标签页 -->
         <el-tab-pane label="🤖 自动化设置" name="automation">
+          <div class="settings-section">
+            <h3 class="section-title">📤 发布方式</h3>
+            <el-radio-group v-model="publishMode">
+              <el-radio value="dom">🖱️ DOM 流水线 — 模拟操作页面发布（稳定，较慢）</el-radio>
+              <el-radio value="protocol">⚡ 协议注入 — 协议填表+DOM提交（快速，推荐）</el-radio>
+              <el-radio value="official">🔗 官方 API — 抖店开放平台接口（最稳定，需配置密钥）</el-radio>
+            </el-radio-group>
+          </div>
+
           <div class="settings-section">
             <h3 class="section-title">🚚 运费模板管理</h3>
             

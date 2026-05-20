@@ -24,6 +24,22 @@ PLATFORM_MATERIAL_OPTIONS = [
 ]
 
 
+def default_automation_config() -> Dict[str, Any]:
+    return {
+        'shipping_template': '中通包邮',
+        'shipping_templates': ['中通包邮'],
+        'material_compositions': [
+            {'material': '棉', 'percentage': 75},
+            {'material': '氨纶', 'percentage': 25}
+        ],
+        'material_options': list(PLATFORM_MATERIAL_OPTIONS),
+        'wash_label_tag_image_path': None,
+        'qualification_certificate_path': None,
+        'runtime_category_keyword': None,
+        'runtime_matrix_keywords': None,
+    }
+
+
 class Config():
     '"""Config类.\n"""'
 
@@ -117,17 +133,18 @@ class AutomationConfig:
     material_options: Optional[List[str]] = None
     wash_label_tag_image_path: Optional[str] = None
     qualification_certificate_path: Optional[str] = None
-    
+    runtime_category_keyword: Optional[str] = None
+    runtime_matrix_keywords: Optional[str] = None
+    publish_mode: str = "dom"  # "protocol" | "official" | "dom"
+
     def __post_init__(self):
+        defaults = default_automation_config()
         if self.shipping_templates is None:
-            self.shipping_templates = ["中通包邮"]
+            self.shipping_templates = list(defaults['shipping_templates'])
         if self.material_compositions is None:
-            self.material_compositions = [
-                {"material": "棉", "percentage": 75},
-                {"material": "氨纶", "percentage": 25},
-            ]
+            self.material_compositions = list(defaults['material_compositions'])
         if self.material_options is None:
-            self.material_options = list(PLATFORM_MATERIAL_OPTIONS)
+            self.material_options = list(defaults['material_options'])
         if self.wash_label_tag_image_path:
             self.wash_label_tag_image_path = str(self.wash_label_tag_image_path).strip() or None
         if self.qualification_certificate_path:
@@ -164,17 +181,7 @@ class UserSettings:
         if self.model_configs is None:
             self.model_configs = []
         if self.automation_config is None:
-            self.automation_config = {
-                'shipping_template': '中通包邮',
-                'shipping_templates': ['中通包邮'],
-                'material_compositions': [
-                    {'material': '棉', 'percentage': 75},
-                    {'material': '氨纶', 'percentage': 25}
-                ],
-                'material_options': list(PLATFORM_MATERIAL_OPTIONS),
-                'wash_label_tag_image_path': None,
-                'qualification_certificate_path': None,
-            }
+            self.automation_config = default_automation_config()
 
 
 class SettingsManager:
@@ -187,17 +194,7 @@ class SettingsManager:
 
     @staticmethod
     def normalize_automation_config(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        default_config = {
-            'shipping_template': '中通包邮',
-            'shipping_templates': ['中通包邮'],
-            'material_compositions': [
-                {'material': '棉', 'percentage': 75},
-                {'material': '氨纶', 'percentage': 25}
-            ],
-            'material_options': list(PLATFORM_MATERIAL_OPTIONS),
-            'wash_label_tag_image_path': None,
-            'qualification_certificate_path': None,
-        }
+        default_config = default_automation_config()
         if not isinstance(data, dict):
             return default_config
 
@@ -245,6 +242,8 @@ class SettingsManager:
 
         wash_label_tag_image_path = str(data.get('wash_label_tag_image_path') or '').strip() or None
         qualification_certificate_path = str(data.get('qualification_certificate_path') or '').strip() or None
+        runtime_category_keyword = str(data.get('runtime_category_keyword') or '').strip() or None
+        runtime_matrix_keywords = str(data.get('runtime_matrix_keywords') or '').strip() or None
         if not wash_label_tag_image_path and qualification_certificate_path:
             # 历史版本只有合格证图片入口，用户可能已把水洗标/吊牌图配置在该字段中。
             wash_label_tag_image_path = qualification_certificate_path
@@ -256,6 +255,8 @@ class SettingsManager:
             'material_options': material_options,
             'wash_label_tag_image_path': wash_label_tag_image_path,
             'qualification_certificate_path': qualification_certificate_path,
+            'runtime_category_keyword': runtime_category_keyword,
+            'runtime_matrix_keywords': runtime_matrix_keywords,
         }
     
     def load_settings(self) -> UserSettings:
