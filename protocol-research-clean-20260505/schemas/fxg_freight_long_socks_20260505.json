@@ -1,0 +1,292 @@
+{
+  "ok": true,
+  "url": "https://fxg.jinritemai.com/ffa/g/create",
+  "categoryId": "1000010275",
+  "schemaTopLevelKeys": [
+    "context",
+    "global",
+    "model"
+  ],
+  "schemaFreightField": {
+    "id": "freight_id",
+    "label": "运费模板",
+    "required": true,
+    "value": "",
+    "additionKeys": [],
+    "extraKeys": [],
+    "optionCount": 0,
+    "optionPreview": []
+  },
+  "freightActions": [
+    {
+      "id": "js_action_freight_id_available",
+      "type": "js_handler",
+      "contentKeys": [
+        "dependencies",
+        "fulfill",
+        "init",
+        "otherwise",
+        "target",
+        "when"
+      ],
+      "request": null,
+      "target": "$model.freight_id",
+      "dependencies": [
+        "$model.pickup_method"
+      ]
+    },
+    {
+      "id": "freight_template_options_load",
+      "type": "refetch",
+      "contentKeys": [
+        "dependencies",
+        "init",
+        "request"
+      ],
+      "request": {
+        "method": "post",
+        "url": "/product/tproduct/refetchSchema?action=freight_template_options_load"
+      },
+      "target": "",
+      "dependencies": [
+        "$model.deposit_is_select"
+      ]
+    }
+  ],
+  "schemaFreightRefs": [
+    {
+      "path": "model.freight_id",
+      "type": "object"
+    },
+    {
+      "path": "model.freight_id.actions[0].content.target",
+      "type": "string",
+      "value": "$model.freight_id"
+    },
+    {
+      "path": "model.freight_id.actions[0].id",
+      "type": "string",
+      "value": "js_action_freight_id_available"
+    },
+    {
+      "path": "model.freight_id.actions[1].content.request.url",
+      "type": "string",
+      "value": "/product/tproduct/refetchSchema?action=freight_template_options_load"
+    },
+    {
+      "path": "model.freight_id.actions[1].id",
+      "type": "string",
+      "value": "freight_template_options_load"
+    },
+    {
+      "path": "model.freight_id.description",
+      "type": "string",
+      "value": "<span>为提升消费者购物体验，建议合理设置运费模板</span><a href='https://school.jinritemai.com/doudian/web/article/101774?from=shop_article' target='_blank' rel='noopener noreferrer'>点击了解</a>"
+    },
+    {
+      "path": "model.freight_id.id",
+      "type": "string",
+      "value": "freight_id"
+    },
+    {
+      "path": "model.freight_id.label",
+      "type": "string",
+      "value": "运费模板"
+    },
+    {
+      "path": "model.freight_id.placeholder",
+      "type": "string",
+      "value": "请选择运费模板"
+    },
+    {
+      "path": "model.pickup_method.options[0].label",
+      "type": "string",
+      "value": "使用物流配送"
+    },
+    {
+      "path": "model.weight_unit.actions[0].content.dependencies[0]",
+      "type": "string",
+      "value": "$model.freight_id"
+    }
+  ],
+  "module99281": {
+    "ok": true,
+    "keys": [
+      "Vr",
+      "bI",
+      "ox",
+      "sr",
+      "xD"
+    ],
+    "types": {
+      "Vr": "function",
+      "bI": "function",
+      "ox": "function",
+      "sr": "function",
+      "xD": "object"
+    }
+  },
+  "runtimeProbe": {
+    "method": "direct_refetchSchema",
+    "requestUrl": "/product/tproduct/refetchSchema?action=freight_template_options_load",
+    "responseTopLevelKeys": [
+      "model"
+    ],
+    "freightField": {
+      "id": "freight_id",
+      "label": "",
+      "required": false,
+      "value": "300713474",
+      "additionKeys": [
+        "is_prefilled"
+      ],
+      "extraKeys": [],
+      "optionCount": 8,
+      "optionPreview": [
+        {
+          "value_id": "748745442",
+          "value_name": "满6件包邮-新疆可售",
+          "disabled": false
+        },
+        {
+          "value_id": "774422786",
+          "value_name": "中通包邮-新疆可售",
+          "disabled": false
+        },
+        {
+          "value_id": "775337410",
+          "value_name": "全国包邮且偏远限售-新疆可售",
+          "disabled": false
+        },
+        {
+          "value_id": "673121090",
+          "value_name": "满6件包邮",
+          "disabled": false
+        },
+        {
+          "value_id": "216430498",
+          "value_name": "全国包邮且偏远限售",
+          "disabled": false
+        },
+        {
+          "value_id": "300713474",
+          "value_name": "中通包邮",
+          "disabled": false
+        },
+        {
+          "value_id": "670393026",
+          "value_name": "中通",
+          "disabled": false
+        },
+        {
+          "value_id": "0",
+          "value_name": "包邮",
+          "disabled": false
+        }
+      ]
+    },
+    "optionCount": 8,
+    "optionPreview": [
+      {
+        "value_id": "748745442",
+        "value_name": "满6件包邮-新疆可售",
+        "disabled": false
+      },
+      {
+        "value_id": "774422786",
+        "value_name": "中通包邮-新疆可售",
+        "disabled": false
+      },
+      {
+        "value_id": "775337410",
+        "value_name": "全国包邮且偏远限售-新疆可售",
+        "disabled": false
+      },
+      {
+        "value_id": "673121090",
+        "value_name": "满6件包邮",
+        "disabled": false
+      },
+      {
+        "value_id": "216430498",
+        "value_name": "全国包邮且偏远限售",
+        "disabled": false
+      },
+      {
+        "value_id": "300713474",
+        "value_name": "中通包邮",
+        "disabled": false
+      },
+      {
+        "value_id": "670393026",
+        "value_name": "中通",
+        "disabled": false
+      },
+      {
+        "value_id": "0",
+        "value_name": "包邮",
+        "disabled": false
+      }
+    ],
+    "error": null
+  },
+  "network": [
+    {
+      "url": {
+        "origin": "https://fxg.jinritemai.com",
+        "path": "/product/tproduct/searchCategoryN",
+        "queryKeys": [
+          "key",
+          "search_type",
+          "timeout",
+          "appid",
+          "__token",
+          "_bid",
+          "_lid",
+          "verifyFp",
+          "fp",
+          "msToken",
+          "a_bogus"
+        ]
+      },
+      "status": 200,
+      "mimeType": "application/json",
+      "resourceType": "XHR"
+    },
+    {
+      "url": {
+        "origin": "https://fxg.jinritemai.com",
+        "path": "/product/tproduct/getSchema",
+        "queryKeys": [
+          "appid",
+          "__token",
+          "_bid",
+          "_lid",
+          "verifyFp",
+          "fp",
+          "msToken",
+          "a_bogus"
+        ]
+      },
+      "status": 200,
+      "mimeType": "application/json",
+      "resourceType": "XHR"
+    },
+    {
+      "url": {
+        "origin": "https://fxg.jinritemai.com",
+        "path": "/product/tproduct/refetchSchema",
+        "queryKeys": [
+          "action",
+          "appid",
+          "__token",
+          "_bid",
+          "_lid"
+        ]
+      },
+      "status": 200,
+      "mimeType": "application/json",
+      "resourceType": "XHR"
+    }
+  ]
+}

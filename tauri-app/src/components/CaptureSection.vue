@@ -30,69 +30,80 @@ let lastExternalTaskNoticeId: string | null = null;
 const MAX_POLLING_RETRIES = 5;
 const POLLING_INTERVAL_MS = 2000;
 const EXTERNAL_TASK_DISCOVERY_MS = 5000;
+const SUPPORTED_CAPTURE_HOST_SUFFIXES = [".taobao.com", ".tmall.com", ".1688.com"];
+const SUPPORTED_CAPTURE_HOSTS = new Set(["taobao.com", "tmall.com", "1688.com"]);
 
-const statusType = computed(() => {
+type CaptureUiStatus = "error" | "success" | "processing" | "idle";
+
+const statusType = computed<CaptureUiStatus>(() => {
   if (hasFailed.value) return "error";
   if (progress.value >= 100) return "success";
   if (isCapturing.value) return "processing";
   return "idle";
 });
 
+function getTaskStatusStep(status: CaptureHistoryTask["status"]): string {
+  switch (status) {
+    case "pending":
+      return "等待开始";
+    case "running":
+      return "采集中";
+    case "completed":
+      return "完成";
+    default:
+      return "失败";
+  }
+}
+
 function validateUrl(inputUrl: string): { valid: boolean; message: string } {
   if (!inputUrl.trim()) {
-    return { valid: false, message: "请输入商品链接" };
+    return { valid: false, message: "请输入商品或店铺链接" };
   }
 
-  const supportedDomains = [
-    "taobao.com",
-    "tmall.com",
-    "detail.tmall.com",
-    "item.taobao.com",
-    "1688.com",
-    "detail.1688.com",
-    "www.1688.com",
-    "offer.1688.com",
-  ];
+  let host = "";
+  try {
+    const url = new URL(inputUrl.startsWith("http") ? inputUrl : `https://${inputUrl}`);
+    host = url.hostname.toLowerCase();
+  } catch {
+    return { valid: false, message: "无效的链接格式" };
+  }
 
-  if (!supportedDomains.some((domain) => inputUrl.includes(domain))) {
-    return { valid: false, message: "仅支持淘宝/天猫/1688 商品链接" };
+  const isSupported =
+    SUPPORTED_CAPTURE_HOSTS.has(host) ||
+    SUPPORTED_CAPTURE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
+
+  if (!isSupported) {
+    return { valid: false, message: "仅支持淘宝/天猫/1688 商品链接，或淘宝/天猫店铺链接" };
   }
 
   return { valid: true, message: "" };
 }
 
-function applyTaskSnapshot(task: CaptureHistoryTask) {
+function applyTaskSnapshot(task: CaptureHistoryTask): void {
   taskId.value = task.task_id;
   isCapturing.value = true;
   hasFailed.value = false;
   canRetry.value = false;
   statusText.value = task.message || "正在采集中...";
-  statusStep.value =
-    task.status === "pending"
-      ? "等待开始"
-      : task.status === "running"
-        ? "采集中"
-        : task.status === "completed"
-          ? "完成"
-          : "失败";
+  statusStep.value = getTaskStatusStep(task.status);
   progress.value = task.progress || 0;
 }
 
-function stopPolling() {
+function stopPolling(): void {
   if (pollingInterval !== null) {
     window.clearInterval(pollingInterval);
     pollingInterval = null;
   }
 }
 
-function stopDiscovery() {
+function stopDiscovery(): void {
   if (discoveryInterval !== null) {
     window.clearInterval(discoveryInterval);
     discoveryInterval = null;
   }
 }
 
-function resetState() {
+function resetState(): void {
   isCapturing.value = false;
   hasFailed.value = false;
   canRetry.value = false;
@@ -288,6 +299,8 @@ async function startCapture() {
       download_images: true,
       extract_sku: true,
       extract_params: true,
+      max_store_products: 1000,
+      max_store_pages: 50,
       save_path: "uploads/products",
     });
 
@@ -383,15 +396,17 @@ onUnmounted(() => {
 
     <div class="capture-section">
       <div class="capture-header">
-        <span class="capture-icon">采集</span>
-        <h3>链接采集</h3>
-        <span class="capture-hint">支持淘宝/天猫/1688 商品链接</span>
+        <div class="capture-title-row">
+          <span class="capture-icon">采集</span>
+          <h3>链接采集</h3>
+        </div>
+        <span class="capture-hint">支持商品链接与淘宝/天猫店铺批量采集</span>
       </div>
 
       <div class="capture-input-group">
         <el-input
           v-model="url"
-          placeholder="粘贴淘宝/天猫/1688 商品链接..."
+          placeholder="粘贴商品或店铺链接..."
           :disabled="isCapturing"
           class="capture-input"
           clearable
@@ -493,9 +508,16 @@ onUnmounted(() => {
 
 .capture-header {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   margin-bottom: 12px;
+
+  .capture-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
   .capture-icon {
     font-size: 15px;
@@ -511,9 +533,10 @@ onUnmounted(() => {
   }
 
   .capture-hint {
-    margin-left: auto;
     font-size: 12px;
+    line-height: 1.4;
     color: var(--text-secondary);
+    word-break: break-word;
   }
 }
 

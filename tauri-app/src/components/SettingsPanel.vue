@@ -211,6 +211,7 @@ const materialCompositions = ref<MaterialComposition[]>([]);
 const washLabelTagImagePath = ref("");
 const washLabelTagImageLoading = ref(false);
 const publishMode = ref("dom");
+const captureMode = ref("dom");
 const newMaterialName = ref("");
 const newMaterialPercentage = ref(0);
 
@@ -785,6 +786,7 @@ async function loadSettings() {
         materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
         washLabelTagImagePath.value = String(ac.wash_label_tag_image_path || "").trim();
         publishMode.value = String(ac.publish_mode || "dom").trim();
+        captureMode.value = String(ac.capture_mode || "dom").trim();
         console.log("[Settings] 加载自动化配置:", {
           templates: shippingTemplates.value,
           selected: selectedShippingTemplate.value,
@@ -819,6 +821,7 @@ async function handleSave() {
         material_compositions: normalizeMaterialCompositions(materialCompositions.value),
         wash_label_tag_image_path: washLabelTagImagePath.value.trim() || null,
         publish_mode: publishMode.value,
+        capture_mode: captureMode.value,
       },
     };
 
@@ -1194,8 +1197,16 @@ onMounted(() => {
             <h3 class="section-title">📤 发布方式</h3>
             <el-radio-group v-model="publishMode">
               <el-radio value="dom">🖱️ DOM 流水线 — 模拟操作页面发布（稳定，较慢）</el-radio>
-              <el-radio value="protocol">⚡ 协议注入 — 协议填表+DOM提交（快速，推荐）</el-radio>
+              <el-radio value="protocol">⚡ 纯协议 — API 直接调用 addWithSchema（最快，约18秒/品）</el-radio>
               <el-radio value="official">🔗 官方 API — 抖店开放平台接口（最稳定，需配置密钥）</el-radio>
+            </el-radio-group>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">🔍 采集方式</h3>
+            <el-radio-group v-model="captureMode">
+              <el-radio value="dom">🖱️ DOM 采集 — 模拟浏览器访问商品页（兼容性好）</el-radio>
+              <el-radio value="protocol">⚡ 协议采集 — 直接读取页面JS数据/mtop API（更快）</el-radio>
             </el-radio-group>
           </div>
 

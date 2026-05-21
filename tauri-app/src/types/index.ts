@@ -101,6 +101,13 @@ export interface CaptureHistoryTask {
   created_at?: string;
 }
 
+export interface UploadStepInfo {
+  name: string;
+  status: "running" | "ok" | "failed";
+  elapsed_ms: number;
+  summary: string;
+}
+
 export interface UploadTaskSummary {
   task_id: string;
   record_id: number;
@@ -108,6 +115,8 @@ export interface UploadTaskSummary {
   status: "pending" | "running" | "success" | "failed" | "cancelled";
   progress: number;
   message: string;
+  current_step?: string;
+  steps?: UploadStepInfo[];
   error?: string | null;
   created_at?: string | null;
   started_at?: string | null;
@@ -154,6 +163,7 @@ export interface AutomationConfig {
   runtime_category_keyword?: string | null;
   runtime_matrix_keywords?: string | null;
   publish_mode?: string;  // "protocol" | "official" | "dom"
+  capture_mode?: string;  // "protocol" | "dom" — 采集方式
 }
 
 export interface FxgRuntimeCategory {

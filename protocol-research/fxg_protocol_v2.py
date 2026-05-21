@@ -19,7 +19,7 @@ try:
 except ImportError:
     HAS_PIL = False
 
-CDP_PORT = 9222
+CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
 
 
 # ============================================================
@@ -71,8 +71,51 @@ def _cdp_call(ws, mid, method, params=None, timeout_sec=30):
 # Step 1: CDP 会话 (获取 cookies + publishId + shop_id)
 # ============================================================
 
-def get_fxg_session():
+def get_fxg_session(cookie_str_override=None):
     """返回 {"success": True, "data": {cookie_str, publish_id, shop_id}} 或 {"success": False, "error": {...}}"""
+    # 如果有外部提供的cookie，直接使用
+    if cookie_str_override and len(cookie_str_override) > 100:
+        print(f'[协议] 使用外部cookie ({len(cookie_str_override)}字符)，跳过CDP')
+        ws, mid = None, None
+        try:
+            ws, mid = _cdp_ws()
+            _cdp_call(ws, mid, 'Runtime.enable')
+            r = _cdp_call(ws, mid, 'Runtime.evaluate', {
+                'expression': """(function() {
+                    var chunkName = Object.keys(window).find(function(k) { return k.includes('@ecom-mcenter/ffa-goods'); });
+                    if (!chunkName) return JSON.stringify({error: 'chunk not found'});
+                    if (!window.__fxgWebpackRequire) {
+                        window[chunkName].push([[Math.floor(Math.random() * 1e9)], {}, function(req) { window.__fxgWebpackRequire = req; }]);
+                    }
+                    var req = window.__fxgWebpackRequire;
+                    var publishId = req(68671).T({useUrlParams: true, useWindowCache: true, writeWindowCache: true});
+                    window.__fxgPost = req(90665).bE;
+                    window.__fxgGet = req(28974).J;
+                    var shopId = '';
+                    try {
+                        var cookies = document.cookie.split(';');
+                        for (var i = 0; i < cookies.length; i++) {
+                            var c = cookies[i].trim();
+                            if (c.startsWith('ecom_gray_shop_id=')) shopId = c.split('=')[1];
+                        }
+                    } catch(e) {}
+                    return JSON.stringify({ok: true, publishId: publishId, shopId: shopId});
+                })()""",
+                'returnByValue': True, 'awaitPromise': True, 'timeout': 15000
+            })
+            val = ((r.get('result') or {}).get('result') or {}).get('value', '')
+            session = json.loads(val)
+            if not session.get('ok'):
+                return make_error('ERR_AUTH_NO_PUBLISH_ID', detail=val[:200])
+            return make_success({
+                'cookie_str': cookie_str_override,
+                'publish_id': session.get('publishId', ''),
+                'shop_id': session.get('shopId', '155450371'),
+            })
+        except Exception as e:
+            return make_error('ERR_PIPELINE_STEP', step='get_session', detail=str(e))
+        finally:
+            if ws: ws.close()
     ws, mid = None, None
     try:
         ws, mid = _cdp_ws()
@@ -679,7 +722,7 @@ def submit_product(body):
 # 一键流水线 (带完整错误反馈)
 # ============================================================
 
-def run(category_leaf_id, product_data, image_paths, category_config, shop_id=None):
+def run(category_leaf_id, product_data, image_paths, category_config, shop_id=None, cookie_str=None):
     """一键协议上传。返回统一结构:
     {
         "success": True/False,

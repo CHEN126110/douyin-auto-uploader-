@@ -7,9 +7,11 @@ TRASH_BIN/
 
 .clawhub/
 .trae/
+.claude/
 _skill_audit/
 
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 
@@ -30,5 +32,26 @@ tauri-app/python-sidecar/build/
 tauri-app/python-sidecar/app_tauri_dev.py
 tauri-app/python-sidecar/automation_assets/
 tauri-app/src-tauri/sidecar/python-backend.exe
+
+.runtime/
+runtime/
+trash/
+tmp_runtime_probe/
+tmp_runtime_probe_live/
+tmp_*
+protocol-publish/
+protocol-capture/
+protocol-research/captures/
+tauri-app/protocol-publish/
+tauri-app/protocol-capture/
+tauri-app/python-sidecar/protocol-publish/
+tauri-app/python-sidecar/protocol-capture/
 控制台信息.txt
 AI素材工具-*.html
+app3.0版本/
+采集工具/
+
+# Large binaries
+*.exe
+*.pkg
+tauri-app/runtime/

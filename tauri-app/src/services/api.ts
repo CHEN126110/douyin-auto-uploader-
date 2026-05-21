@@ -15,7 +15,9 @@ import type {
   PricingStatistics,
   CaptureStatus,
   CaptureHistoryTask,
+  FxgRuntimeOptionsResult,
   UploadTaskSummary,
+  UploadStartOptions,
   Settings,
 } from "@/types";
 
@@ -64,7 +66,7 @@ function normalizeCaptureStartResponse(
   };
 }
 
-function shouldLogApiError(error: unknown) {
+function shouldLogApiError(error: unknown): boolean {
   const config = (error as { config?: { __silentError?: boolean } })?.config;
   return !config?.__silentError;
 }
@@ -240,9 +242,16 @@ export const api = {
   // ========== 上传功能 ==========
 
   /** 开始上传 */
-  startUpload(recordId?: number): Promise<ApiResponse> {
+  startUpload(recordId?: number, options?: UploadStartOptions): Promise<ApiResponse> {
     // 新版上传：返回 task_id，前端需轮询 /api/upload/status/<task_id>
-    return http.post("/api/upload/start", recordId ? { record_id: recordId } : {});
+    const payload: Record<string, unknown> = {};
+    if (recordId) {
+      payload.record_id = recordId;
+    }
+    if (options?.stopBeforeSubmit) {
+      payload.stop_before_submit = true;
+    }
+    return http.post("/api/upload/start", payload);
   },
 
   /** 获取上传任务状态 */
@@ -443,6 +452,16 @@ export const api = {
   /** 更新设置 */
   updateSettings(settings: Partial<Settings>): Promise<ApiResponse> {
     return http.post("/settings", settings);
+  },
+
+  /** 读取抖店平台实时类目/运费/发布控制配置，只读调试接口 */
+  getFxgRuntimeOptions(payload: {
+    category_keyword?: string;
+    category_keywords?: string[];
+    category_id?: string;
+    timeout_seconds?: number;
+  }): Promise<ApiResponse<FxgRuntimeOptionsResult>> {
+    return http.post("/api/protocol/fxg/runtime-options", payload);
   },
 
   /** 导入自动化设置中的水洗标/吊牌图 */

@@ -1,0 +1,297 @@
+{
+  "mode": "price_stock_capture_analysis",
+  "submit_enabled": false,
+  "source_label": "legacy-reference-submit-preflight-20260504",
+  "capture_profile": "submit-preflight",
+  "capture_target_url_hash": "12760afe5583dbbb",
+  "request_count": 15,
+  "submit_request_count": 2,
+  "blocked_submit_request_count": 1,
+  "evidence_status": "blocked_capture_verified",
+  "evidence_quality": {
+    "has_sanitized_depth_marker": true,
+    "contains_sensitive_values": false,
+    "note": "本报告只保存敏感顶层字段是否存在，不保存 token、cookie、session 原文。"
+  },
+  "primary_submit": {
+    "method": "POST",
+    "path": "/product/tproduct/addWithSchema",
+    "blocked": true,
+    "intercepted": true,
+    "post_data_type": "json",
+    "body_key_presence": {
+      "top_level_keys": [
+        "category_id",
+        "check_status",
+        "schema"
+      ],
+      "sensitive_key_presence": {
+        "__token": true,
+        "_bid": true,
+        "_lid": true,
+        "a_bogus": false,
+        "appid": true,
+        "context": true,
+        "msToken": false,
+        "pass_through_extra": true,
+        "request_extra": true,
+        "session": true
+      }
+    },
+    "category_id_present": true,
+    "check_status": 2,
+    "schema_model_key_count": 33,
+    "schema_model_keys": [
+      "after_sale",
+      "ai_gen_spec",
+      "alli_promotion_plan_switch",
+      "area_stock_switcher",
+      "category_properties",
+      "category_property_pic",
+      "delivery_delay_day",
+      "description",
+      "detail_prettify_uri",
+      "freight_id",
+      "goods_category",
+      "goods_category_appeal",
+      "interest_free_activity",
+      "interest_free_activity_id",
+      "interest_free_open",
+      "main_image_three_to_four",
+      "main_pic_video",
+      "pic",
+      "pickup_method",
+      "presell_type",
+      "product_type",
+      "qualification",
+      "reduce_type",
+      "reference_price_enable",
+      "short_product_name",
+      "sku_detail",
+      "spec_detail",
+      "start_sale_type",
+      "title",
+      "title_prefix",
+      "title_suffix",
+      "title_use_brand_name",
+      "white_background_pic"
+    ]
+  },
+  "spec_detail": {
+    "axis_count": 4,
+    "axes": [
+      {
+        "id": "",
+        "name": "",
+        "cp_id": null,
+        "truncated": true,
+        "value_count": 0,
+        "value_id_count": 0,
+        "value_cpv_id_count": 0,
+        "measure_info_count": 0
+      },
+      {
+        "id": "",
+        "name": "",
+        "cp_id": null,
+        "truncated": true,
+        "value_count": 0,
+        "value_id_count": 0,
+        "value_cpv_id_count": 0,
+        "measure_info_count": 0
+      },
+      {
+        "id": "",
+        "name": "",
+        "cp_id": null,
+        "truncated": true,
+        "value_count": 0,
+        "value_id_count": 0,
+        "value_cpv_id_count": 0,
+        "measure_info_count": 0
+      },
+      {
+        "id": "",
+        "name": "",
+        "cp_id": null,
+        "truncated": true,
+        "value_count": 0,
+        "value_id_count": 0,
+        "value_cpv_id_count": 0,
+        "measure_info_count": 0
+      }
+    ]
+  },
+  "sku_detail": {
+    "sku_count": 7,
+    "price_count": 7,
+    "stock_count": 0,
+    "stock_info_count": 0,
+    "stock_info_stock_num_count": 0,
+    "spec_detail_ids_key_count": 7,
+    "usable_spec_detail_ids_count": 0,
+    "id_count": 7,
+    "sku_id_count": 0,
+    "sku_pic_row_count": 0,
+    "missing": {
+      "price": 0,
+      "stock_info_stock_num": 7,
+      "spec_detail_ids": 7,
+      "id": 0
+    },
+    "rows": [
+      {
+        "index": 0,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 1,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 2,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 3,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 4,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 5,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      },
+      {
+        "index": 6,
+        "id_present": true,
+        "sku_id_present": false,
+        "spec_detail_id_count": 0,
+        "all_spec_ids_known": false,
+        "truncated": true,
+        "label_hash": "",
+        "price_present": true,
+        "price_type": "str",
+        "stock_present": false,
+        "stock_type": "missing",
+        "stock_info_present": false,
+        "stock_info_stock_num_present": false,
+        "stock_info_keys": [],
+        "sku_pic_count": 0,
+        "sku_status_present": true
+      }
+    ]
+  },
+  "field_relation": {
+    "price_location": "schema.model.sku_detail.value[].price",
+    "stock_num_location": "unverified",
+    "top_level_stock_present": false,
+    "stock_info_required_by_sample": false,
+    "independent_price_stock_endpoint": "not_found_in_capture"
+  },
+  "blockers": [
+    {
+      "code": "CAPTURE_SANITIZED_DEPTH_LIMIT",
+      "message": "样本中存在 <max-depth>/<unsupported> 截断标记，只能证明请求存在，不能作为完整字段映射证据。"
+    },
+    {
+      "code": "SKU_SPEC_ID_GAP",
+      "message": "存在 SKU 行缺少 spec_detail_ids，无法稳定映射本地 SKU。"
+    },
+    {
+      "code": "SKU_STOCK_INFO_GAP",
+      "message": "存在 SKU 行缺少 stock_info.stock_num，不能证明库存字段完整。"
+    }
+  ],
+  "next_verification": [
+    "用 submit-preflight 截停当前页面生成的新 addWithSchema/editWithSchema 请求体。",
+    "对同一商品只改变价格和库存，比较 sku_detail 行 ID、spec_detail_ids 与 stock_info 是否稳定。",
+    "在确认 stock 与 stock_info 关系前，不接入正式上传按钮。"
+  ]
+}

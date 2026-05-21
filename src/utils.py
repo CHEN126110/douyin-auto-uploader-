@@ -1434,14 +1434,20 @@ def get_detail_pic_list(record) -> List[str]:
         else:
             raise Exception(f'未找到详情图文件夹!尝试的路径:{base_dir}')
     
-    for file_path in os.listdir(base_dir):
+    def _natural_sort_key(name):
+        """自然排序键: 将文件名中的数字作为整数排序，避免 10.jpg 排在 2.jpg 前面"""
+        import re as _ns_re
+        parts = _ns_re.split(r'(\d+)', name)
+        return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+    for file_path in sorted(os.listdir(base_dir), key=_natural_sort_key):
         # 检查文件扩展名
         file_ext = os.path.splitext(file_path)[1].lower()
         if file_ext in [fmt.lower() for fmt in supported_formats]:
             # 检查文件名过滤规则
             if not should_filter_file(file_path, filters):
                 result.append(os.path.join(base_dir, file_path))
-    
+
     if len(result) == 0:
         raise Exception('未找到详情图!!!')
     return result

@@ -136,6 +136,7 @@ class AutomationConfig:
     runtime_category_keyword: Optional[str] = None
     runtime_matrix_keywords: Optional[str] = None
     publish_mode: str = "dom"  # "protocol" | "official" | "dom"
+    capture_mode: str = "dom"  # "protocol" | "dom" — 采集方式
 
     def __post_init__(self):
         defaults = default_automation_config()
@@ -257,6 +258,8 @@ class SettingsManager:
             'qualification_certificate_path': qualification_certificate_path,
             'runtime_category_keyword': runtime_category_keyword,
             'runtime_matrix_keywords': runtime_matrix_keywords,
+            'publish_mode': str(data.get('publish_mode') or 'dom').strip(),
+            'capture_mode': str(data.get('capture_mode') or 'dom').strip(),
         }
     
     def load_settings(self) -> UserSettings:

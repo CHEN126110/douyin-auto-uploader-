@@ -45,6 +45,12 @@ let uploadMonitorStartedAt = 0;
 let uploadLoading: ReturnType<typeof ElLoading.service> | null = null;
 let lastExternalUploadNoticeId: string | null = null;
 
+const uploadStatusText = ref("");
+const uploadCurrentStep = ref("");
+const uploadProgress = ref(0);
+const uploadSteps = ref<Array<{ name: string; status: string; elapsed_ms: number; summary: string }>>([]);
+const uploadPath = ref("");  // "offline" | "react" — v4 流水线路径
+
 const UPLOAD_POLL_INTERVAL_MS = 800;
 const UPLOAD_DISCOVERY_INTERVAL_MS = 5000;
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
@@ -418,6 +424,9 @@ function stopUploadMonitoring(closeLoading = true) {
   activeUploadTaskId.value = null;
   activeUploadTaskOrigin.value = null;
   uploadMonitorStartedAt = 0;
+  uploadSteps.value = [];
+  uploadCurrentStep.value = "";
+  uploadPath.value = "";
 
   if (closeLoading) {
     closeUploadLoading();
@@ -467,6 +476,13 @@ async function pollUploadTask() {
   const progress = data?.progress ?? 0;
   const msg = data?.message || "上传进行中...";
   const status = data?.status;
+
+  uploadProgress.value = progress;
+  uploadStatusText.value = msg;
+  uploadCurrentStep.value = data?.current_step || "";
+  if (data?.steps && Array.isArray(data.steps)) {
+    uploadSteps.value = data.steps;
+  }
 
   ensureUploadLoading(`上传中：${progress}% - ${msg}`);
 
@@ -858,6 +874,32 @@ onUnmounted(() => {
           @select="handleSkuSelect"
           @delete="handleSkuDelete"
         />
+
+        <!-- 上传进度 -->
+        <div v-if="isUploadMonitoring" class="upload-status">
+          <div class="status-header">
+            <div class="status-spinner"></div>
+            <span class="status-text">{{ uploadStatusText }}</span>
+            <span class="status-pct">{{ uploadProgress }}%</span>
+            <span v-if="uploadPath" class="status-path">路径: {{ uploadPath }}</span>
+          </div>
+          <div class="status-progress-bar">
+            <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+          </div>
+          <div v-if="uploadSteps.length > 0" class="status-steps">
+            <div
+              v-for="(step, i) in uploadSteps"
+              :key="i"
+              class="step-item"
+              :class="'step-' + step.status"
+            >
+              <span class="step-icon">{{ step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : '○' }}</span>
+              <span class="step-name">{{ step.name }}</span>
+              <span class="step-time">{{ step.elapsed_ms }}ms</span>
+              <span v-if="step.summary" class="step-summary">{{ step.summary }}</span>
+            </div>
+          </div>
+        </div>
 
         <!-- 底部按钮 -->
         <div class="action-buttons">
@@ -1261,6 +1303,124 @@ onUnmounted(() => {
   padding-top: var(--container-padding);
   margin-top: auto;
   flex-shrink: 0;  // 不允许收缩，始终显示
+}
+
+// 上传步骤进度
+.upload-status {
+  background: #f8f9fc;
+  border: 1px solid #e4e7ed;
+  border-radius: var(--radius-sm, 8px);
+  padding: 12px 16px;
+  margin-top: 12px;
+
+  .status-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .status-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e4e7ed;
+    border-top-color: #5c7cfa;
+    border-radius: 50%;
+    animation: upload-spin 0.8s linear infinite;
+  }
+
+  @keyframes upload-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .status-text {
+    flex: 1;
+    font-size: 13px;
+    color: #303133;
+  }
+
+  .status-pct {
+    font-size: 12px;
+    color: #909399;
+  }
+
+  .status-path {
+    font-size: 11px;
+    color: #5c7cfa;
+    background: rgba(92, 124, 250, 0.1);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .status-progress-bar {
+    height: 4px;
+    background: #e4e7ed;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+
+    .progress-fill {
+      height: 100%;
+      background: #5c7cfa;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+  }
+
+  .status-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 3px 6px;
+    border-radius: 4px;
+
+    &.step-ok {
+      color: #67c23a;
+      background: rgba(103, 194, 58, 0.06);
+    }
+
+    &.step-failed {
+      color: #f56c6c;
+      background: rgba(245, 108, 108, 0.06);
+    }
+
+    &.step-running {
+      color: #5c7cfa;
+      background: rgba(92, 124, 250, 0.06);
+    }
+  }
+
+  .step-icon {
+    width: 16px;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  .step-name {
+    min-width: 100px;
+    font-weight: 500;
+  }
+
+  .step-time {
+    color: #909399;
+    font-size: 11px;
+  }
+
+  .step-summary {
+    color: #606266;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
 }
 </style>
 

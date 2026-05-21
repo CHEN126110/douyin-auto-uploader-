@@ -1,0 +1,386 @@
+{
+  "ok": true,
+  "scanResult": {
+    "ok": true,
+    "url": "https://fxg.jinritemai.com/ffa/g/create",
+    "webpackModuleCount": 3297,
+    "modules": [
+      {
+        "moduleId": "2512",
+        "matched": [
+          "/product/img/batchupload",
+          "request_source",
+          "FormData",
+          "append(\"image\""
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/img/batchupload",
+            "snippet": "})()},p=function(e){return(0,n._)(function(){var t,i,n;return(0,a.YH)(this,function(o){switch(o.label){case 0:return(t=new FormData).append(\"image\",e),t.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,s().post(\"/product/img/batchupload\",t,{timeout:2e4}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];throw n=(0,u.I4)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),c.Ay.error(n),Error(n)}})})()},h=function(e,t){try{var i,n,a=(null==(i=localStorage)?void 0:i.getItem(d.CV))?JSON.parse((null==(n=localStorage)?void 0:n.getItem(d.CV))||\"[]\"):[];if(\"get\"===e)return a;if(t){var r=[t].concat((0,o._)(a)).filter(f"
+          },
+          {
+            "pattern": "request_source",
+            "snippet": "Width:c,imgHeight:r,sizeStyle:e}]}})})()},p=function(e){return(0,n._)(function(){var t,i,n;return(0,a.YH)(this,function(o){switch(o.label){case 0:return(t=new FormData).append(\"image\",e),t.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,s().post(\"/product/img/batchupload\",t,{timeout:2e4}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];throw n=(0,u.I4)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),c.Ay.error(n),Error(n)}})})()},h=function(e,t){try{var i,n,a=(null==(i=localStorage)?void 0:i.getItem(d.CV))?JSON.parse((null==(n=localStorage)?void 0:n.getItem(d.CV))||\"[]\"):[];if(\"get\"===e)return"
+          },
+          {
+            "pattern": "FormData",
+            "snippet": "idth:o*s,height:o},l=Number((o/r).toFixed(2))),[2,{zoom:l,imgWidth:c,imgHeight:r,sizeStyle:e}]}})})()},p=function(e){return(0,n._)(function(){var t,i,n;return(0,a.YH)(this,function(o){switch(o.label){case 0:return(t=new FormData).append(\"image\",e),t.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,s().post(\"/product/img/batchupload\",t,{timeout:2e4}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];throw n=(0,u.I4)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),c.Ay.error(n),Error(n)}})})()},h=function(e,t){try{var i,n,a=(null==(i=localStorage)?void 0:i.getItem(d.CV))?JSON.parse((null==(n="
+          },
+          {
+            "pattern": "append(\"image\"",
+            "snippet": "eight:o},l=Number((o/r).toFixed(2))),[2,{zoom:l,imgWidth:c,imgHeight:r,sizeStyle:e}]}})})()},p=function(e){return(0,n._)(function(){var t,i,n;return(0,a.YH)(this,function(o){switch(o.label){case 0:return(t=new FormData).append(\"image\",e),t.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,s().post(\"/product/img/batchupload\",t,{timeout:2e4}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];throw n=(0,u.I4)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),c.Ay.error(n),Error(n)}})})()},h=function(e,t){try{var i,n,a=(null==(i=localStorage)?void 0:i.getItem(d.CV))?JSON.parse((null==(n=localStorage)?vo"
+          }
+        ]
+      },
+      {
+        "moduleId": "5280",
+        "matched": [
+          "request_source"
+        ],
+        "snippets": [
+          {
+            "pattern": "request_source",
+            "snippet": "1347),o=i(17686),a=i(69088),c=function(e){return(0,a.bE)(\"/product/tproduct/material/imageTextVideo/submitImgOptimizeTask4PC\",(0,o._)((0,n._)({},e),{optimize_strategy_extra:(0,o._)((0,n._)({},e.optimize_strategy_extra),{request_source:\"pc\"})}))},r=function(e){return(0,a.Jt)(\"/product/tproduct/material/imageTextVideo/queryImgOptimizeTask4PC\",e)}}"
+          }
+        ]
+      },
+      {
+        "moduleId": "6426",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "0]?arguments[0]:{};return Object.keys(e).map(function(t){return\"\".concat(t,\"=\").concat(encodeURIComponent(e[t]))}).join(\"&\")},supportChunked:function(){var e=window.Blob||window.WebKitBlob;try{var t=e.prototype;return!(!FormData||!(t.slice||t.webkitSlice||t.mozSlice))}catch(e){return!1}},supportXhr:function(){return!!window.FormData||window.ProgressEvent&&window.FileReader},supportCrc32:function(){var e=window.FileReader&&window.FileReader.prototype.readAsBinaryString;return\"undefined\"!=typeof Int32Array&&e&&(Blob.prototype.slice||Blob.prototype.webkitSlice||Blob.prototype.mozSlice)},storage:function(e){var t=e,e={removeItem:function(e){del"
+          }
+        ]
+      },
+      {
+        "moduleId": "10026",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "function(e,t,r){\"use strict\";var n=r(63798),o=r(91884),s=r(75642),i=r(15224),a=r(14865),u=r(13530),c=r(4480),f=r(80429);e.exports=function(e){return new Promise(function(t,r){var p=e.data,d=e.headers;n.isFormData(p)&&delete d[\"Content-Type\"];var l=new XMLHttpRequest;e.auth&&(d.Authorization=\"Basic \"+btoa((e.auth.username||\"\")+\":\"+(e.auth.password?unescape(encodeURIComponent(e.auth.password)):\"\")));var h=a(e.baseURL,e.url);if(l.open(e.method.toUpperCase(),i(h,e.params,e.paramsSerializer),!0),l.timeout=e.timeout,l.onreadystatechange=function(){if(l&&4===l.readyState&&(0!==l.status||l.responseURL&&0===l.responseURL.indexOf(\"fil"
+          }
+        ]
+      },
+      {
+        "moduleId": "13305",
+        "matched": [
+          "/product/img/batchupload",
+          "request_source"
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/img/batchupload",
+            "snippet": "(){return(0,Y.YH)(this,function(t){return[2,(0,Z.Jt)(\"/shopuser/material/get_video_big_thumbs\",e)]})})()},et=function(e){return(0,G._)(function(){return(0,Y.YH)(this,function(t){switch(t.label){case 0:return[4,(0,Z.bE)(\"/product/img/batchupload\",(0,d._)((0,l._)({},e),{extra:{request_source:\"pc\"}}),{headers:{\"Content-Type\":\"multipart/form-data\"}})];case 1:return[2,t.sent()]}})})()};i(45326);var ei=function(){var e=B(),t=(e.currentTime,e.setCurrentTime),i=D(function(e){return e.vid}),n=D(function(e){return e.setValue}),o=(0,m._)((0,h.useState)(\"\"),2);o[0],o[1];var a=function(e){var t=D.getState().dsl;D.setState({dsl:(0,E.Ay)(t,function(t){var i,n,o;(null==(o"
+          },
+          {
+            "pattern": "request_source",
+            "snippet": "hopuser/material/get_video_big_thumbs\",e)]})})()},et=function(e){return(0,G._)(function(){return(0,Y.YH)(this,function(t){switch(t.label){case 0:return[4,(0,Z.bE)(\"/product/img/batchupload\",(0,d._)((0,l._)({},e),{extra:{request_source:\"pc\"}}),{headers:{\"Content-Type\":\"multipart/form-data\"}})];case 1:return[2,t.sent()]}})})()};i(45326);var ei=function(){var e=B(),t=(e.currentTime,e.setCurrentTime),i=D(function(e){return e.vid}),n=D(function(e){return e.setValue}),o=(0,m._)((0,h.useState)(\"\"),2);o[0],o[1];var a=function(e){var t=D.getState().dsl;D.setState({dsl:(0,E.Ay)(t,function(t){var i,n,o;(null==(o=t.video_tracks)||null==(n=o[0])||null==(i=n.v"
+          }
+        ]
+      },
+      {
+        "moduleId": "15799",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "opuser/material/create_folder\",e)},_=function(e){return(0,a.Jt)(\"/shopuser/material/get_contract_info\",e)},v=function(e){var t=e.folder_id,n=e.source,i=e.file,a=e.need_qualify_protect,l=r().create();(0,o.$)(l);var s=new FormData;return t&&s.append(\"folder_id\",t),s.append(\"source\",n),i&&s.append(\"file\",i),a&&s.append(\"need_qualify_protect\",\"true\"),l.post(\"/shopuser/material/upload_image?_bid=ffa-material\",s)},x=function(e){return(0,a.bE)(\"/shopuser/material/upload_video\",e)},y=function(e){return(0,a.bE)(\"/shopuser/material/search\",e)},j=function(e){return(0,a.bE)(\"/shopuser/material/edit_material\",e)},A=function(e){return(0,a.bE)(\"/shopuser/"
+          }
+        ]
+      },
+      {
+        "moduleId": "16365",
+        "matched": [
+          "/product/img/batchupload",
+          "/product/tproduct/saveMaterial",
+          "/product/tproduct/materialDetail",
+          "request_source",
+          "FormData",
+          "append(\"image\""
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/img/batchupload",
+            "snippet": "88),ec=function(e){return(0,T._)(function(){var n,t,i;return(0,p.YH)(this,function(o){switch(o.label){case 0:return(n=new FormData).append(\"image\",e),n.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,eu().post(\"/product/img/batchupload\",n,{timeout:2e4}).then(function(e){return e.data})];case 1:if(t=o.sent(),\"0\"===\"\".concat(t.code))return[2,t.data[0]];throw i=(0,ea.I4)(t,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),B.Ay.error(i),Error(i)}})})()},es=function(e){var n,t=e.visible,i=e.onClose,o=e.imgInfo,A=e.updateCurImg,l=e.productInfo,r=e.materialTeaLogger,u=(0,f._)((0,v.useState)(!1),2),a=u[0],c=u[1];(0,v.useEffect)(function(){return function(){console."
+          },
+          {
+            "pattern": "/product/tproduct/saveMaterial",
+            "snippet": "E5\\u5177\"],is_direct_apply:e,composite_video_metaData_extra_properties:{scale:null!=o?o:AE.tB[\"1:1\\u4E3B\\u56FE\\u89C6\\u9891\"],schema:null!=(u=JSON.stringify(t))?u:\"\",video_type:A}}],bind_object:{product_id:r}},(0,ea.bE)(\"/product/tproduct/saveMaterial\",c)).then(function(){return B.Ay.success(e?\"\\u5DF2\\u53D1\\u5E03\":\"\\u4FDD\\u5B58\\u6210\\u529F\"),{isSuccess:!0}}).catch(function(n){return(0,ea.Qg)(\"\".concat(e?\"\\u53D1\\u5E03\":\"\\u4FDD\\u5B58\",\"\\u89C6\\u9891\\u5931\\u8D25\"))(n),{isSuccess:!1}})]})})()};(0,T._)(function(){var e;return(0,p.YH)(this,function(n){switch(n.label){case 0:var t;return[4,(t={material_type:0,product_id:r},(0,ea.Jt)(\"/product/tproduct/materialDetail\",t))"
+          },
+          {
+            "pattern": "/product/tproduct/materialDetail",
+            "snippet": "\\u5E03\":\"\\u4FDD\\u5B58\",\"\\u89C6\\u9891\\u5931\\u8D25\"))(n),{isSuccess:!1}})]})})()};(0,T._)(function(){var e;return(0,p.YH)(this,function(n){switch(n.label){case 0:var t;return[4,(t={material_type:0,product_id:r},(0,ea.Jt)(\"/product/tproduct/materialDetail\",t))];case 1:if(null===n.sent().data)return O.Ay.confirm({title:\"\\u786E\\u5B9A\\u4F7F\\u7528\\u8BE5\\u89C6\\u9891\\u4F5C\\u4E3A\\u5546\\u54C1\\u7684\\u4E3B\\u56FE\\u89C6\\u9891\\u5417\\uFF1F\",content:\"\\u786E\\u5B9A\\u5E94\\u7528\\u5E76\\u901A\\u8FC7\\u5BA1\\u6838\\u540E\\uFF0C\\u8BE5\\u5546\\u54C1\\u7684\\u4E3B\\u56FE\\u89C6\\u9891\\u4F1A\\u76F4\\u63A5\\u4E0A\\u7EBF\\u5E76\\u88AB\\u7528\\u6237\\u770B\\u5230\",icon:null,closable:!0,okText:\" \\u786E\\u5B9A\",onOk:fun"
+          },
+          {
+            "pattern": "request_source",
+            "snippet": ")]})},er=t(98107),eu=t.n(er),ea=t(69088),ec=function(e){return(0,T._)(function(){var n,t,i;return(0,p.YH)(this,function(o){switch(o.label){case 0:return(n=new FormData).append(\"image\",e),n.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,eu().post(\"/product/img/batchupload\",n,{timeout:2e4}).then(function(e){return e.data})];case 1:if(t=o.sent(),\"0\"===\"\".concat(t.code))return[2,t.data[0]];throw i=(0,ea.I4)(t,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),B.Ay.error(i),Error(i)}})})()},es=function(e){var n,t=e.visible,i=e.onClose,o=e.imgInfo,A=e.updateCurImg,l=e.productInfo,r=e.materialTeaLogger,u=(0,f._)((0,v.useState)(!1),2),a=u[0],c=u[1];(0,v.u"
+          },
+          {
+            "pattern": "FormData",
+            "snippet": "590D\\u5236\\u6210\\u529F\")},children:\"\\u590D\\u5236\"})})]},e)})})]})},er=t(98107),eu=t.n(er),ea=t(69088),ec=function(e){return(0,T._)(function(){var n,t,i;return(0,p.YH)(this,function(o){switch(o.label){case 0:return(n=new FormData).append(\"image\",e),n.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,eu().post(\"/product/img/batchupload\",n,{timeout:2e4}).then(function(e){return e.data})];case 1:if(t=o.sent(),\"0\"===\"\".concat(t.code))return[2,t.data[0]];throw i=(0,ea.I4)(t,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),B.Ay.error(i),Error(i)}})})()},es=function(e){var n,t=e.visible,i=e.onClose,o=e.imgInfo,A=e.updateCurImg,l=e.productInfo,r=e.mat"
+          },
+          {
+            "pattern": "append(\"image\"",
+            "snippet": "\\u6210\\u529F\")},children:\"\\u590D\\u5236\"})})]},e)})})]})},er=t(98107),eu=t.n(er),ea=t(69088),ec=function(e){return(0,T._)(function(){var n,t,i;return(0,p.YH)(this,function(o){switch(o.label){case 0:return(n=new FormData).append(\"image\",e),n.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,eu().post(\"/product/img/batchupload\",n,{timeout:2e4}).then(function(e){return e.data})];case 1:if(t=o.sent(),\"0\"===\"\".concat(t.code))return[2,t.data[0]];throw i=(0,ea.I4)(t,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),B.Ay.error(i),Error(i)}})})()},es=function(e){var n,t=e.visible,i=e.onClose,o=e.imgInfo,A=e.updateCurImg,l=e.productInfo,r=e.materialTeaLogger,u"
+          }
+        ]
+      },
+      {
+        "moduleId": "17061",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "\"!=typeof XMLHttpRequest?n=r(10026):\"undefined\"!=typeof process&&\"[object process]\"===Object.prototype.toString.call(process)&&(n=r(10026)),n),transformRequest:[function(e,t){return(s(t,\"Accept\"),s(t,\"Content-Type\"),o.isFormData(e)||o.isArrayBuffer(e)||o.isBuffer(e)||o.isStream(e)||o.isFile(e)||o.isBlob(e))?e:o.isArrayBufferView(e)?e.buffer:o.isURLSearchParams(e)?(a(t,\"application/x-www-form-urlencoded;charset=utf-8\"),e.toString()):o.isObject(e)?(a(t,\"application/json;charset=utf-8\"),JSON.stringify(e)):e}],transformResponse:[function(e){if(\"string\"==typeof e)try{e=JSON.parse(e)}catch(e){}return e}],timeout:0,xsrfCookieName:\"XSRF-TOKEN\",xsrf"
+          }
+        ]
+      },
+      {
+        "moduleId": "18828",
+        "matched": [
+          "/product/tproduct/spuImgUpload"
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/tproduct/spuImgUpload",
+            "snippet": "children:\"\\u8BF7\\u4E0A\\u4F20\\u80FD\\u591F\\u8F85\\u52A9\\u4E3E\\u62A5\\u4FE1\\u606F\\u7684\\u56FE\\u7247\\uFF1B\\u4EC5\\u652F\\u6301\\u4E0D\\u5927\\u4E8E5M\\u7684jpg\\u3001png\\u683C\\u5F0F\\u56FE\\u7247\"}),children:(0,s.jsx)(m.pz,{uploadApi:\"/product/tproduct/spuImgUpload\",limit:1,check:{maxSize:5},toolPlacement:\"bottom\",renderText:function(){return(0,s.jsxs)(\"div\",{className:\"styles_uploadText__smQ_y\",children:[(0,s.jsx)(\"div\",{children:\"\\u4E0A\\u4F20\\u56FE\\u7247\"}),(0,s.jsx)(\"div\",{children:\"\\uFF08\".concat(P.proof_pictures.length,\"/1\\uFF09\")})]})}})}),M&&(0,s.jsx)(b.eI,{label:\"\\u63A8\\u8350\\u7C7B\\u76EE\",form:F.na(\"recommended_category\"),children:(0,s.jsx)(v.P,(0,o._)((0,r._)({},C),{s"
+          }
+        ]
+      },
+      {
+        "moduleId": "25595",
+        "matched": [
+          "/product/tproduct/saveMaterial",
+          "/product/tproduct/materialDetail"
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/tproduct/saveMaterial",
+            "snippet": "B:function(){return i}});var a=r(69088),n=r(86908),i=function(e){return(0,a.bE)(\"/doudian/ai/same_pic/judge_main_pic\",e)},c=function(e){return(0,a.Jt)(\"/product/tproduct/materialDetail\",e)},u=function(e){return(0,a.bE)(\"/product/tproduct/saveMaterial\",e)},o=function(e,t){return(0,a.bE)(\"/product/tproduct/material/batchApplyMaterial\",{material_ids:[e],material_type:n.M[\"\\u88C5\\u4FEE\\u4E3B\\u56FE\"],product_id:t}).catch(function(e){(0,a.Qg)(\"\")(e)})}}"
+          },
+          {
+            "pattern": "/product/tproduct/materialDetail",
+            "snippet": "nction(){return o},Hc:function(){return c},RS:function(){return u},dB:function(){return i}});var a=r(69088),n=r(86908),i=function(e){return(0,a.bE)(\"/doudian/ai/same_pic/judge_main_pic\",e)},c=function(e){return(0,a.Jt)(\"/product/tproduct/materialDetail\",e)},u=function(e){return(0,a.bE)(\"/product/tproduct/saveMaterial\",e)},o=function(e,t){return(0,a.bE)(\"/product/tproduct/material/batchApplyMaterial\",{material_ids:[e],material_type:n.M[\"\\u88C5\\u4FEE\\u4E3B\\u56FE\"],product_id:t}).catch(function(e){(0,a.Qg)(\"\")(e)})}}"
+          }
+        ]
+      },
+      {
+        "moduleId": "55060",
+        "matched": [
+          "/product/tproduct/saveMaterial"
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/tproduct/saveMaterial",
+            "snippet": "r=e.actionList;return(0,u.bE)(\"/product/tproduct/submitWhiteImg\",{name:t,product_id:n,action_list:r})},f=function(e){return(0,u.bE)(\"/product/tproduct/batchDelMaterials\",{del_materials:e})},m=function(e){return(0,u.bE)(\"/product/tproduct/saveMaterial\",e)},p=function(e){return(0,u.bE)(\"/product/tproduct/batchApprovalWhiteImgs\",{approval_materials:e})},v=function(){return(0,u.Jt)(\"/product/shop_pay/ping_an_status\")},g=function(e){return(0,u.Jt)(\"/product/contract/status\",e||{scene:c.e$[\"\\u516C\\u76CA\\u9879\\u76EE\"]})},h=function(e){return(0,u.bE)(\"/product/contract/sign\",e||{scene:c.e$[\"\\u516C\\u76CA\\u9879\\u76EE\"]})},y=function(e){return(0,u.Jt)(\"/product/shop_pay/ac"
+          }
+        ]
+      },
+      {
+        "moduleId": "60026",
+        "matched": [
+          "/product/img/batchupload",
+          "request_source",
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/img/batchupload",
+            "snippet": "\\uFF0C\\u8BF7\\u52FF\\u91CD\\u590D\\u4E0A\\u4F20\"),[]):(i.length!==n.length&&a.Ay.warn(\"\\u5DF2\\u5220\\u9664\\u90E8\\u5206\\u91CD\\u590D\\u56FE\\u7247\"),i)},m=function(e){var n=e.files,t=e.progressCallback,o=e.uploadApi,A=void 0===o?\"/product/img/batchupload\":o;return(0,i._)(function(){var e,i;return(0,r.YH)(this,function(o){switch(o.label){case 0:return e=new FormData,n.forEach(function(n,t){e.append(\"image[\".concat(t,\"]\"),n)}),e.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,M().post(\"\".concat(A,\"?_bid=ffa_goods\"),e,{onUploadProgress:t}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data];throw Error(i.msg||\"\\u4E0A"
+          },
+          {
+            "pattern": "request_source",
+            "snippet": "/batchupload\":o;return(0,i._)(function(){var e,i;return(0,r.YH)(this,function(o){switch(o.label){case 0:return e=new FormData,n.forEach(function(n,t){e.append(\"image[\".concat(t,\"]\"),n)}),e.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,M().post(\"\".concat(A,\"?_bid=ffa_goods\"),e,{onUploadProgress:t}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data];throw Error(i.msg||\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\")}})})()},D=function(e){var n=e.files,t=e.progressCallback,o=e.uploadApi;return(0,i._)(function(){var e,i,A,u,c,s;return(0,r.YH)(this,function(r){switch(r.label){case 0:if(!((null==n?void 0:n"
+          },
+          {
+            "pattern": "FormData",
+            "snippet": "E\\u7247\"),i)},m=function(e){var n=e.files,t=e.progressCallback,o=e.uploadApi,A=void 0===o?\"/product/img/batchupload\":o;return(0,i._)(function(){var e,i;return(0,r.YH)(this,function(o){switch(o.label){case 0:return e=new FormData,n.forEach(function(n,t){e.append(\"image[\".concat(t,\"]\"),n)}),e.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,M().post(\"\".concat(A,\"?_bid=ffa_goods\"),e,{onUploadProgress:t}).then(function(e){return e.data})];case 1:if(i=o.sent(),\"0\"===\"\".concat(i.code))return[2,i.data];throw Error(i.msg||\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\")}})})()},D=function(e){var n=e.files,t=e.progressCallback,o=e.uploadApi;return(0,"
+          }
+        ]
+      },
+      {
+        "moduleId": "63798",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "yBuffer:function(e){return\"[object ArrayBuffer]\"===o.call(e)},isBuffer:function(e){return null!==e&&!i(e)&&null!==e.constructor&&!i(e.constructor)&&\"function\"==typeof e.constructor.isBuffer&&e.constructor.isBuffer(e)},isFormData:function(e){return\"undefined\"!=typeof FormData&&e instanceof FormData},isArrayBufferView:function(e){return\"undefined\"!=typeof ArrayBuffer&&ArrayBuffer.isView?ArrayBuffer.isView(e):e&&e.buffer&&e.buffer instanceof ArrayBuffer},isString:function(e){return\"string\"==typeof e},isNumber:function(e){return\"number\"==typeof e},isObject:a,isPlainObject:u,isUndefined:i,isDate:function(e){return\"[object Date]\"===o.call(e)},isF"
+          }
+        ]
+      },
+      {
+        "moduleId": "68519",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "is.addActions(_),tP(l)},t.addActions=function(e){var t,n=this;(null==e?void 0:e.length)&&(e.forEach(function(e){var t=e.id;n.actionInstance.clearActionsById(t)}),(t=this.actions).push.apply(t,(0,l._)(e)))},t.getAvailableFormData=function(){var e=this.getFormToModel(),t={};return Object.keys(e).forEach(function(n){var r;t[n]=null==(r=e[n])?void 0:r.value}),t},t.getFormToModel=function(){return eb((0,a._)({},this.form.state.value),this.form)},e}(),tT=n(31226),tR=function(){function e(){(0,o._)(this,e),this.ctx={},this.callbackSet=new Set}var t=e.prototype;return t.getContext=function(){return this.ctx},t.setContext=function(e){this&&(this.ctx"
+          }
+        ]
+      },
+      {
+        "moduleId": "71295",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "etCarveLoading:f}}=(0,o.wA)(),[d,p]=(0,n.useState)(!1),{post:g}=(0,o.Kp)(),m=(0,n.useMemo)(()=>{let e=(0,o.QY)(\"getUploadPicFn\")?.fn;if(\"function\"==typeof e)return e((0,o.eh)())},[]),v=async()=>{let e,r=(0,o.o_)(),n=new FormData,i=null,{src:s}=t;if(s){if(f(!0),n.append(\"algorithms\",\"ad_design_matting\"),s.startsWith(\"data:image\")&&(i=(0,o.Hb)(s)),s.startsWith(\"blob:\")){let e=await (0,o.wV)(s);i=(0,o.Hb)(e)}i?(n.append(\"file\",i),n.append(\"conf\",JSON.stringify({image_url:\"\"}))):n.append(\"conf\",JSON.stringify({image_url:s}));try{let t=await g(\"https://effect.snssdk.com/media/api/pic/afr\",n);e=JSON.parse(t.data.afr_data[0].pic_conf).image_url,c("
+          }
+        ]
+      },
+      {
+        "moduleId": "73896",
+        "matched": [
+          "/product/img/batchupload",
+          "request_source",
+          "FormData",
+          "append(\"image\""
+        ],
+        "snippets": [
+          {
+            "pattern": "/product/img/batchupload",
+            "snippet": "ren:(0,l.jsx)(B.Ay,{type:\"WarningIcon\"})}),(0,l.jsx)(\"div\",{className:\"styles_body-text__ysFy4\",children:(0,l.jsx)(F.Pr,{tag:\"div\",content:r})})]})})}),T=t(45051),U=function(e){return e&&e.substr(e.lastIndexOf(\"/\"))},z=\"/product/img/batchupload\",D=function(e){var n=arguments.length>1&&void 0!==arguments[1]?arguments[1]:z;return(0,r._)(function(){var t,r,i,o,l;return(0,a.YH)(this,function(a){switch(a.label){case 0:return(r=new FormData).append(\"image\",e),r.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,f().post(\"\".concat(n,\"?_bid=ffa_goods\"),r,{timeout:2500}).then(function(e){return e.data})];case 1:if(i=a.sent(),\"0\"===\"\".concat(i.code))return[2,i"
+          },
+          {
+            "pattern": "request_source",
+            "snippet": "ents.length>1&&void 0!==arguments[1]?arguments[1]:z;return(0,r._)(function(){var t,r,i,o,l;return(0,a.YH)(this,function(a){switch(a.label){case 0:return(r=new FormData).append(\"image\",e),r.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,f().post(\"\".concat(n,\"?_bid=ffa_goods\"),r,{timeout:2500}).then(function(e){return e.data})];case 1:if(i=a.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];return o=(0,C.I)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),\"500001\"===\"\".concat(i.code)&&(null==i||null==(t=i.msg)?void 0:t.includes(\"\\u5546\\u54C1\\u7D20\\u6750-\\u7D20\\u6750\\u5E93\"))?(l=i.msg.replace(\"\\u5546\\u54C1\\u7D20\\u6750-\\u7D20\\u6750\\u5E93\",'<a hre"
+          },
+          {
+            "pattern": "FormData",
+            "snippet": "\"/\"))},z=\"/product/img/batchupload\",D=function(e){var n=arguments.length>1&&void 0!==arguments[1]?arguments[1]:z;return(0,r._)(function(){var t,r,i,o,l;return(0,a.YH)(this,function(a){switch(a.label){case 0:return(r=new FormData).append(\"image\",e),r.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,f().post(\"\".concat(n,\"?_bid=ffa_goods\"),r,{timeout:2500}).then(function(e){return e.data})];case 1:if(i=a.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];return o=(0,C.I)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),\"500001\"===\"\".concat(i.code)&&(null==i||null==(t=i.msg)?void 0:t.includes(\"\\u5546\\u54C1\\u7D20\\u6750-\\u7D20\\u6750\\u5E93\"))?(l="
+          },
+          {
+            "pattern": "append(\"image\"",
+            "snippet": "/product/img/batchupload\",D=function(e){var n=arguments.length>1&&void 0!==arguments[1]?arguments[1]:z;return(0,r._)(function(){var t,r,i,o,l;return(0,a.YH)(this,function(a){switch(a.label){case 0:return(r=new FormData).append(\"image\",e),r.append(\"extra\",JSON.stringify({request_source:\"pc\"})),[4,f().post(\"\".concat(n,\"?_bid=ffa_goods\"),r,{timeout:2500}).then(function(e){return e.data})];case 1:if(i=a.sent(),\"0\"===\"\".concat(i.code))return[2,i.data[0]];return o=(0,C.I)(i,\"\\u4E0A\\u4F20\\u56FE\\u7247\\u5931\\u8D25\"),\"500001\"===\"\".concat(i.code)&&(null==i||null==(t=i.msg)?void 0:t.includes(\"\\u5546\\u54C1\\u7D20\\u6750-\\u7D20\\u6750\\u5E93\"))?(l=i.msg.replace(\"\\"
+          }
+        ]
+      },
+      {
+        "moduleId": "89487",
+        "matched": [
+          "FormData"
+        ],
+        "snippets": [
+          {
+            "pattern": "FormData",
+            "snippet": "als,m=a.method,f=o.uid;null==l||l(o),this.reqs[f]=(s||function(e){var t=new XMLHttpRequest;e.onProgress&&t.upload&&(t.upload.onprogress=function(t){t.total>0&&(t.percent=t.loaded/t.total*100),e.onProgress(t)});var n=new FormData;e.data&&Object.keys(e.data).forEach(function(t){var o=e.data[t];if(Array.isArray(o))return void o.forEach(function(e){n.append(t+\"[]\",e)});n.append(t,e.data[t])}),e.file instanceof Blob?n.append(e.filename,e.file,e.file.name):n.append(e.filename,e.file),t.onerror=function(t){e.onError(t)},t.onload=function(){if(t.status<200||t.status>=300){var n;return e.onError(((n=Error(\"cannot \"+e.method+\" \"+e.action+\" \"+t.status"
+          }
+        ]
+      },
+      {
+        "moduleId": "90220",
+        "matched": [
+          "request_source"
+        ],
+        "snippets": [
+          {
+            "pattern": "request_source",
+            "snippet": "0:a.strategy)||_,img_format:e.imgRatio||(null==a?void 0:a.extraStrategy.img_format),optimize_strategy_extra:(0,o._)((0,n._)({},(0,l.c)((null==a?void 0:a.extraStrategy)||{},[\"img_format\",\"template_id\",\"generate_mode\"])),{request_source:\"pc\"}),service_method:v.ch.RealTime,generate_mode:null==a||null==(m=a.extraStrategy)?void 0:m.generate_mode},p?{optimize_num:p.num,app_id:p.toolProvider,tool_source:p.toolSource}:{}),{optimize_task_tool_scene:(0,d.m)()?2:void 0,trace_id:null==T?void 0:T.getTraceId(h)})).then(function(t){var n,o=t.data,c=o.task_id,r=o.status,s=o.tool_source,u=o.app_id,l=o.task_result_total_num,d=o.trace_id,m=(0,g.q)({strategy:null==a"
+          }
+        ]
+      }
+    ],
+    "knownRequestModules": {
+      "lowerWrapper28974": {
+        "ok": true,
+        "keys": [
+          "J",
+          "b"
+        ],
+        "types": {
+          "J": "function",
+          "b": "function"
+        }
+      },
+      "postWrapper90665": {
+        "ok": true,
+        "keys": [
+          "e8",
+          "Jt",
+          "Ay",
+          "bE",
+          "Vr"
+        ],
+        "types": {
+          "e8": "function",
+          "Jt": "function",
+          "Ay": "object",
+          "bE": "function",
+          "Vr": "object"
+        }
+      }
+    }
+  },
+  "sampleUpload": {
+    "ok": true,
+    "uploadMode": "batch",
+    "url": "https://fxg.jinritemai.com/ffa/g/create",
+    "requestUrl": "/product/img/batchupload?_bid=ffa_goods",
+    "httpStatus": 200,
+    "elapsedMs": 661,
+    "sample": {
+      "fileName": "c975-tm.png",
+      "mimeType": "image/png",
+      "size": 523150
+    },
+    "samples": [
+      {
+        "fileName": "c975-tm.png",
+        "mimeType": "image/png",
+        "size": 523150
+      },
+      {
+        "fileName": "c975-white-bg.jpg",
+        "mimeType": "image/jpeg",
+        "size": 511945
+      }
+    ],
+    "responseSummary": {
+      "topLevelKeys": [
+        "errno",
+        "st",
+        "msg",
+        "code",
+        "data",
+        "page",
+        "total",
+        "size"
+      ],
+      "code": 0,
+      "dataType": "array",
+      "dataLength": 2,
+      "dataItemKeys": [],
+      "dataItemTypeMap": {}
+    },
+    "responseSanitized": {
+      "errno": 0,
+      "st": 0,
+      "msg": "https://fxg.jinritemai.com/",
+      "code": 0,
+      "data": [
+        "https://p3-aio.ecombdimg.com/obj/ecom-shop-material/png_m_f58a34b64dcfce61ff484dcc5727824b_sx_523150_www800-800",
+        "https://p3-aio.ecombdimg.com/obj/ecom-shop-material/jpeg_m_abe09ff0156c41417a404908fd813548_sx_511945_www800-800"
+      ],
+      "page": 0,
+      "total": 0,
+      "size": 0
+    }
+  }
+}

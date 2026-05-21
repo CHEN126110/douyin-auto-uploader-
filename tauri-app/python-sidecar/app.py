@@ -1,6 +1,19 @@
 # -*- coding: utf-8 -*-
+# BUILD_MARKER_V3_20260521
 
-import traceback
+import traceback, os as _boot_os
+# === SIDE-EFFECT MARKER: 启动时写入标记文件 ===
+try:
+    _marker_dir = _boot_os.path.dirname(_boot_os.path.abspath(__file__))
+    _marker_path = _boot_os.path.join(_marker_dir, 'BOOT_MARKER_V3.log')
+    with open(_marker_path, 'w', encoding='utf-8') as _mf:
+        _mf.write('app.py loaded: V3 marker present\n')
+except Exception as _ex:
+    try:
+        with open(_boot_os.path.join(_boot_os.environ.get('TEMP', '/tmp'), 'BOOT_MARKER_V3_fallback.log'), 'w', encoding='utf-8') as _mf:
+            _mf.write(f'app.py loaded but marker write failed: {_ex}\n')
+    except:
+        pass
 from typing import Optional
 import time as system_time
 import os
@@ -4017,28 +4030,29 @@ def _execute_upload_flow(record_id=None, progress_callback=None, stop_before_sub
         user_settings = settings_manager.get_settings()
         ac = settings_manager.normalize_automation_config(user_settings.automation_config)
         publish_mode = ac.get('publish_mode', 'dom')
-        print(f'发布模式: {publish_mode}')
-
-        # 纯协议模式：使用 fxg_protocol_v2 流水线
-        if publish_mode == 'protocol':
-            return _execute_protocol_flow(record_id=record_id, progress_callback=progress_callback, task_id=task_id)
+        print(f'[路由] 发布模式: {publish_mode}')
 
         # 官方API模式 (待实现)
         if publish_mode == 'official':
             return api_error(msg='官方API模式尚未实现，请在设置中切换为DOM或协议模式')
 
-        # DOM模式：原有流程
-        print('开始上传流程...')
-
+        # 读取记录和配置(所有模式共用)
         record_list, load_error = _load_upload_records(record_id)
         if load_error:
             return api_error(msg=load_error)
         _report_progress(12, '已读取上传任务，正在初始化自动化参数')
-
         shipping_template_name, configured_materials, wash_label_tag_image_path = _load_upload_runtime_config()
-        main_tab, session_error = _ensure_publish_session(_report_progress)
-        if session_error:
-            return api_error(session_error)
+
+        # 纯协议模式：独立CDP连接，不需要DOM浏览器
+        if publish_mode == 'protocol':
+            print('[路由] 启动纯协议流水线...')
+            import sys as _sys
+            _base = _sys._MEIPASS if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+            _sys.path.insert(0, os.path.join(_base, 'protocol-research'))
+            return _execute_protocol_flow(record_id=record_id, progress_callback=progress_callback, task_id=task_id)
+
+        # DOM模式：原有流程
+        print('开始上传流程...')
 
         for record in record_list:
             # 检查取消标志
@@ -4291,8 +4305,39 @@ def _serialize_upload_task(task):
 
 
 def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None):
-    """纯协议流水线：直接调用 addWithSchema API，不走浏览器DOM"""
-    import json as _json
+    """纯协议流水线 v4：CDP会话 + HTTP图片上传 + Schema获取 + 离线Body构造 + webpack提交"""
+    import json as _json, sys as _sys
+    if getattr(_sys, 'frozen', False):
+        _base = _sys._MEIPASS
+    else:
+        _base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _sys.path.insert(0, os.path.join(_base, 'protocol-research-clean-20260505', 'scripts'))
+
+    # === 文件日志诊断（写入 exe 同目录，确保可见） ===
+    from datetime import datetime as _diag_dt
+    # 在 frozen 模式下使用 exe 所在目录，dev 模式使用脚本目录
+    if getattr(_sys, 'frozen', False):
+        _diag_log_dir = os.path.dirname(_sys.executable)
+    else:
+        _diag_log_dir = os.path.dirname(os.path.abspath(__file__))
+    _diag_log_path = os.path.join(_diag_log_dir, 'protocol_diag.log')
+    def _diag(msg):
+        try:
+            with open(_diag_log_path, 'a', encoding='utf-8') as _f:
+                _f.write(f'{_diag_dt.now().isoformat()} | {msg}\n')
+        except Exception as _diag_e:
+            # 回退：写入用户临时目录
+            try:
+                import tempfile as _tf
+                _fallback = os.path.join(_tf.gettempdir(), 'protocol_diag_fallback.log')
+                with open(_fallback, 'a', encoding='utf-8') as _f:
+                    _f.write(f'{_diag_dt.now().isoformat()} | LOG_ERROR: {_diag_e} | {msg}\n')
+            except:
+                pass
+    _diag(f'START record_id={record_id} frozen={getattr(_sys, "frozen", False)} base={_base}')
+    _diag(f'sys.path[0]={_sys.path[0]}')
+    _diag(f'proto_dir_exists={os.path.isdir(os.path.join(_base, "protocol-research"))}')
+    _diag(f'log_path={_diag_log_path}')
 
     def _report(pct, msg):
         if progress_callback:
@@ -4301,7 +4346,9 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
 
     _report(10, '协议模式：读取上传任务')
     record_list, load_error = _load_upload_records(record_id)
+    _diag(f'load_records: count={len(record_list) if record_list else 0} error={load_error}')
     if load_error:
+        _diag(f'RETURN load_error: {load_error}')
         return api_error(msg=load_error)
 
     results = []
@@ -4324,57 +4371,167 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
         except (_json.JSONDecodeError, TypeError):
             sku_list = []
 
+        # 标题：优先 record.title，其次 record.name
+        product_title = (record.title or '').strip() or (record.name or '').strip() or '协议发布商品'
+        # 价格：从SKU中取第一个有效价格
+        price_val = 9.9
+        if sku_list:
+            for s in sku_list:
+                try:
+                    p = float(s.get('price', 0))
+                    if p > 0:
+                        price_val = p
+                        break
+                except (ValueError, TypeError):
+                    continue
+
         product_data = {
-            'title': record.name or '协议发布商品',
-            'price': {'current': float(record.price) if getattr(record, 'price', None) else 9.9},
+            'title': product_title,
+            'price': {'current': price_val},
             'sku_info': [{'name': s.get('name', '默认')} for s in sku_list] if sku_list else [{'name': '默认'}],
-            'material': record.material or '棉100%',
+            'material': getattr(record, 'material', None) or '棉75%;氨纶25%',
         }
 
-        # 收集图片路径
+        # 收集图片路径（与DOM流程一致，从文件系统标准目录读取）
         image_paths = {'main_images': [], 'main_images_1x1': [], 'detail_images': []}
-        for sku in sku_list:
-            path = sku.get('path', '')
-            if path and os.path.isfile(path):
-                image_paths.setdefault('main_images', []).append(path)
-                image_paths.setdefault('main_images_1x1', []).append(path)
+        try:
+            # 1:1 方图 (800) → main_images_1x1 → 用于 pic 字段
+            main_pics = get_pic_list(record, '800')
+            image_paths['main_images_1x1'] = [p for p in main_pics[:5] if os.path.isfile(p)]
+        except Exception as e:
+            print(f'[协议] 获取800主图失败: {e}')
+
+        try:
+            # 3:4 主图 (750) → main_images → 用于 main_image_three_to_four
+            sub_pics = get_pic_list(record, '750')
+            image_paths['main_images'] = [p for p in sub_pics[:5] if os.path.isfile(p)]
+        except Exception as e:
+            print(f'[协议] 获取750主图失败: {e}')
+
+        try:
+            # 详情图
+            detail_pics = get_detail_pic_list(record)
+            image_paths['detail_images'] = [p for p in detail_pics if os.path.isfile(p)]
+        except Exception as e:
+            print(f'[协议] 获取详情图失败: {e}')
+
+        # 如果 3:4 主图缺失，用 1:1 方图回退
+        if not image_paths['main_images'] and image_paths['main_images_1x1']:
+            image_paths['main_images'] = list(image_paths['main_images_1x1'])
+            print('[协议] 3:4主图缺失，使用1:1方图回退')
+
+        _diag(f'images: 1x1={len(image_paths["main_images_1x1"])} 3:4={len(image_paths["main_images"])} detail={len(image_paths["detail_images"])}')
+        if not image_paths['main_images_1x1']:
+            _diag('RETURN no main_images_1x1')
+            return api_error(msg=f'{record.name}: 未找到主图（请确保主图/800 或 主图 目录下有图片）')
+
+        # 类目映射：clazz → wazi_dict → leaf_id + 类目层级
+        _clazz_to_leaf = {
+            '0': {'leaf_id': 1000010268, 'name': '船袜',
+                  'first_cid': 1000003282, 'first_cname': '服装',
+                  'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                  'third_cid': 1000009597, 'third_cname': '袜子'},
+            '1': {'leaf_id': 1000010266, 'name': '短袜',
+                  'first_cid': 1000003282, 'first_cname': '服装',
+                  'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                  'third_cid': 1000009597, 'third_cname': '袜子'},
+            '2': {'leaf_id': 1000010267, 'name': '中筒袜',
+                  'first_cid': 1000003282, 'first_cname': '服装',
+                  'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                  'third_cid': 1000009597, 'third_cname': '袜子'},
+            '3': {'leaf_id': 1000010269, 'name': '长筒袜',
+                  'first_cid': 1000003282, 'first_cname': '服装',
+                  'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                  'third_cid': 1000009597, 'third_cname': '袜子'},
+            '4': {'leaf_id': 1000010270, 'name': '袜套',
+                  'first_cid': 1000003282, 'first_cname': '服装',
+                  'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                  'third_cid': 1000009597, 'third_cname': '袜子'},
+        }
+        raw_clazz = str(getattr(record, 'clazz', '') or '').strip()
+        clazz_info = _clazz_to_leaf.get(raw_clazz, _clazz_to_leaf['2'])  # 默认中筒袜
+        leaf_id = clazz_info['leaf_id']
+        _clazz_name = clazz_info.get('name', '未知')
+        print(f'[协议] clazz={raw_clazz} -> {_clazz_name} (leaf_id={leaf_id})')
 
         category_config = {
-            'category_leaf_id': record.clazz or 1000010267,
-            'first_cid': 1000003282, 'first_cname': '服装',
-            'second_cid': 1000009114, 'second_cname': '内衣裤袜',
-            'third_cid': 1000009597, 'third_cname': '袜子',
-            'fourth_cid': record.clazz or 1000010267, 'fourth_cname': '中筒袜',
+            'category_leaf_id': leaf_id,
+            'first_cid': clazz_info['first_cid'], 'first_cname': clazz_info['first_cname'],
+            'second_cid': clazz_info['second_cid'], 'second_cname': clazz_info['second_cname'],
+            'third_cid': clazz_info['third_cid'], 'third_cname': clazz_info['third_cname'],
+            'fourth_cid': leaf_id, 'fourth_cname': clazz_info['name'],
         }
 
         try:
-            from fxg_protocol_v2 import run as protocol_run
-            result = protocol_run(
-                category_leaf_id=category_config['category_leaf_id'],
+            from fxg_protocol_v4 import run as protocol_run_v4
+            print('[协议] fxg_protocol_v4 导入成功')
+            _diag('import fxg_protocol_v4 OK')
+        except ImportError as e:
+            import traceback as _tb
+            print(f'[协议] 导入失败: {e}')
+            _tb.print_exc()
+            _diag(f'import FAILED: {e}')
+            return api_error(msg=f'协议模块未找到: {e}')
+
+        _diag(f'calling protocol_run_v4: leaf={leaf_id} title_len={len(product_title)}')
+
+        # 构造 v4 兼容的步骤回调，同时更新 task state
+        def _v4_progress(pct, msg, step_name=None, steps=None):
+            _report(pct, msg)
+            if task_id and step_name:
+                with _upload_tasks_lock:
+                    t = _upload_tasks.get(task_id)
+                    if t:
+                        t['current_step'] = step_name
+                        t['progress'] = pct
+                        t['message'] = msg
+                        if steps:
+                            t['steps'] = [{
+                                'name': s.get('name', ''),
+                                'status': s.get('status', ''),
+                                'elapsed_ms': int(s.get('elapsed_ms', 0)),
+                                'summary': str(s.get('summary', '')),
+                            } for s in steps]
+
+        try:
+            result = protocol_run_v4(
+                category_leaf_id=int(category_config['category_leaf_id']),
                 product_data=product_data,
-                image_paths=image_paths,
+                image_paths={
+                    'main_3x4': image_paths.get('main_images', []),
+                    'main_1x1': image_paths.get('main_images_1x1', []),
+                    'detail': image_paths.get('detail_images', []),
+                },
                 category_config=category_config,
+                progress_callback=_v4_progress,
             )
-            if result.get('success'):
+            if isinstance(result, dict) and result.get('success'):
                 pid = result.get('data', {}).get('product_id', '')
-                results.append({'record': record.name, 'product_id': pid, 'status': 'ok'})
-                _report(20 + int(((idx+1)/total)*70), f'协议模式：{record.name} 发布成功 ({pid})')
+                results.append({'record': record.name, 'product_id': pid, 'status': 'ok',
+                                'path': result.get('data', {}).get('path', ''),
+                                'steps': result.get('steps', [])})
+                _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} OK ({pid[:16]})')
+                _diag(f'protocol_run_v4 OK: pid={pid}')
             else:
-                err = result.get('error', {})
-                results.append({'record': record.name, 'status': 'failed', 'error': err.get('message', str(err))})
-                err_msg = err.get('message', str(err))[:50]
-                _report(20 + int(((idx+1)/total)*70), f'协议模式：{record.name} 失败 ({err_msg})')
-        except ImportError:
-            return api_error(msg='协议流水线模块未找到，请确保 fxg_protocol_v2.py 在 protocol-research 目录中')
+                err = (result or {}).get('error', {}) if isinstance(result, dict) else {}
+                err_msg = err.get('message', str(err)[:50]) if isinstance(err, dict) else str(result)[:50]
+                results.append({'record': record.name, 'status': 'failed', 'error': err_msg,
+                                'steps': result.get('steps', [])})
+                _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} 失败')
+                _diag(f'protocol_run_v4 FAILED: {err_msg}')
         except Exception as e:
-            results.append({'record': record.name, 'status': 'failed', 'error': str(e)})
-            _report(20 + int(((idx+1)/total)*70), f'协议模式：{record.name} 异常 ({str(e)[:50]})')
+            import traceback as _tb
+            _tb.print_exc()
+            results.append({'record': record.name, 'status': 'failed', 'error': str(e)[:100]})
+            _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} 异常')
+            _diag(f'protocol_run_v4 EXCEPTION: {e}')
 
         # 协议模式下每次提交间隔2秒
         if idx < total - 1:
             time.sleep(2)
 
     success_count = sum(1 for r in results if r.get('status') == 'ok')
+    _diag(f'DONE: success_count={success_count}/{total} results={results}')
     return api_ok(msg=f'协议模式完成：{success_count}/{total} 个商品发布成功', data={'results': results})
 
 
@@ -4397,6 +4554,57 @@ def _run_upload_task(task_id: str, record_id=None, stop_before_submit=False):
                 t['message'] = '任务已被用户取消'
                 t['finished_at'] = datetime.now().isoformat()
                 return
+
+        # 读取发布模式: protocol / official / dom
+        user_settings = settings_manager.get_settings()
+        ac = settings_manager.normalize_automation_config(user_settings.automation_config)
+        publish_mode = ac.get('publish_mode', 'dom')
+
+        # 文件日志诊断 (_run_upload_task)
+        import sys as _rt_sys
+        _rt_log = os.path.join(os.path.dirname(_rt_sys.executable) if getattr(_rt_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__)), 'run_task_diag.log')
+        try:
+            with open(_rt_log, 'a', encoding='utf-8') as _f:
+                _f.write(f'{datetime.now().isoformat()} | _run_upload_task: publish_mode={publish_mode} record_id={record_id} task_id={task_id}\n')
+        except:
+            pass
+
+        if publish_mode == 'protocol':
+            def _protocol_progress_callback(pct, msg, step_name=None, steps=None):
+                with _upload_tasks_lock:
+                    t = _upload_tasks.get(task_id)
+                    if not t or t.get('cancelled'):
+                        return
+                    t['progress'] = max(0, min(int(pct), 99))
+                    t['message'] = str(msg)
+                    if step_name:
+                        t['current_step'] = str(step_name)
+                    if steps:
+                        t['steps'] = list(steps)
+
+            with _upload_tasks_lock:
+                t = _upload_tasks.get(task_id)
+                if t: t['message'] = '协议模式：正在初始化CDP会话'
+            result = _execute_protocol_flow(record_id=record_id, progress_callback=_protocol_progress_callback, task_id=task_id)
+            success = bool(result.get('success'))
+            message = str(result.get('msg') or '')
+            result_data = result.get('data') or {}
+            try:
+                with open(_rt_log, 'a', encoding='utf-8') as _f:
+                    _f.write(f'{datetime.now().isoformat()} | result: success={success} msg={message} data_keys={list(result_data.keys())}\n')
+            except:
+                pass
+            with _upload_tasks_lock:
+                t = _upload_tasks.get(task_id)
+                if t:
+                    t['progress'] = 100
+                    t['status'] = 'success' if success else 'failed'
+                    t['message'] = message
+                    t['current_step'] = '完成'
+                    t['error'] = None if success else (result.get('msg') or '协议模式失败')
+                    t['debug_report'] = result_data.get('results') if result_data else None
+                    t['finished_at'] = datetime.now().isoformat()
+            return
 
         def _task_progress_callback(progress, message):
             with _upload_tasks_lock:
@@ -5149,6 +5357,223 @@ def remove_automation_wash_label_tag_image():
     except Exception as e:
         traceback.print_exc()
         return api_error(f'删除水洗标/吊牌图失败: {str(e)}')
+
+
+@app.get('/debug/version-info')
+def debug_version_info():
+    """自检：确认协议模块是否可用"""
+    import sys as _sys
+    info = {
+        'has_protocol_module': False,
+        'has_protocol_flow_func': False,
+        'publish_mode': 'unknown',
+        'is_frozen': getattr(_sys, 'frozen', False),
+    }
+    # 检查 MEIPASS 路径
+    _base = _sys._MEIPASS if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+    info['base_path'] = _base
+    proto_dir = os.path.join(_base, 'protocol-research')
+    proto_file = os.path.join(proto_dir, 'fxg_protocol_v2.py')
+    errors_file = os.path.join(proto_dir, 'fxg_errors.py')
+    info['proto_dir_exists'] = os.path.isdir(proto_dir)
+    info['proto_file_exists'] = os.path.isfile(proto_file)
+    info['errors_file_exists'] = os.path.isfile(errors_file)
+    if os.path.isdir(proto_dir):
+        info['proto_dir_contents'] = os.listdir(proto_dir)
+    # 尝试带路径导入
+    _sys.path.insert(0, proto_dir)
+    try:
+        from fxg_protocol_v2 import run as protocol_run  # noqa: F811
+        info['has_protocol_module'] = True
+    except ImportError as e:
+        info['protocol_import_error'] = str(e)
+    info['has_protocol_flow_func'] = '_execute_protocol_flow' in globals() or '_execute_protocol_flow' in dir()
+    user_settings = settings_manager.get_settings()
+    ac = settings_manager.normalize_automation_config(user_settings.automation_config)
+    info['publish_mode'] = ac.get('publish_mode', 'dom')
+    return api_ok(msg='版本信息', data=info)
+
+
+@app.post('/debug/simple-flow')
+def debug_simple_flow():
+    """最简单的流程测试：调用 _execute_protocol_flow 并返回完整原始结果（不含大字段）"""
+    import json as _json, sys as _sys2
+    # 先检查路径
+    if getattr(_sys2, 'frozen', False):
+        _check_base = _sys2._MEIPASS
+    else:
+        _check_base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _check_proto = os.path.join(_check_base, 'protocol-research')
+    path_info = {
+        'frozen': getattr(_sys2, 'frozen', False),
+        'base': _check_base,
+        'proto_dir': _check_proto,
+        'proto_exists': os.path.isdir(_check_proto),
+        'fxg_v2_exists': os.path.isfile(os.path.join(_check_proto, 'fxg_protocol_v2.py')),
+        'sys_path_head': _sys2.path[:3],
+    }
+    try:
+        result = _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
+        safe = {
+            'path_info': path_info,
+            'success': result.get('success'),
+            'msg': str(result.get('msg')),
+            'has_data': result.get('data') is not None,
+            'data_type': str(type(result.get('data'))),
+            'data_keys': list(result.get('data', {}).keys()) if isinstance(result.get('data'), dict) else 'N/A',
+        }
+        if isinstance(result.get('data'), dict):
+            results = result['data'].get('results')
+            if isinstance(results, list):
+                safe['results_count'] = len(results)
+                safe['results_preview'] = [{'record': r.get('record'), 'status': r.get('status'), 'error': str(r.get('error'))[:100]} for r in results[:5]]
+        return api_ok(msg='简单流程测试完成', data=safe)
+    except Exception as e:
+        import traceback
+        return api_error(msg=f'异常: {e}', data={'path_info': path_info, 'traceback': traceback.format_exc()[-500:]})
+
+
+@app.post('/debug/protocol-flow-test')
+def debug_protocol_flow_test():
+    """直接调用 _execute_protocol_flow 并返回原始结果，用于诊断"""
+    import json as _json
+    result = _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
+    # 返回完整的 result 结构
+    return api_ok(msg='协议流程测试完成', data={
+        'raw_result': result,
+        'success': result.get('success'),
+        'msg': result.get('msg'),
+        'data_keys': list(result.get('data', {}).keys()) if result.get('data') else None,
+        'results_preview': str(result.get('data', {}).get('results', 'NO_DATA_KEY'))[:500],
+    })
+
+
+@app.post('/debug/protocol-test')
+def debug_protocol_test():
+    """直接测试协议流水线，返回详细步骤信息（不走任务队列）"""
+    import json as _json, sys as _sys
+    if getattr(_sys, 'frozen', False):
+        _base = _sys._MEIPASS
+    else:
+        # Dev mode: __file__ is in tauri-app/python-sidecar/app.py
+        # Go up 3 levels: python-sidecar → tauri-app → project-root(2.0)
+        _base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _sys.path.insert(0, os.path.join(_base, 'protocol-research'))
+
+    log_lines = []
+
+    def _log(msg):
+        log_lines.append(msg)
+        print(f'[协议测试] {msg}')
+
+    _log('=== 协议诊断开始 ===')
+
+    # Step 1: load records
+    record_list, load_error = _load_upload_records(None)
+    if load_error:
+        _log(f'加载记录失败: {load_error}')
+        return api_error(msg=load_error, data={'log': log_lines})
+    _log(f'加载到 {len(record_list)} 条记录')
+
+    if len(record_list) == 0:
+        _log('无待上传记录')
+        return api_error(msg='没有待上传数据', data={'log': log_lines})
+
+    record = record_list[0]
+    _log(f'记录: id={record.id} name={record.name} title={record.title} clazz={record.clazz} path={record.path}')
+
+    # Step 2: check images
+    image_paths = {'main_images': [], 'main_images_1x1': [], 'detail_images': []}
+    try:
+        main_pics = get_pic_list(record, '800')
+        image_paths['main_images_1x1'] = [p for p in main_pics[:5] if os.path.isfile(p)]
+        _log(f'800主图: {len(image_paths["main_images_1x1"])} 张')
+    except Exception as e:
+        _log(f'800主图失败: {e}')
+
+    try:
+        sub_pics = get_pic_list(record, '750')
+        image_paths['main_images'] = [p for p in sub_pics[:5] if os.path.isfile(p)]
+        _log(f'750主图: {len(image_paths["main_images"])} 张')
+    except Exception as e:
+        _log(f'750主图失败: {e}')
+
+    try:
+        detail_pics = get_detail_pic_list(record)
+        image_paths['detail_images'] = [p for p in detail_pics if os.path.isfile(p)]
+        _log(f'详情图: {len(image_paths["detail_images"])} 张')
+    except Exception as e:
+        _log(f'详情图失败: {e}')
+
+    if not image_paths['main_images'] and image_paths['main_images_1x1']:
+        image_paths['main_images'] = list(image_paths['main_images_1x1'])
+        _log('3:4主图缺失，使用1:1回退')
+
+    if not image_paths['main_images_1x1']:
+        _log('无主图可用，中断')
+        return api_error(msg=f'{record.name}: 未找到主图', data={'log': log_lines})
+
+    # Step 3: prepare product data
+    sku_list = _json.loads(record.content) if record.content else []
+    product_title = (record.title or '').strip() or (record.name or '').strip()
+    price_val = 9.9
+    for s in sku_list:
+        try:
+            p = float(s.get('price', 0))
+            if p > 0:
+                price_val = p
+                break
+        except: continue
+    _log(f'标题=[{product_title}] 价格={price_val} SKU数={len(sku_list)}')
+
+    # Step 4: category
+    raw_clazz = str(getattr(record, 'clazz', '') or '').strip()
+    _clazz_to_leaf = {
+        '0': 1000010268, '1': 1000010266, '2': 1000010267, '3': 1000010269, '4': 1000010270,
+    }
+    leaf_id = _clazz_to_leaf.get(raw_clazz, 1000010267)
+    _log(f'clazz={raw_clazz} -> leaf_id={leaf_id}')
+
+    # Step 5: import and run
+    try:
+        from fxg_protocol_v2 import run as protocol_run
+        _log('协议模块导入成功')
+    except ImportError as e:
+        import traceback as _tb
+        _log(f'协议模块导入失败: {e}')
+        _log(_tb.format_exc())
+        return api_error(msg=f'协议模块未找到: {e}', data={'log': log_lines})
+
+    try:
+        result = protocol_run(
+            category_leaf_id=leaf_id,
+            product_data={
+                'title': product_title,
+                'price': {'current': price_val},
+                'sku_info': [{'name': s.get('name', '默认')} for s in sku_list[:10]] if sku_list else [{'name': '默认'}],
+                'material': '棉75%;氨纶25%',
+            },
+            image_paths=image_paths,
+            category_config={
+                'category_leaf_id': leaf_id,
+                'first_cid': 1000003282, 'first_cname': '服装',
+                'second_cid': 1000009114, 'second_cname': '内衣裤袜',
+                'third_cid': 1000009597, 'third_cname': '袜子',
+                'fourth_cid': leaf_id, 'fourth_cname': '中筒袜',
+            },
+        )
+        _log(f'protocol_run 返回: success={result.get("success")}')
+        if not result.get('success'):
+            err = result.get('error', {})
+            _log(f'错误: code={err.get("code")} msg={err.get("message")}')
+        for s in result.get('steps', []):
+            _log(f'  步骤 [{s["status"]}] {s["name"]}: {s.get("summary", "")}')
+        return api_ok(msg='协议诊断完成', data={'result': result, 'log': log_lines})
+    except Exception as e:
+        import traceback as _tb
+        _log(f'protocol_run 异常: {e}')
+        _log(_tb.format_exc())
+        return api_error(msg=f'协议执行异常: {e}', data={'log': log_lines})
 
 
 @app.route('/settings/publish-mode', methods=['GET', 'POST'])
@@ -6828,48 +7253,62 @@ def _extract_capture_price_from_mapping(item, default: float = 0.0) -> float:
 
 
 def _extract_1688_context_snapshot(page):
+    """读取 1688 页面 window.context 提取完整商品数据。
+
+    数据路径 (2026-05 验证):
+      title       → globalModel.offerDetail.subject
+      main_images → globalModel.offerDetail.mainImageList
+      all_images  → globalModel.offerDetail.imageList
+      price       → globalModel.tradeModel.offerPriceModel.currentPrices[].price
+      sku_props   → globalModel.offerDetail.skuProps
+      sku_map     → globalModel.tradeModel.skuMap
+      detail_url  → data.description.fields.detailUrl
+    """
     return page.run_js(
         '''
         return (() => {
             const ctx = window.context || {};
             const data = ctx?.result?.data || {};
             const globalModel = ctx?.result?.global?.globalData?.model || {};
-            const gallery = data?.gallery?.fields || {};
-            const rootData = data?.Root?.fields?.dataJson || {};
             const offerDetail = globalModel?.offerDetail || {};
-            const tradeModel = rootData?.tradeModel || globalModel?.tradeModel || data?.tradeModel?.fields || {};
-            const fallbackPriceModel = data?.mainPrice?.fields?.priceModel || {};
-            const description = data?.description?.fields || {};
-            const rootImages = Array.isArray(rootData?.images)
-                ? rootData.images
-                    .map((item) => item?.fullPathImageURI || item?.imageURI || '')
-                    .filter(Boolean)
+            const tradeModel = globalModel?.tradeModel || {};
+
+            // 主图: offerDetail.mainImageList 优先
+            const mainImages = Array.isArray(offerDetail?.mainImageList)
+                ? offerDetail.mainImageList
                 : [];
+            // 全部图片: offerDetail.imageList
+            const allImages = Array.isArray(offerDetail?.imageList)
+                ? offerDetail.imageList
+                : [];
+            // 价格
+            const currentPrices = Array.isArray(tradeModel?.offerPriceModel?.currentPrices)
+                ? tradeModel.offerPriceModel.currentPrices
+                : [];
+            // SKU 属性定义
+            const skuProps = Array.isArray(offerDetail?.skuProps)
+                ? offerDetail.skuProps
+                : [];
+            // SKU 价格映射
+            const skuMap = Array.isArray(tradeModel?.skuMap)
+                ? tradeModel.skuMap
+                : [];
+            // 详情图
+            const detailUrl = data?.description?.fields?.detailUrl
+                || offerDetail?.detailUrl
+                || '';
 
             return {
-                title: gallery?.subject || rootData?.subject || offerDetail?.subject || '',
-                main_images: Array.isArray(gallery?.mainImage)
-                    ? gallery.mainImage
-                    : (Array.isArray(offerDetail?.mainImageList) ? offerDetail.mainImageList : []),
-                offer_images: Array.isArray(gallery?.offerImgList)
-                    ? gallery.offerImgList
-                    : (Array.isArray(offerDetail?.imageList) ? offerDetail.imageList : []),
-                root_images: rootImages,
-                current_prices: Array.isArray(tradeModel?.offerPriceModel?.currentPrices)
-                    ? tradeModel.offerPriceModel.currentPrices
-                    : (Array.isArray(fallbackPriceModel?.currentPrices) ? fallbackPriceModel.currentPrices : []),
+                title: offerDetail?.subject || '',
+                main_images: mainImages,
+                offer_images: allImages,
+                current_prices: currentPrices,
                 price_display: tradeModel?.priceDisplay || '',
-                sku_props: Array.isArray(rootData?.skuProps)
-                    ? rootData.skuProps
-                    : (
-                        Array.isArray(rootData?.skuModel?.skuProps)
-                            ? rootData.skuModel.skuProps
-                            : (Array.isArray(offerDetail?.skuProps) ? offerDetail.skuProps : [])
-                    ),
-                sku_map: Array.isArray(tradeModel?.skuMap) ? tradeModel.skuMap : [],
-                detail_url: description?.detailUrl || offerDetail?.detailUrl || '',
+                sku_props: skuProps,
+                sku_map: skuMap,
+                detail_url: detailUrl,
                 parameters: tradeModel?.offerIDatacenterSellInfo || {},
-                offer_id: rootData?.offerId || tradeModel?.offerId || gallery?.offerId || offerDetail?.offerId || '',
+                offer_id: offerDetail?.offerId || tradeModel?.offerId || '',
             };
         })()
         '''
@@ -7619,6 +8058,212 @@ def _extract_text_by_selectors(page, selectors: list) -> str:
         return ''
 
 
+def _extract_taobao_ice_data(page) -> dict:
+    """协议级淘宝/天猫商品提取 — 从 __ICE_APP_CONTEXT__ 直接读取 SSR JSON。
+    不依赖 CSS 选择器，不受页面 DOM 结构变化影响。
+
+    数据路径:
+      title     → res.item.title
+      images    → res.item.images
+      price     → res.skuCore.sku2info["0"].price.priceMoney (分)
+      sku_base  → res.skuBase.skus + res.skuBase.props
+      sku_core  → res.skuCore.sku2info (价格+库存)
+      detail    → res.item.pcADescUrl (需二次请求获取HTML)
+      params    → res.params.trackParams
+    """
+    result = page.run_js(r'''
+        return (function() {
+            var ice = window.__ICE_APP_CONTEXT__ || {};
+            var home = ((ice.loaderData || {}).home || {}).data;
+            if (!home) return JSON.stringify({error: 'no_ice_data'});
+            var res = home.res || {};
+            var item = res.item || {};
+            var skuCore = res.skuCore || {};
+            var skuBase = res.skuBase || {};
+
+            var data = {};
+
+            // 标题
+            data.title = item.title || '';
+
+            // 主图
+            data.images = (item.images || []).slice(0, 12);
+
+            // 价格 (从默认 SKU)
+            var defaultSkuInfo = (skuCore.sku2info || {})['0'] || {};
+            var priceMoney = ((defaultSkuInfo.price || {}).priceMoney) || '0';
+            data.price = parseInt(priceMoney, 10) || 0;  // 分
+
+            // SKU 列表
+            var skus = skuBase.skus || [];
+            var props = skuBase.props || [];
+            var sku2info = skuCore.sku2info || {};
+
+            // 构建 propId → propName 映射
+            var propMap = {};
+            (props || []).forEach(function(p) {
+                var values = p.values || [];
+                propMap[String(p.pid || '')] = {name: p.name || '', values: values};
+            });
+
+            // 构建 SKU 信息列表
+            data.skuList = [];
+            var seenNames = {};
+
+            (skus || []).forEach(function(sku) {
+                var propPath = sku.propPath || '';
+                var skuId = sku.skuId || '';
+                var info = sku2info[skuId] || {};
+
+                // 解析 propPath 获取属性名称
+                var parts = propPath.split(';');
+                var nameParts = [];
+                parts.forEach(function(part) {
+                    if (!part) return;
+                    var kv = part.split(':');
+                    var pid = kv[0], vid = kv[1];
+                    var prop = propMap[pid];
+                    if (prop) {
+                        var valObj = (prop.values || []).filter(function(v) { return String(v.vid || '') === vid; })[0];
+                        nameParts.push(valObj ? valObj.name : vid);
+                    }
+                });
+
+                var skuName = nameParts.join('+') || '默认';
+                var skuPrice = ((info.price || {}).priceMoney) || priceMoney;
+                var skuImage = '';
+
+                // 去重
+                if (seenNames[skuName]) return;
+                seenNames[skuName] = true;
+
+                data.skuList.push({
+                    skuId: skuId,
+                    name: skuName,
+                    price: parseInt(skuPrice, 10) || 0,
+                    image: skuImage,
+                    quantity: parseInt(info.quantity || '0', 10) || 0
+                });
+            });
+
+            // 如果没有解析到 SKU，创建默认条目
+            if (!data.skuList.length) {
+                data.skuList.push({
+                    skuId: '0',
+                    name: '默认',
+                    price: data.price,
+                    image: '',
+                    quantity: 0
+                });
+            }
+
+            // 详情图 URL (需二次请求)
+            data.pcDescUrl = item.pcADescUrl || item.pcDescUrl || '';
+
+            // 属性参数
+            data.params = res.params || {};
+
+            return JSON.stringify(data);
+        })()
+    ''')
+
+    product_data = {
+        'title': '',
+        'price': {'current': 0, 'original': None, 'currency': 'CNY'},
+        'main_images': [],
+        'detail_images': [],
+        'sku_info': [],
+        'parameters': [],
+    }
+
+    try:
+        ice_data = json.loads(result) if isinstance(result, str) else (result or {})
+
+        if ice_data.get('error'):
+            app.logger.warning(f"ICE提取失败: {ice_data['error']}")
+            return None  # 返回 None 让调用者回退到 DOM
+
+        product_data['title'] = str(ice_data.get('title') or '').strip()
+        if ice_data.get('price'):
+            product_data['price']['current'] = float(ice_data['price']) / 100.0
+
+        product_data['main_images'] = [
+            u if u.startswith('http') else ('https:' + u)
+            for u in (ice_data.get('images') or [])
+        ]
+
+        for sku in ice_data.get('skuList') or []:
+            product_data['sku_info'].append({
+                'type': '规格',
+                'name': str(sku.get('name') or '默认').strip(),
+                'image': str(sku.get('image') or '').strip(),
+                'price': float(sku.get('price', 0)) / 100.0 if sku.get('price') else product_data['price']['current'],
+                'index': len(product_data['sku_info']) + 1,
+            })
+
+        if not product_data['sku_info']:
+            product_data['sku_info'].append({
+                'type': '规格', 'name': '默认', 'image': '',
+                'price': product_data['price']['current'], 'index': 1,
+            })
+
+        # 参数
+        params = ice_data.get('params') or {}
+        product_data['parameters'] = [
+            {'name': str(k), 'value': str(v)}
+            for k, v in (params.get('trackParams') or {}).items()
+        ]
+
+        # 详情图 URL (需要二次请求 desc 页面提取图片)
+        pc_desc_url = ice_data.get('pcDescUrl', '')
+        if pc_desc_url and not pc_desc_url.startswith('http'):
+            pc_desc_url = 'https:' + pc_desc_url
+
+        if pc_desc_url and product_data['title']:
+            product_data['_pc_desc_url'] = pc_desc_url
+
+        app.logger.info(
+            f"ICE提取成功: title={bool(product_data['title'])} "
+            f"price={product_data['price']['current']} "
+            f"images={len(product_data['main_images'])} "
+            f"skus={len(product_data['sku_info'])}"
+        )
+        return product_data
+
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        app.logger.warning(f"ICE数据解析失败: {e}")
+        return None
+
+
+def _fetch_taobao_desc_images(page, pc_desc_url: str) -> list:
+    """从淘宝 PC 详情页 URL 提取详情图列表（二次HTTP请求）。"""
+    import requests as _requests
+    try:
+        if not pc_desc_url.startswith('http'):
+            pc_desc_url = 'https:' + pc_desc_url
+        resp = _requests.get(pc_desc_url, timeout=15, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120',
+            'Referer': 'https://item.taobao.com/',
+        })
+        html = resp.text
+        # 详情页的图片通常在 <img> 标签或 JSON 数据中
+        import re as _re
+        img_urls = _re.findall(r'(?:src|data-src)=["\']([^"\']*(?:alicdn|taobaocdn|gw\.alicdn)[^"\']*)["\']', html)
+        result = []
+        for u in img_urls[:80]:
+            u = u.strip()
+            if not u or 's.gif' in u or 'placeholder' in u.lower():
+                continue
+            if not u.startswith('http'):
+                u = 'https:' + u
+            if u not in result:
+                result.append(u)
+        return result
+    except Exception as e:
+        app.logger.warning(f"详情图提取失败: {e}")
+        return []
+
+
 def _extract_taobao_tmall_product_snapshot(page, product_url: str) -> dict:
     product_id = _extract_capture_product_id(product_url)
     product_data = {
@@ -7997,8 +8642,12 @@ def _parse_ice_from_html(html: str) -> dict:
 
 
 def _capture_taobao_tmall_product_for_store(page, product_url: str, options: dict, mtop_cache: dict = None) -> dict:
-    """纯协议采集：Python HTTP + 正则提取 priceMoney。
-    零页面跳转、零 DOM 操作。"""
+    """协议优先采集：ICE SSR数据 → HTTP正则 → DOM 三级回退。
+
+    Tier 1: _extract_taobao_ice_data() — 读 __ICE_APP_CONTEXT__ JSON (最稳定)
+    Tier 2: Python HTTP + 正则 — 不依赖浏览器页面状态
+    Tier 3: DOM snapshot — 浏览器 CSS 选择器 (兜底)
+    """
 
     product_id = _extract_capture_product_id(product_url)
     cached = (mtop_cache or {}).get(product_id) if product_id else None
@@ -8013,60 +8662,79 @@ def _capture_taobao_tmall_product_for_store(page, product_url: str, options: dic
         'parameters': [],
     }
 
-    # 1. Python HTTP 获取单品页 HTML
-    cookie_str = _get_browser_cookies_for_http()
-    import re as _re
-    from urllib.request import Request as _Req, urlopen as _urlopen
+    # ==== Tier 1: ICE 协议提取 (优先，不依赖 DOM 选择器) ====
+    ice_data = None
+    try:
+        ice_data = _extract_taobao_ice_data(page)
+    except Exception as e:
+        app.logger.warning(f"ICE提取异常: {e}")
 
-    html = ''
-    if cookie_str:
-        try:
-            req = _Req(product_url, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
-                'Cookie': cookie_str,
-                'Accept': 'text/html,application/xhtml+xml',
-                'Referer': 'https://www.taobao.com/',
-            })
-            resp = _urlopen(req, timeout=15)
-            html = resp.read().decode('utf-8', errors='replace')
-        except Exception as e:
-            app.logger.warning(f"HTTP请求失败: {e}")
-
-    # 2. 正则直接从 HTML 提取关键字段
-    if html and len(html) > 10000:
-        # 标题
-        title_m = _re.search(r'<title>([^<]+)</title>', html)
-        if title_m and title_m.group(1) != '商品详情':
-            product_data['title'] = title_m.group(1)
-
-        # 价格: 直接匹配 "priceMoney":"1680"
-        pm_m = _re.search(r'"priceMoney"\s*:\s*"(\d+)"', html)
-        if pm_m:
+    if ice_data and ice_data.get('title') and ice_data['price']['current'] > 0:
+        product_data.update(ice_data)
+        # 如果有详情图URL，异步获取详情图
+        pc_desc_url = ice_data.pop('_pc_desc_url', '')
+        if pc_desc_url:
             try:
-                product_data['price']['current'] = float(int(pm_m.group(1)) / 100)
-            except (ValueError, TypeError):
-                pass
+                detail_imgs = _fetch_taobao_desc_images(page, pc_desc_url)
+                if detail_imgs:
+                    product_data['detail_images'] = detail_imgs
+            except Exception as e:
+                app.logger.warning(f"详情图获取失败: {e}")
+        app.logger.info(f"ICE提取成功: title={product_data['title'][:30]} price={product_data['price']['current']} imgs={len(product_data['main_images'])} skus={len(product_data['sku_info'])} details={len(product_data['detail_images'])}")
+    else:
+        app.logger.info(f"ICE提取数据不完整，回退到HTTP正则+DOM")
 
-        # 主图: 匹配 "images":["//img.alicdn.com/...",...]
-        img_m = _re.search(r'"images"\s*:\s*\[(.*?)\]', html)
-        if img_m:
-            img_urls = _re.findall(r'"((?:https?:)?//[^"]+)"', img_m.group(1))
-            for u in img_urls:
-                url = u if u.startswith('http') else ('https:' + u)
-                if url not in product_data['main_images']:
-                    product_data['main_images'].append(url)
-
-        app.logger.info(f"REGEX: html={len(html)}b price={product_data['price']['current']} imgs={len(product_data['main_images'])} title={bool(title_m)}")
-
-    # 3. 如果 HTTP/正则失败，回退到 page.get()
+    # ==== Tier 2: HTTP 正则 (ICE 失败时回退) ====
     if not product_data['price']['current']:
-        app.logger.info(f"REGEX回退到page.get: {product_url[:60]}")
-        try:
-            page.get(product_url, timeout=30)
-            system_time.sleep(1.5)
-        except Exception as e:
-            raise Exception(f'页面导航失败: {e}')
-        product_data = _extract_taobao_tmall_product_snapshot(page, product_url)
+        import re as _re
+        from urllib.request import Request as _Req, urlopen as _urlopen
+
+        cookie_str = _get_browser_cookies_for_http()
+        html = ''
+        if cookie_str:
+            try:
+                req = _Req(product_url, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
+                    'Cookie': cookie_str,
+                    'Accept': 'text/html,application/xhtml+xml',
+                    'Referer': 'https://www.taobao.com/',
+                })
+                resp = _urlopen(req, timeout=15)
+                html = resp.read().decode('utf-8', errors='replace')
+            except Exception as e:
+                app.logger.warning(f"HTTP请求失败: {e}")
+
+        if html and len(html) > 10000:
+            title_m = _re.search(r'<title>([^<]+)</title>', html)
+            if title_m and title_m.group(1) != '商品详情':
+                product_data['title'] = title_m.group(1)
+
+            pm_m = _re.search(r'"priceMoney"\s*:\s*"(\d+)"', html)
+            if pm_m:
+                try:
+                    product_data['price']['current'] = float(int(pm_m.group(1)) / 100)
+                except (ValueError, TypeError):
+                    pass
+
+            img_m = _re.search(r'"images"\s*:\s*\[(.*?)\]', html)
+            if img_m:
+                img_urls = _re.findall(r'"((?:https?:)?//[^"]+)"', img_m.group(1))
+                for u in img_urls:
+                    url = u if u.startswith('http') else ('https:' + u)
+                    if url not in product_data['main_images']:
+                        product_data['main_images'].append(url)
+
+            app.logger.info(f"REGEX: html={len(html)}b price={product_data['price']['current']} imgs={len(product_data['main_images'])} title={bool(title_m)}")
+
+        # ==== Tier 3: DOM 回退 (HTTP 也失败时) ====
+        if not product_data['price']['current']:
+            app.logger.info(f"REGEX回退到page.get: {product_url[:60]}")
+            try:
+                page.get(product_url, timeout=30)
+                system_time.sleep(1.5)
+            except Exception as e:
+                raise Exception(f'页面导航失败: {e}')
+            product_data = _extract_taobao_tmall_product_snapshot(page, product_url)
 
     # 4. mtop 缓存补充
     if cached:
@@ -8407,7 +9075,17 @@ def start_capture():
 
                 # 访问目标页面
                 app.logger.info(f"🔗 正在访问: {task_url}")
-                page.get(task_url, timeout=30)
+                nav_ok = True
+                try:
+                    page.get(task_url, timeout=30)
+                except Exception as nav_err:
+                    err_str = str(nav_err)
+                    if '刷新' in err_str or 'refresh' in err_str.lower():
+                        app.logger.warning(f"页面刷新/重定向 ({err_str[:80]})，等待页面稳定...")
+                        system_time.sleep(5)
+                        nav_ok = False
+                    else:
+                        raise
                 current_url = page.url
                 app.logger.info(f"📍 当前URL: {current_url[:100]}")
                 
@@ -8532,13 +9210,85 @@ def start_capture():
                     app.logger.error(f"❌ 提取商品ID失败: {e}")
                     extracted_product_id = f"product_{int(system_time.time())}"
                 
-                # 🔧 纯协议采集单品（HTTP+正则提取ICE数据，零DOM、零滚动）
+                # 🔧 协议采集单品
                 capture_tasks[task_id]['progress'] = 50
-                capture_tasks[task_id]['message'] = '正在提取商品信息（纯协议）...'
-                app.logger.info(f"📊 进度: 50% - 正在提取商品信息（纯协议）...")
+                capture_tasks[task_id]['message'] = '正在提取商品信息...'
+                app.logger.info(f"📊 进度: 50% - 正在提取商品信息...")
 
-                # 统一使用纯协议采集（与店铺采集相同逻辑）
-                product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+                if is_1688:
+                    # ==== 1688 协议提取：window.context 数据 ====
+                    app.logger.info("🔍 1688协议提取: 读取 window.context")
+                    product_data = {
+                        'product_id': _extract_capture_product_id(task_url),
+                        'title': '',
+                        'price': {'current': 0, 'original': None, 'currency': 'CNY'},
+                        'main_images': [],
+                        'detail_images': [],
+                        'sku_info': [],
+                        'parameters': [],
+                    }
+                    try:
+                        snapshot = _extract_1688_context_snapshot(page)
+                        if snapshot and snapshot.get('title'):
+                            product_data['title'] = str(snapshot['title']).strip()
+
+                            # 主图
+                            main_imgs = snapshot.get('main_images') or snapshot.get('offer_images') or []
+                            product_data['main_images'] = [
+                                u if u.startswith('http') else ('https:' + u)
+                                for u in main_imgs[:12]
+                            ]
+
+                            # 价格
+                            current_prices = snapshot.get('current_prices') or []
+                            if current_prices:
+                                try:
+                                    price_val = float(current_prices[0].get('price', '0'))
+                                    product_data['price']['current'] = price_val
+                                except (ValueError, TypeError, KeyError):
+                                    pass
+
+                            # SKU
+                            default_price = product_data['price']['current']
+                            from urllib.request import urlopen as _urlopen_1688
+                            sku_info = _build_1688_sku_info(snapshot, None, default_price)
+                            if sku_info:
+                                product_data['sku_info'] = sku_info
+                            elif not product_data['sku_info']:
+                                product_data['sku_info'].append({
+                                    'type': '规格', 'name': '默认', 'image': '',
+                                    'price': default_price, 'index': 1,
+                                })
+
+                            # 详情图
+                            detail_url = snapshot.get('detail_url', '')
+                            if detail_url:
+                                detail_imgs = _collect_1688_detail_images(detail_url)
+                                if detail_imgs:
+                                    product_data['detail_images'] = detail_imgs
+
+                            # 参数
+                            parameters = _extract_1688_parameters(snapshot)
+                            if parameters:
+                                product_data['parameters'] = parameters
+
+                            app.logger.info(
+                                f"1688协议提取成功: title={bool(product_data['title'])} "
+                                f"price={product_data['price']['current']} "
+                                f"images={len(product_data['main_images'])} "
+                                f"skus={len(product_data['sku_info'])} "
+                                f"details={len(product_data['detail_images'])}"
+                            )
+                        else:
+                            app.logger.warning("1688 window.context 数据不可用，使用DOM回退")
+                            product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+                    except Exception as e:
+                        app.logger.error(f"1688协议提取失败: {e}，回退到通用采集")
+                        product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+                else:
+                    # ==== 淘宝/天猫: ICE+HTTP+DOM 三级回退 ====
+                    product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+
                 extracted_product_id = product_data.get('product_id', f"product_{int(system_time.time())}")
                 platform_context = {}
                 # 🔧 下载图片（改进版：按文件夹分类）
