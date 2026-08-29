@@ -1,0 +1,3 @@
+# Static CRT was tested here, but it is not compatible with the current local
+# toolchain/runtime combination in this workspace. Keep this file reserved for
+# future Rust target overrides.

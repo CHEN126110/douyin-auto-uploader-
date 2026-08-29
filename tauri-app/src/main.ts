@@ -1,10 +1,11 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import ElementPlus from "element-plus";
-import * as ElementPlusIconsVue from "@element-plus/icons-vue";
-// @ts-ignore - element-plus locale module
-import zhCn from "element-plus/dist/locale/zh-cn.mjs";
-import "element-plus/dist/index.css";
+// 函数式 API 样式：ElMessage/ElMessageBox/ElLoading 在代码里手写 import 调用，
+// ElementPlusResolver 只对它自己生成的 import 注入样式，手写 import 的样式不会自动注入，
+// 必须在此手动引入（项目未用 ElNotification）。组件样式由 unplugin-vue-components 按需注入。
+import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/message-box/style/css";
+import "element-plus/es/components/loading/style/css";
 import "./styles/variables.scss";
 import "./styles/global.scss";
 import "./styles/components.scss";
@@ -77,18 +78,9 @@ window.addEventListener("unhandledrejection", (event) => {
 
 const app = createApp(App);
 
-// 注册所有Element Plus图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component);
-}
-
 try {
   app.use(createPinia());
   app.use(router);
-  app.use(ElementPlus, {
-    locale: zhCn,
-    size: "default",
-  });
   app.mount("#app");
 } catch (error) {
   showFatal("应用初始化失败", error);

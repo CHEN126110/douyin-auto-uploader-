@@ -15,6 +15,57 @@ from typing import List, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+
+SOURCE_BRAND_PREFIX_PATTERN = re.compile(
+    r"^[A-Za-z][A-Za-z0-9&.\-]{1,24}[\u4e00-\u9fff]{1,8}"
+    r"(?:\s+|(?=布标|袜|短袜|中筒袜|长筒袜|船袜|女|男))"
+)
+
+KNOWN_SOURCE_BRAND_MARKERS = ("songmu", "淞木", "kikisocks")
+
+
+def sanitize_no_brand_title_text(title: str) -> str:
+    """Remove brand-like source markers from title text under the no-brand policy."""
+    text = str(title or "").strip()
+    if not text:
+        return ""
+
+    for marker in KNOWN_SOURCE_BRAND_MARKERS:
+        text = re.sub(re.escape(marker), "", text, flags=re.IGNORECASE)
+    text = SOURCE_BRAND_PREFIX_PATTERN.sub("", text)
+    for marker in ("官方旗舰店", "旗舰店", "专卖店", "专营店", "无品牌", "品牌"):
+        text = text.replace(marker, "")
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"^[\s\"'“”‘’·:：,，\-_/]+|[\s\"'“”‘’·:：,，\-_/]+$", "", text)
+    return text.strip()
+
+
+def audit_no_brand_title_text(title: str) -> Dict[str, object]:
+    """Audit title text for source-brand residue while preserving style terms like jk/ins."""
+    text = str(title or "").strip()
+    normalized = re.sub(r"^[\s\"'“”‘’·:：,，\-_/]+", "", text)
+    lower_text = normalized.lower()
+    risk_flags: List[str] = []
+
+    if SOURCE_BRAND_PREFIX_PATTERN.search(normalized):
+        risk_flags.append("source_brand_like_prefix")
+    if any(marker in lower_text for marker in KNOWN_SOURCE_BRAND_MARKERS):
+        risk_flags.append("known_source_brand_marker")
+
+    unique_flags = list(dict.fromkeys(risk_flags))
+    return {
+        "has_risk": bool(unique_flags),
+        "risk_flags": unique_flags,
+        "original_title": text,
+        "sanitized_title": sanitize_no_brand_title_text(text),
+        "brand_policy": {
+            "required_value": "无品牌",
+            "title_use_brand_name_required": False,
+            "reason": "当前无品牌资质，安全稳健优先",
+        },
+    }
+
+
 @dataclass
 class ProductInfo:
     """产品信息"""
@@ -65,9 +116,9 @@ class ProfessionalTitleGenerator:
         
         # 标题结构模板 (确保60字符)
         self.title_templates = [
-            # 模板1: 品牌+产品+功能+场景+卖点 (约50-60字符)
-            "{brand}{product}{function}{scene}{selling_point}{quantity}",
-            # 模板2: 卖点+品质+产品+功能+数量 (约50-60字符)  
+            # 模板1: 产品+功能+场景+卖点+数量 (约50-60字符)
+            "{product}{function}{scene}{selling_point}{quantity}",
+            # 模板2: 卖点+品质+产品+功能+数量 (约50-60字符)
             "{selling_point}{quality}{product}{function}{gender}{quantity}",
             # 模板3: 季节+功能+产品+场景+特色 (约50-60字符)
             "{season}{function}{product}{scene}{quality}{special}",
@@ -255,6 +306,7 @@ class ProfessionalTitleGenerator:
     
     def _adjust_title_length(self, title: str, target_length: int = 60) -> str:
         """调整标题长度到目标长度"""
+        title = sanitize_no_brand_title_text(title)
         current_length = len(title)
         
         if current_length == target_length:

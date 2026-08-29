@@ -34,6 +34,126 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
+// 以下 Ops* 运营闭环类型当前没有前端消费方（实际消费方是 mcp-server/core.js），有意保留待运营面板 UI 落地。
+export interface OpsAiPolicy {
+  external_ai_disabled: boolean;
+  decision_source: string;
+  blocked_providers: string[];
+}
+
+export interface OpsBrowserSnapshot {
+  status?: string;
+  has_browser?: boolean;
+  url?: string;
+  title?: string;
+  source?: string;
+  error?: string;
+}
+
+export interface OpsShopMetrics {
+  snapshot_date?: string;
+  net_profit?: number;
+  net_profit_verified?: boolean;
+  gross_sales?: number;
+  orders_count?: number;
+  refund_amount?: number;
+  after_sale_amount?: number;
+  promotion_cost?: number;
+  experience_score?: number;
+  source?: string;
+  status?: string;
+  notes?: string;
+  raw_payload?: Record<string, unknown>;
+}
+
+export interface OpsDailySnapshot extends OpsShopMetrics {
+  id: number;
+  target_net_profit: number;
+  raw_payload_json?: string;
+  created_at?: string;
+}
+
+export interface OpsDailyPlan {
+  snapshot_date: string;
+  target_net_profit: number;
+  net_profit: number;
+  net_profit_verified: boolean;
+  profit_gap: number | null;
+  orders_count: number;
+  gross_sales: number;
+  promotion_cost: number;
+  refund_amount: number;
+  after_sale_amount: number;
+  experience_score?: number;
+  ready_products: number;
+  blocked_products: number;
+  low_stock_products: number;
+  actions: string[];
+  ai_policy: OpsAiPolicy;
+}
+
+export interface OpsSyncShopMetricsPayload {
+  metrics?: OpsShopMetrics;
+  source?: string;
+  browser?: OpsBrowserSnapshot;
+  audit_metrics?: Array<Record<string, unknown>>;
+  raw_payload?: Record<string, unknown>;
+}
+
+export interface OpsSyncShopMetricsResult {
+  synced: boolean;
+  snapshot?: OpsDailySnapshot;
+  daily_plan?: OpsDailyPlan;
+  browser?: OpsBrowserSnapshot;
+  audit_rows?: Array<Record<string, unknown>>;
+  ai_policy: OpsAiPolicy;
+}
+
+export interface OpsProductCandidate {
+  record_id: number;
+  title: string;
+  sku_count: number;
+  sku_price_min: number;
+  sku_price_max: number;
+  goods_cost_source: string;
+  goods_cost: number;
+  recommended_sale_price: number;
+  target_net_margin: number;
+  evaluation: Record<string, unknown>;
+  stock_plan: Record<string, unknown>;
+  warnings: string[];
+}
+
+export interface OpsDailyReview {
+  snapshot_date: string;
+  target_net_profit: number;
+  goal_status: "achieved" | "below_target" | "not_verified";
+  verified_net_profit_achieved: boolean;
+  daily_plan: OpsDailyPlan;
+  top_candidate?: OpsProductCandidate | null;
+  candidate_count: number;
+  actions: string[];
+  ai_policy: OpsAiPolicy;
+}
+
+export interface OpsCandidatePricingApplyResult {
+  dry_run: boolean;
+  saved: boolean;
+  record: Record<string, unknown>;
+  candidate: OpsProductCandidate;
+  pricing: {
+    sale_price: number;
+    updated_count: number;
+    changes: Array<Record<string, unknown>>;
+  };
+  current_sku_prices: Array<{
+    name?: string;
+    price?: number;
+    ops_goods_cost?: number;
+  }>;
+  ai_policy: OpsAiPolicy;
+}
+
 export interface ProductListResponse extends ApiResponse {
   products: Product[];
 }
@@ -85,6 +205,12 @@ export interface CaptureStatus {
   status: "pending" | "running" | "completed" | "failed";
   progress: number;
   message: string;
+  error_code?: string;
+  can_retry?: boolean;
+  user_action_required?: boolean;
+  action_hint?: string;
+  platform?: string;
+  capture_mode?: string;
   current_step?: string;
   result?: {
     title: string;
@@ -98,6 +224,12 @@ export interface CaptureHistoryTask {
   status: "pending" | "running" | "completed" | "failed";
   progress: number;
   message: string;
+  error_code?: string;
+  can_retry?: boolean;
+  user_action_required?: boolean;
+  action_hint?: string;
+  platform?: string;
+  capture_mode?: string;
   created_at?: string;
 }
 
@@ -154,6 +286,15 @@ export interface MaterialComposition {
   percentage: number;
 }
 
+// 采集方式：dom = 读浏览器渲染数据；protocol = 拦截网络请求（预览版）
+export type CaptureMode = "dom" | "protocol";
+
+// 采集偏好：分平台独立保存。1688 和 淘宝/天猫 是两个不同平台，互不交叉。
+export interface CapturePreferences {
+  alibaba_1688_mode: CaptureMode;
+  taobao_tmall_mode: CaptureMode;
+}
+
 export interface AutomationConfig {
   shipping_template: string;
   shipping_templates: string[];
@@ -163,93 +304,11 @@ export interface AutomationConfig {
   runtime_category_keyword?: string | null;
   runtime_matrix_keywords?: string | null;
   publish_mode?: string;  // "protocol" | "official" | "dom"
-  capture_mode?: string;  // "protocol" | "dom" — 采集方式
+  /** 旧字段：单一采集方式，保留兼容，不再使用 */
+  capture_mode?: string;
+  /** 采集偏好：分平台独立配置（1688 和 淘宝/天猫 是两个独立平台，互不交叉） */
+  capture_preferences?: CapturePreferences;
 }
-
-export interface FxgRuntimeCategory {
-  path?: string;
-  leafId?: string;
-  enable?: boolean;
-  industry_status?: number;
-}
-
-export interface FxgRuntimeValueOption {
-  value_id?: string;
-  value_name?: string;
-  disabled?: boolean;
-}
-
-export interface FxgRuntimeCategoryProperty {
-  id: string;
-  label: string;
-  required?: boolean;
-  optionCount?: number;
-  optionPreview?: FxgRuntimeValueOption[];
-  hasMeasureTemplates?: boolean;
-}
-
-export interface FxgRuntimeSpecAxis {
-  id?: string;
-  cp_id?: number;
-  name: string;
-}
-
-export interface FxgRuntimeSkuColumn {
-  key: string;
-  label: string;
-  required?: boolean;
-  hidden?: boolean;
-}
-
-export interface FxgRuntimePublishControl {
-  key?: string;
-  label?: string;
-  required?: boolean;
-  optionCount?: number;
-  optionPreview?: FxgRuntimeValueOption[];
-  optionNames?: string[];
-}
-
-export interface FxgRuntimeFreight {
-  ok: boolean;
-  optionCount: number;
-  options?: FxgRuntimeValueOption[];
-  currentValue?: string;
-  hasCurrentValue?: boolean;
-  error?: string | null;
-}
-
-export interface FxgRuntimeSettingsReadiness {
-  canRenderCategorySettings?: boolean;
-  canRenderFreightSettings?: boolean;
-  issues?: string[];
-}
-
-export interface FxgRuntimeOptionsFields<TSpecAxis = FxgRuntimeSpecAxis[]> {
-  ok: boolean;
-  category?: FxgRuntimeCategory;
-  requiredCategoryProperties?: FxgRuntimeCategoryProperty[];
-  specAxes?: TSpecAxis;
-  skuColumns?: FxgRuntimeSkuColumn[];
-  publishControls?: Record<string, FxgRuntimePublishControl>;
-  freight?: FxgRuntimeFreight | null;
-  settingsReadiness?: FxgRuntimeSettingsReadiness;
-}
-
-export interface FxgRuntimeOptions extends FxgRuntimeOptionsFields {}
-
-export interface FxgRuntimeOptionsMatrixEntry extends FxgRuntimeOptionsFields<string[]> {
-  keyword: string;
-  error?: string;
-}
-
-export interface FxgRuntimeOptionsMatrix {
-  ok: boolean;
-  categoryKeywords: string[];
-  entries: FxgRuntimeOptionsMatrixEntry[];
-}
-
-export type FxgRuntimeOptionsResult = FxgRuntimeOptions | FxgRuntimeOptionsMatrix;
 
 export interface Settings {
   pricing_config?: SettingsPricingConfig;

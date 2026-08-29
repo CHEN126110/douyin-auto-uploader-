@@ -10,7 +10,6 @@ const emit = defineEmits<{
 }>();
 
 const productStore = useProductStore();
-const isDragOver = ref(false);
 
 const url = ref("");
 const isCapturing = ref(false);
@@ -30,8 +29,11 @@ let lastExternalTaskNoticeId: string | null = null;
 const MAX_POLLING_RETRIES = 5;
 const POLLING_INTERVAL_MS = 2000;
 const EXTERNAL_TASK_DISCOVERY_MS = 5000;
-const SUPPORTED_CAPTURE_HOST_SUFFIXES = [".taobao.com", ".tmall.com", ".1688.com"];
-const SUPPORTED_CAPTURE_HOSTS = new Set(["taobao.com", "tmall.com", "1688.com"]);
+const SUPPORTED_CAPTURE_HOST_SUFFIXES = [".taobao.com", ".tmall.com", ".1688.com", ".tb.cn"];
+const SUPPORTED_CAPTURE_HOSTS = new Set(["taobao.com", "tmall.com", "1688.com", "tb.cn", "m.tb.cn"]);
+const CAPTURE_URL_CANDIDATE_PATTERN =
+  /https?:\/\/[^\s<>"'，。；;、]+|(?:tb\.cn|(?:[a-z0-9-]+\.)+(?:taobao\.com|tmall\.com|1688\.com|tb\.cn))[^\s<>"'，。；;、]*/i;
+const TRAILING_URL_PUNCTUATION_PATTERN = /[\s<>"'，。；;、!！)）\]】》]+$/;
 
 type CaptureUiStatus = "error" | "success" | "processing" | "idle";
 
@@ -55,15 +57,25 @@ function getTaskStatusStep(status: CaptureHistoryTask["status"]): string {
   }
 }
 
-function validateUrl(inputUrl: string): { valid: boolean; message: string } {
+function normalizeCaptureInput(inputUrl: string): string {
+  const trimmed = inputUrl.trim();
+  const matched = trimmed.match(CAPTURE_URL_CANDIDATE_PATTERN)?.[0] || trimmed;
+  const candidate = matched.replace(TRAILING_URL_PUNCTUATION_PATTERN, "");
+  if (!candidate) return "";
+  if (candidate.startsWith("//")) return `https:${candidate}`;
+  return /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+}
+
+function validateUrl(inputUrl: string): { valid: boolean; message: string; normalizedUrl?: string } {
   if (!inputUrl.trim()) {
     return { valid: false, message: "请输入商品或店铺链接" };
   }
 
+  const normalizedUrl = normalizeCaptureInput(inputUrl);
   let host = "";
   try {
-    const url = new URL(inputUrl.startsWith("http") ? inputUrl : `https://${inputUrl}`);
-    host = url.hostname.toLowerCase();
+    const parsedUrl = new URL(normalizedUrl);
+    host = parsedUrl.hostname.toLowerCase();
   } catch {
     return { valid: false, message: "无效的链接格式" };
   }
@@ -76,7 +88,7 @@ function validateUrl(inputUrl: string): { valid: boolean; message: string } {
     return { valid: false, message: "仅支持淘宝/天猫/1688 商品链接，或淘宝/天猫店铺链接" };
   }
 
-  return { valid: true, message: "" };
+  return { valid: true, message: "", normalizedUrl };
 }
 
 function applyTaskSnapshot(task: CaptureHistoryTask): void {
@@ -164,13 +176,17 @@ function handleExternalCompleted(response: CaptureStatus) {
   }, 3000);
 }
 
-function handleFailed(message: string, allowRetry = taskOrigin.value === "local") {
+function handleFailed(
+  message: string,
+  allowRetry = taskOrigin.value === "local",
+  stepLabel = "失败"
+) {
   stopPolling();
   isCapturing.value = false;
   hasFailed.value = true;
   canRetry.value = allowRetry;
   statusText.value = message;
-  statusStep.value = "失败";
+  statusStep.value = stepLabel;
   ElMessage.error({
     message,
     duration: 5000,
@@ -207,14 +223,17 @@ function startPolling() {
           await handleCompleted(response);
         }
       } else if (response.status === "failed") {
-        handleFailed(response.message || "采集失败");
+        const failedMessage = response.action_hint || response.message || "采集失败";
+        const retryable = response.can_retry ?? taskOrigin.value === "local";
+        const stepLabel = response.user_action_required ? "需要人工处理" : "失败";
+        handleFailed(failedMessage, retryable, stepLabel);
       }
     } catch (error) {
       console.error("查询采集状态失败:", error);
       pollingRetryCount += 1;
 
       if (pollingRetryCount >= MAX_POLLING_RETRIES) {
-        handleFailed("连接服务超时，请检查后端服务是否正常运行");
+        handleFailed("网络连接超时，请稍后重试");
       }
     }
   }, POLLING_INTERVAL_MS);
@@ -251,7 +270,7 @@ async function syncExternalCaptureTask(options: { silent?: boolean } = {}) {
     if (isNewExternalTask && lastExternalTaskNoticeId !== activeTask.task_id) {
       lastExternalTaskNoticeId = activeTask.task_id;
       if (!options.silent) {
-        ElMessage.info("检测到外部采集任务，已同步前端状态");
+        ElMessage.info("检测到正在进行的采集任务，已自动接上进度");
       }
     }
 
@@ -295,7 +314,7 @@ async function startCapture() {
   progress.value = 5;
 
   try {
-    const response = await api.startCapture(url.value, {
+    const response = await api.startCapture(validation.normalizedUrl || url.value, {
       download_images: true,
       extract_sku: true,
       extract_params: true,
@@ -358,20 +377,6 @@ function retryCapture() {
   canRetry.value = false;
   void startCapture();
 }
-
-function handleDrop(_event: DragEvent) {
-  isDragOver.value = false;
-}
-
-function handleZoneDrag(event: DragEvent) {
-  isDragOver.value = true;
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "copy";
-  }
-}
-
-void handleDrop;
-void handleZoneDrag;
 
 async function openFolderPicker() {
   await productStore.importFromPicker();
@@ -476,16 +481,6 @@ onUnmounted(() => {
   &:hover {
     background: rgba(92, 124, 250, 0.05);
     border-color: #4263eb;
-  }
-
-  &.drag-over {
-    background: rgba(92, 124, 250, 0.1);
-    border-color: #4263eb;
-    border-style: solid;
-
-    .drop-text {
-      color: #4263eb;
-    }
   }
 
   .drop-text {

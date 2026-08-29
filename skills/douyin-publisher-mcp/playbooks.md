@@ -53,17 +53,17 @@ Use this playbook for "智能填充", title generation, or price generation.
    - Missing category: use `list_category_options`, then `set_product_category`.
    - Duplicate SKU names or direct field problems: use `get_product_detail`, then `update_product_info`.
 4. Re-run `validate_product_for_upload`.
-5. Only when readiness is clean, call `start_validated_upload`.
+5. Only when readiness is clean, call `start_validated_upload` for safe preflight; it defaults to `stopBeforeSubmit=true`.
 6. Poll `get_upload_status` until the task reaches `success`, `failed`, or `cancelled`.
 7. Use `list_upload_tasks` when another upload may already be in progress.
 8. Use `cancel_upload` if the user explicitly asks to stop the upload.
 
-Prefer this playbook over raw `start_upload`.
+Prefer this playbook over raw `start_upload`. Do not run final publish/submit unless the user explicitly confirms that irreversible action and the call includes both `stopBeforeSubmit=false` and `confirmFinalPublish=true`.
 
 ## Playbook 6: Batch Upload Or Legacy Upload Scope
 
 1. Use `start_batch_upload` when the user explicitly chooses several record IDs.
-2. Use `start_upload(allProducts=true)` only when the user clearly wants the legacy all-products behavior.
+2. Use `start_upload(allProducts=true)` only when the user clearly wants the legacy all-products behavior and a safe preflight.
 3. Use `list_upload_tasks` and `get_upload_status` to coordinate progress.
 
 Do not default to batch behavior.
@@ -76,7 +76,28 @@ Do not default to batch behavior.
 
 Typical uses include automation settings, pricing settings, and material composition updates.
 
-## Playbook 8: Browser Troubleshooting
+## Playbook 8: Daily Operations Loop
+
+1. Call `ops_health_check` before reading or writing operations snapshots.
+2. Use `ops_read_shop_metrics_cdp` to inspect visible FXG dashboard text when Chrome is running with CDP.
+3. Use `ops_read_strategy_signals_cdp` on the product diagnosis page or other logged-in FXG page when product quality, refund reasons, opportunity words, or risk signals are needed.
+4. Call `ops_sync_strategy_signals` to persist diagnosis snapshots and create local open product issue actions.
+5. Call `ops_product_issue_actions` to read open and in-progress diagnosis actions.
+6. Call `ops_update_product_issue_action` whenever an action is started, completed, skipped, or blocked, with a short evidence-backed note.
+7. Call `ops_sync_product_record_mappings` before material fixes so online product IDs are mapped to local Records conservatively.
+8. Call `ops_product_record_mappings` to inspect whether each action is `matched` or `unmatched`.
+9. Call `ops_sync_shop_metrics` with real browser/CDP/manual metrics only; do not invent GMV, orders, refunds, promotion cost, or net profit. If no explicit net profit label is visible, keep `net_profit_verified=false`.
+10. Call `ops_evaluate_product` after the offline goods cost is known.
+11. Call `ops_product_candidates` to rank local product records by recommended sale price, net profit, target order count, and trial stock.
+12. Call `ops_apply_candidate_pricing` with `dryRun=true` first, then `dryRun=false` only when the local product price must be corrected before upload. It preserves `ops_goods_cost` for later profit review.
+13. Call `ops_stock_plan` before publishing so the user can prepare a conservative local stock batch.
+14. Call `ops_daily_plan` to produce the daily action list.
+15. Call `ops_daily_review` to combine the latest real shop snapshot with local product candidates and produce the practical operating actions.
+16. Use `ops_ai_policy` whenever the user asks whether external AI is disabled.
+
+This loop is local and Codex-only. Do not use OpenAI, Ollama, DeepSeek, Claude, or third-party model APIs from the app.
+
+## Playbook 9: Browser Troubleshooting
 
 1. Start with `get_last_browser_debug_report` when an upload failed and the automation already captured a report.
 2. Use `debug_browser_ensure` to create or reconnect to the shared browser session.
@@ -92,6 +113,6 @@ Keep browser debug tools as a troubleshooting path, not the normal operating flo
 - Prefer read tools first, then mutating tools only when the user wants persisted changes.
 - Prefer single-product scope.
 - Prefer `skuPath` over `skuName` in `quantityOverrides`.
-- Prefer `start_validated_upload` over raw upload start for one product.
+- Prefer `start_validated_upload` over raw upload start for one product; it defaults to safe preflight.
 - Treat validation failures as business blockers, not transport failures.
 - Use OpenClaw `mcporter` commands when operating inside OpenClaw, but keep the workflow logic identical to other MCP clients.

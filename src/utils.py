@@ -20,6 +20,7 @@ import traceback
 import psutil
 from PIL import Image
 from contextlib import contextmanager
+from src.runtime_paths import get_data_dir, get_runtime_root
 
 # 导入Chrome管理器
 try:
@@ -381,11 +382,774 @@ def _find_material_composition_area(new_tab, preferred_field_id=None):
             areas = new_tab.eles(f'xpath://div[@attr-field-id="{field_id}"]', timeout=0.6)
         except Exception:
             areas = []
+        # 收集所有含 combobox 的候选区域
+        candidates_with_combos = []
         for candidate in areas:
             if _material_comboboxes(candidate, timeout=0.08):
+                candidates_with_combos.append(candidate)
+        if not candidates_with_combos:
+            continue
+        # 抖店 UI 改版后，外层包装 div 与真正输入区 div 共享同一 attr-field-id，
+        # 且外层嵌套内层（外层包含水洗标上传区，内层才是 aurora-select 材质输入区）。
+        # 优先选不嵌套其他同 field-id div 的候选（即最内层），避免误选外层包装。
+        for candidate in candidates_with_combos:
+            try:
+                nested_same_field = candidate.eles(
+                    f'xpath:.//div[@attr-field-id="{field_id}"]', timeout=0.05
+                )
+            except Exception:
+                nested_same_field = []
+            if not nested_same_field:
                 return field_id, candidate
+        # 兜底：按 DOM 顺序取最后一个（通常是最内层）
+        return field_id, candidates_with_combos[-1]
     return None, None
 
+
+def _is_aurora_composition_select(area):
+    """检测是否为抖店 UI 改版后的 aurora-select-multiple 成分选择组件。
+
+    新版发布页（task_name: 商品创建组件曝光_UI改版）将面料材质字段从"多个 combobox +
+    添加材质按钮"改为 aurora-dorami-composition-select 多选组件。
+    """
+    try:
+        return bool(area.eles(
+            'xpath:.//div[contains(@class,"aurora-select-multiple")'
+            ' or contains(@class,"aurora-dorami-composition-select")'
+            ' or contains(@class,"composition-select")]',
+            timeout=0.1,
+        ))
+    except Exception:
+        return False
+
+
+# aurora-select 下拉选项选择器模板（{name} 占位符运行时替换）
+# 顺序：先精确（title 属性 / 专用 label span），后模糊（normalize-space 文本匹配）
+_AURORA_OPTION_SELECTORS = [
+    # title 属性最精确：每个 option 的 title 即材质名
+    'xpath://div[contains(@class,"aurora-select-item-option") and @title="{name}"]',
+    # 专用 label span（aurora-dorami-composition-select-option-label）
+    'xpath://span[contains(@class,"aurora-dorami-composition-select-option-label") and normalize-space(.)="{name}"]/ancestor::div[contains(@class,"aurora-select-item-option")][1]',
+    'xpath://div[contains(@class,"aurora-select-item") and not(contains(@class,"disabled")) and normalize-space(.)="{name}"]',
+    'xpath://div[contains(@class,"aurora-select-item") and not(contains(@class,"disabled")) and contains(normalize-space(.),"{name}")]',
+    'xpath://div[contains(@class,"aurora-select-item")]//span[normalize-space(.)="{name}"]/ancestor::div[contains(@class,"aurora-select-item")][1]',
+    'xpath://div[contains(@class,"aurora-select-item-option-content") and normalize-space(.)="{name}"]',
+    # 兼容旧版选项类名
+    'xpath://div[contains(@class,"ecom-g-select-item-option-content") and normalize-space(.)="{name}"]',
+    'xpath://div[contains(@class,"ecom-g-select-item-option-content") and contains(normalize-space(.),"{name}")]',
+]
+
+
+def _fill_aurora_composition_select(new_tab, area, materials, field_id):
+    """适配 aurora-select-multiple 多选组件的面料材质填写。
+
+    新版抖店发布页面料材质字段使用单一 combobox 的多选组件，不再需要"添加材质"
+    按钮。流程：逐个选择材质 → 选择后动态出现的占比输入框填写百分比。
+    """
+    # 平台材质列表采集：只在本次填写的第一个材质、下拉刚打开时采一次
+    harvested_options = False
+    try:
+        harvest_category_text = get_current_category_text(new_tab)
+    except Exception:
+        harvest_category_text = ''
+
+    # 找到 aurora-select 容器（点击容器而非 readonly input 才能打开下拉）
+    select_container = None
+    try:
+        select_container = area.ele(
+            'xpath:.//div[contains(@class,"aurora-select") and contains(@class,"aurora-select-multiple")]',
+            timeout=0.5,
+        )
+    except Exception:
+        pass
+    if not select_container:
+        logger.info('aurora-select: 未找到 aurora-select-multiple 容器')
+        return False
+
+    try:
+        select_container.scroll.to_center()
+    except Exception:
+        pass
+
+    # 清除已有材质标签（aurora-select 的 tag 关闭按钮）
+    try:
+        close_btns = area.eles(
+            'xpath:.//span[contains(@class,"aurora-select-selection-tag")]'
+            '//span[@role="img" and contains(@class,"close")]'
+            ' | .//span[contains(@class,"styles_del__")]',
+            timeout=0.2,
+        ) or []
+        for btn in close_btns:
+            try:
+                btn.click(by_js=True)
+                _time.sleep(0.05)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    selected_count = 0
+    for idx, (material_name, _ratio) in enumerate(materials):
+        name = str(material_name).strip()
+        if not name:
+            continue
+
+        # 非首个材质：先关闭下拉再重新打开，确保搜索框重置为空。
+        # 多选下拉选完一个材质后仍保持打开，搜索框残留上一个搜索词，
+        # React 受控组件会阻止覆写已有值，必须关闭重开来重置搜索框。
+        if idx > 0:
+            try:
+                new_tab.run_js(
+                    'var el=document.querySelector(".aurora-dorami-composition-select-select.aurora-select")'
+                    '||document.querySelector(".aurora-select.aurora-select-multiple");'
+                    'if(el&&el.classList.contains("aurora-select-open")){'
+                    'el.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));}'
+                )
+            except Exception:
+                pass
+            _time.sleep(0.2)
+            # 兜底：点击容器切换关闭
+            try:
+                still_open = new_tab.run_js(
+                    'var el=document.querySelector(".aurora-dorami-composition-select-select.aurora-select")'
+                    '||document.querySelector(".aurora-select.aurora-select-multiple");'
+                    'return el?el.classList.contains("aurora-select-open"):false;'
+                )
+                if still_open:
+                    select_container.click()
+                    _time.sleep(0.15)
+            except Exception:
+                pass
+
+        # 点击 aurora-select 容器打开下拉（native → by_js → JS event dispatch 三级兜底）
+        dropdown_open = False
+        for click_attempt in range(3):
+            try:
+                if click_attempt == 0:
+                    select_container.click()
+                elif click_attempt == 1:
+                    select_container.click(by_js=True)
+                else:
+                    new_tab.run_js(
+                        'var el=document.querySelector(".aurora-dorami-composition-select-select.aurora-select")'
+                        '||document.querySelector(".aurora-select.aurora-select-multiple");'
+                        'if(el){el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));'
+                        'el.dispatchEvent(new MouseEvent("click",{bubbles:true}));}'
+                    )
+            except Exception:
+                pass
+            _time.sleep(0.15)
+            try:
+                # 优先检查容器是否进入 aurora-select-open 状态（最准确），
+                # 再兜底检查下拉选项是否已渲染。
+                is_open = new_tab.run_js(
+                    'var el=document.querySelector(".aurora-dorami-composition-select-select.aurora-select")'
+                    '||document.querySelector(".aurora-select.aurora-select-multiple");'
+                    'return el?el.classList.contains("aurora-select-open"):false;'
+                )
+                if is_open:
+                    dropdown_open = True
+                    break
+                if bool(new_tab.ele('xpath://div[contains(@class,"aurora-select-item") and not(contains(@class,"disabled"))]', timeout=0.3)):
+                    dropdown_open = True
+                    break
+            except Exception:
+                pass
+
+        if not dropdown_open:
+            logger.info(f'aurora-select: 材质[{idx}] {name} 无法打开下拉')
+            continue
+
+        # 下拉刚打开、搜索框还没输入内容——这是采集平台完整材质列表的唯一干净时机
+        # （一旦输入搜索词，读到的就只是过滤子集）。每次填写只采一次。
+        if not harvested_options:
+            harvested_options = True
+            harvest_platform_material_options(new_tab, harvest_category_text)
+
+        # 输入搜索过滤：下拉 popup 内有独立的搜索框（placeholder="搜索材质"，
+        # class 含 aurora-dorami-composition-select-search，type="text"），
+        # 注意不是 aurora-select-input（那只是触发器/combobox）。搜索框在 portal 中，
+        # 必须用全局定位。列表是 rc-virtual-list 虚拟滚动，必须靠搜索过滤才能命中目标材质。
+        search_selectors = [
+            'xpath://input[@placeholder="搜索材质"]',
+            'xpath://input[contains(@class,"aurora-dorami-composition-select-search")]',
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-option-pane")]//input[@type="text"]',
+        ]
+        search_el = None
+        for ss in search_selectors:
+            try:
+                search_el = new_tab.ele(ss, timeout=0.3)
+            except Exception:
+                search_el = None
+            if search_el:
+                break
+
+        search_entered = False
+        if not search_el:
+            logger.info(f'aurora-select: 未找到下拉内搜索框[{idx}] {name}')
+        else:
+            # 选取可见的搜索框：多选场景下选完第一个材质后下拉可能重渲染，
+            # DOM 中可能残留旧的隐藏搜索框，优先取最后一个可见的。
+            try:
+                vis_idx = new_tab.run_js(
+                    'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                    'var idx=-1;'
+                    'for(var i=els.length-1;i>=0;i--){'
+                    'if(els[i].offsetParent!==null||els[i].getBoundingClientRect().width>0){idx=i;break;}}'
+                    'return idx;'
+                )
+                if isinstance(vis_idx, int) and vis_idx >= 0:
+                    try:
+                        all_search = new_tab.eles('xpath://input[contains(@class,"aurora-dorami-composition-select-search")]', timeout=0.1)
+                        if all_search and vis_idx < len(all_search):
+                            search_el = all_search[vis_idx]
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 方法 1：React 原生 value setter（受控组件标准绕过方式）
+            # 先清空旧搜索词再设新值：React 受控组件在已有值时直接覆写会被
+            # 同步 re-render 重置为内部旧 state，必须先清空触发 state 归零再设新值。
+            try:
+                js_clear_then_set = (
+                    'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                    'var el=null;'
+                    'for(var i=els.length-1;i>=0;i--){'
+                    'if(els[i].offsetParent!==null||els[i].getBoundingClientRect().width>0){el=els[i];break;}}'
+                    'if(!el&&els.length){el=els[els.length-1];}'
+                    'if(el){el.focus();'
+                    'var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;'
+                    'setter.call(el,"");'
+                    'el.dispatchEvent(new Event("input",{bubbles:true}));'
+                    'setter.call(el,' + repr(name) + ');'
+                    'el.dispatchEvent(new Event("input",{bubbles:true}));'
+                    'el.dispatchEvent(new Event("change",{bubbles:true}));'
+                    'return el.value;} return null;'
+                )
+                _v = new_tab.run_js(js_clear_then_set)
+                if _v == name:
+                    search_entered = True
+                    logger.info(f'aurora-select: 搜索过滤已输入[{idx}] {name} (React setter, value={_v!r})')
+                elif _v:
+                    logger.info(f'aurora-select: React setter 返回值不匹配[{idx}] 期望={name} 实际={_v!r}，将尝试 DrissionPage')
+            except Exception as e:
+                logger.info(f'aurora-select: React setter 输入失败[{idx}] {name}: {e}')
+
+            # 方法 2：DrissionPage 模拟键盘输入（先清空再输入，真实键盘事件能被 React 正确处理）
+            if not search_entered:
+                try:
+                    search_el.click()
+                    _time.sleep(0.05)
+                    # 用 React setter 先清空
+                    try:
+                        new_tab.run_js(
+                            'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                            'var el=null;'
+                            'for(var i=els.length-1;i>=0;i--){'
+                            'if(els[i].offsetParent!==null){el=els[i];break;}}'
+                            'if(!el&&els.length){el=els[els.length-1];}'
+                            'if(el){var s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;'
+                            's.call(el,"");el.dispatchEvent(new Event("input",{bubbles:true}));}'
+                        )
+                    except Exception:
+                        pass
+                    _time.sleep(0.15)
+                    try:
+                        search_el.clear()
+                    except Exception:
+                        pass
+                    search_el.input(name)
+                    _time.sleep(0.1)
+                    _cur_v = str(search_el.attr('value') or '')
+                    if _cur_v == name:
+                        search_entered = True
+                        logger.info(f'aurora-select: 搜索过滤已输入[{idx}] {name} (DrissionPage input)')
+                    else:
+                        logger.info(f'aurora-select: DrissionPage input 后值不匹配[{idx}] 期望={name} 实际={_cur_v!r}')
+                except Exception as e:
+                    logger.info(f'aurora-select: DrissionPage input 失败[{idx}] {name}: {e}')
+
+            # 方法 3：两步 React setter（清空 → 等待 React 处理 → 设新值）
+            if not search_entered:
+                try:
+                    new_tab.run_js(
+                        'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                        'var el=null;'
+                        'for(var i=els.length-1;i>=0;i--){'
+                        'if(els[i].offsetParent!==null){el=els[i];break;}}'
+                        'if(!el&&els.length){el=els[els.length-1];}'
+                        'if(el){var s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;'
+                        's.call(el,"");el.dispatchEvent(new Event("input",{bubbles:true}));}'
+                    )
+                    _time.sleep(0.25)  # 让 React 处理清空、state 归零
+                    new_tab.run_js(
+                        'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                        'var el=null;'
+                        'for(var i=els.length-1;i>=0;i--){'
+                        'if(els[i].offsetParent!==null){el=els[i];break;}}'
+                        'if(!el&&els.length){el=els[els.length-1];}'
+                        'if(el){el.focus();'
+                        'var s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;'
+                        's.call(el,' + repr(name) + ');'
+                        'el.dispatchEvent(new Event("input",{bubbles:true}));'
+                        'el.dispatchEvent(new Event("change",{bubbles:true}));'
+                        'return el.value;} return null;'
+                    )
+                    _v3 = new_tab.run_js(
+                        'var els=document.querySelectorAll("input.aurora-dorami-composition-select-search");'
+                        'var el=null;'
+                        'for(var i=els.length-1;i>=0;i--){'
+                        'if(els[i].offsetParent!==null){el=els[i];break;}}'
+                        'return el?el.value:null;'
+                    )
+                    if _v3 == name:
+                        search_entered = True
+                        logger.info(f'aurora-select: 搜索过滤已输入[{idx}] {name} (两步 setter, value={_v3!r})')
+                    else:
+                        logger.info(f'aurora-select: 两步 setter 后值仍不匹配[{idx}] 期望={name} 实际={_v3!r}')
+                except Exception as e:
+                    logger.info(f'aurora-select: 两步 setter 失败[{idx}] {name}: {e}')
+
+        # 等待 React 过滤 + 虚拟列表重渲染
+        _time.sleep(0.5)
+        option_clicked = False
+        for selector_template in _AURORA_OPTION_SELECTORS:
+            selector = selector_template.format(name=name)
+            try:
+                opt = new_tab.ele(selector, timeout=0.3)
+            except Exception:
+                opt = None
+            if not opt:
+                continue
+            try:
+                opt.click(by_js=True)
+                option_clicked = True
+                break
+            except Exception:
+                continue
+
+        if not option_clicked:
+            # 回车确认（搜索过滤后第一项可能是目标）；锁定下拉内搜索框
+            try:
+                fallback_search = new_tab.ele('xpath://input[contains(@class,"aurora-dorami-composition-select-search")]', timeout=0.1)
+                if fallback_search:
+                    fallback_search.input('\n')
+            except Exception:
+                pass
+            _time.sleep(0.3)
+            for selector_template in _AURORA_OPTION_SELECTORS:
+                selector = selector_template.format(name=name)
+                try:
+                    opt = new_tab.ele(selector, timeout=0.2)
+                except Exception:
+                    opt = None
+                if opt:
+                    try:
+                        opt.click(by_js=True)
+                        option_clicked = True
+                        break
+                    except Exception:
+                        continue
+
+        # 诊断：仍未点击时，dump 当前可见选项的 title，便于定位是搜索未生效还是选项缺失
+        if not option_clicked:
+            try:
+                visible_titles = new_tab.run_js(
+                    'var opts=document.querySelectorAll(".aurora-select-item-option[title]");'
+                    'var arr=[];for(var i=0;i<opts.length;i++){arr.push(opts[i].getAttribute("title"));}'
+                    'var inp=document.querySelector("input.aurora-dorami-composition-select-search")'
+                    '||document.querySelector("input[placeholder=\\"搜索材质\\"]");'
+                    'return JSON.stringify({count:opts.length,titles:arr,searchValue:inp?inp.value:null});'
+                )
+                logger.info(f'aurora-select: 诊断[{idx}] {name} 未命中。可见选项: {visible_titles}')
+            except Exception:
+                pass
+
+        if option_clicked:
+            selected_count += 1
+            logger.info(f'aurora-select: 已选择材质[{idx}] {name}')
+        else:
+            logger.info(f'aurora-select: 未能选择材质[{idx}] {name}（下拉选项未找到）')
+        _time.sleep(0.15)
+
+    if selected_count == 0:
+        logger.info('aurora-select: 未成功选择任何材质')
+        return False
+
+    # 填写占比：选择材质后占比输入框动态出现（在 aurora-select-content 的 tag 内）
+    _time.sleep(0.5)
+    # 占比输入框在 aurora-dorami-composition-select-selected-list 内（已选材质列表），
+    # 该容器在 aurora-dorami-composition-select-wrapper 下，与 attr-field-id 区域同级或
+    # 外层，不在 area 范围内，必须用全局定位。
+    # 诊断：dump composition-select-wrapper 内所有 input 元素
+    try:
+        inputs_diag = new_tab.run_js(
+            'var w=document.querySelector(".aurora-dorami-composition-select-wrapper");'
+            'if(!w){return JSON.stringify({error:"wrapper not found"});}'
+            'var inps=w.querySelectorAll("input");'
+            'var arr=[];for(var i=0;i<inps.length;i++){'
+            'arr.push({i:i,type:inps[i].type,role:inps[i].getAttribute("role")||"",'
+            'cls:inps[i].className,ph:inps[i].placeholder||"",'
+            'val:inps[i].value||"",vis:inps[i].offsetParent!==null});}'
+            'var selList=document.querySelector(".aurora-dorami-composition-select-selected-list");'
+            'return JSON.stringify({inputs:arr,selectedListHTML:selList?selList.innerHTML.substring(0,800):"none"});'
+        )
+        logger.info(f'aurora-select: 占比诊断 wrapper内input: {inputs_diag}')
+    except Exception as _diag_e:
+        logger.info(f'aurora-select: 占比诊断异常: {_diag_e}')
+
+    ratio_filled = 0
+    for idx, (material_name, ratio) in enumerate(materials):
+        name = str(material_name).strip()
+        ratio_val = '' if (len(materials[idx]) < 2 or not ratio) else str(ratio).strip()
+        if not ratio_val:
+            continue
+        # 占比输入框在 selected-list 内（全局定位），排除 combobox/搜索框。
+        # 多个选择器兜底：优先 selected-list 内的 text input，再扩展到 wrapper 内。
+        ratio_selectors = [
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[not(@role="combobox") and not(contains(@class,"aurora-select-input")) and not(contains(@class,"search"))]',
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[@type="text"]',
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-wrapper")]//input[not(@role="combobox") and not(contains(@class,"aurora-select-input")) and not(contains(@class,"search"))]',
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[not(@role="combobox")]',
+        ]
+        ratio_inputs = []
+        for rs in ratio_selectors:
+            try:
+                ratio_inputs = new_tab.eles(rs, timeout=0.4) or []
+            except Exception:
+                ratio_inputs = []
+            if ratio_inputs:
+                break
+        logger.info(f'aurora-select: 占比输入框搜索[{idx}] 找到{len(ratio_inputs)}个')
+        if idx < len(ratio_inputs):
+            try:
+                ratio_inputs[idx].clear()
+                ratio_inputs[idx].input(ratio_val)
+                _wait_until(
+                    lambda i=idx: str(ratio_inputs[i].attr('value') or '').strip() == ratio_val,
+                    timeout=0.5, interval=0.05,
+                )
+                ratio_filled += 1
+                logger.info(f'aurora-select: 已填写占比[{idx}] {name}={ratio_val}')
+            except Exception as e:
+                logger.info(f'aurora-select: 填写占比[{idx}] {name} 失败: {e}')
+        else:
+            logger.info(f'aurora-select: 占比输入框[{idx}]未找到（共{len(ratio_inputs)}个）')
+
+    if ratio_filled == 0 and any(len(m) > 1 and m[1] for m in materials):
+        logger.info('aurora-select: 未填写任何占比，占比输入框结构可能需要进一步适配')
+
+    # 收起下拉面板：它是覆盖面很大的浮层，留着会压住品牌、适用性别等相邻字段，
+    # 使随后的 select_text 点击落到面板上，表现为「品牌未能设置为无品牌」。
+    close_aurora_composition_panel(new_tab)
+
+    return selected_count > 0
+
+
+_AURORA_PANEL_OPEN_JS = r"""
+const wrapper = document.querySelector('.aurora-dorami-composition-select-wrapper');
+const openInWrapper = wrapper && wrapper.querySelector('[class*="select-open"]');
+const dropdowns = Array.prototype.slice.call(
+    document.querySelectorAll('[class*="aurora"][class*="dropdown"], [class*="aurora"][class*="popup"]')
+);
+const visible = dropdowns.filter(function (node) {
+    if (/hidden/.test(node.className || '')) return false;
+    if (!(node.offsetParent || node.getClientRects().length > 0)) return false;
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+});
+return !!(openInWrapper || visible.length > 0);
+"""
+
+_AURORA_PANEL_DISMISS_JS = r"""
+document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+const active = document.activeElement;
+if (active) {
+    active.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+    if (typeof active.blur === 'function') active.blur();
+}
+// rc-select/aurora 关闭下拉靠的是 mousedown，不是 click
+const opts = { bubbles: true, cancelable: true, clientX: 4, clientY: 4 };
+document.body.dispatchEvent(new MouseEvent('mousedown', opts));
+document.body.dispatchEvent(new MouseEvent('mouseup', opts));
+return true;
+"""
+
+
+def _is_aurora_panel_open(new_tab) -> bool:
+    try:
+        return bool(new_tab.run_js(_AURORA_PANEL_OPEN_JS))
+    except Exception:
+        return False
+
+
+def close_aurora_composition_panel(new_tab, timeout: float = 1.2) -> bool:
+    """关闭 aurora 材质多选面板。
+
+    该面板是覆盖面很大的浮层：填完材质若不关闭，它会压住同屏的品牌、适用性别
+    等字段，导致后续 select_text('品牌', '无品牌') 的点击落在面板上而不是目标字段，
+    表现为「品牌未能设置为无品牌」。填写路径结束时必须显式收起它。
+    """
+    if not _is_aurora_panel_open(new_tab):
+        return True
+    for _ in range(3):
+        try:
+            new_tab.run_js(_AURORA_PANEL_DISMISS_JS)
+        except Exception:
+            pass
+        if _wait_until(lambda: not _is_aurora_panel_open(new_tab), timeout=timeout / 3, interval=0.04):
+            return True
+    still_open = _is_aurora_panel_open(new_tab)
+    if still_open:
+        print('⚠ 面料材质下拉面板未能关闭，可能遮挡品牌等相邻字段')
+    return not still_open
+
+
+_NO_BRAND_SHORTCUT_JS = r"""
+const field = document.querySelector('[attr-field-id="品牌"]');
+if (!field) return { present: false, reason: 'field missing' };
+const item = field.querySelector('[class*="select-selection-item"]');
+const current = item ? (item.getAttribute('title') || item.innerText || '').trim() : '';
+// 品牌框下方的提示行「可选无品牌。未找到需要的品牌？去申请」里的快捷链接。
+// 排除 selection-item 自身，否则设置成功后会把已选值当成链接。
+const nodes = Array.prototype.slice.call(field.querySelectorAll('a, span, div, em, b'));
+const links = nodes.filter(function (node) {
+    if (node.children.length !== 0) return false;
+    const text = (node.innerText || node.textContent || '').trim();
+    if (text !== '无品牌') return false;
+    if (/selection-item/.test(node.className || '')) return false;
+    if (node.closest('[class*="select-selection-item"]')) return false;
+    return !!(node.offsetParent || node.getClientRects().length > 0);
+});
+if (!links.length) return { present: true, current: current, hasShortcut: false };
+const target = links[0];
+const rect = target.getBoundingClientRect();
+return {
+    present: true,
+    current: current,
+    hasShortcut: true,
+    x: Math.round(rect.left + rect.width / 2),
+    y: Math.round(rect.top + rect.height / 2),
+};
+"""
+
+_CLICK_NO_BRAND_SHORTCUT_JS = r"""
+const field = document.querySelector('[attr-field-id="品牌"]');
+if (!field) return false;
+const nodes = Array.prototype.slice.call(field.querySelectorAll('a, span, div, em, b'));
+const target = nodes.filter(function (node) {
+    if (node.children.length !== 0) return false;
+    const text = (node.innerText || node.textContent || '').trim();
+    if (text !== '无品牌') return false;
+    if (/selection-item/.test(node.className || '')) return false;
+    if (node.closest('[class*="select-selection-item"]')) return false;
+    return !!(node.offsetParent || node.getClientRects().length > 0);
+})[0];
+if (!target) return false;
+target.scrollIntoView({ block: 'center' });
+const opts = { bubbles: true, cancelable: true, view: window };
+target.dispatchEvent(new MouseEvent('mousedown', opts));
+target.dispatchEvent(new MouseEvent('mouseup', opts));
+target.click();
+return true;
+"""
+
+
+def ensure_no_brand(new_tab, timeout: float = 2.5) -> bool:
+    """把「品牌」设置为「无品牌」。
+
+    比直接 select_text 更稳健，原因有三：
+    1. 幂等——已经是「无品牌」时直接返回，不再打开下拉。
+    2. 先收起 aurora 材质面板：该浮层会压住品牌字段，
+       让点击落在面板上而非目标字段（实测故障「品牌未能设置为无品牌」的根因）。
+    3. 优先点品牌框下方的「可选无品牌」快捷链接——它一步到位，
+       不依赖下拉展开、搜索过滤和选项渲染时序；失败才回退 select_text。
+    """
+    def _current():
+        try:
+            state = new_tab.run_js(_NO_BRAND_SHORTCUT_JS)
+        except Exception:
+            return None
+        return state if isinstance(state, dict) else None
+
+    state = _current()
+    if state and str(state.get('current') or '').strip() == '无品牌':
+        print('品牌已是「无品牌」，跳过设置')
+        return True
+
+    # 材质面板会遮挡品牌字段，先收起
+    close_aurora_composition_panel(new_tab)
+
+    if state and state.get('hasShortcut'):
+        try:
+            clicked = bool(new_tab.run_js(_CLICK_NO_BRAND_SHORTCUT_JS))
+        except Exception:
+            clicked = False
+        if clicked and _wait_until(
+            lambda: (_current() or {}).get('current') == '无品牌',
+            timeout=timeout,
+            interval=0.05,
+        ):
+            print('品牌已通过「可选无品牌」快捷链接设置')
+            return True
+
+    # 回退到通用下拉选择
+    if select_text(new_tab, '品牌', '无品牌'):
+        return True
+
+    return (_current() or {}).get('current') == '无品牌'
+
+
+# 采集平台完整面料材质列表。
+# 该列表是 rc-virtual-list 虚拟滚动，DOM 里只有可视窗口那十几个节点，
+# 所以先试 React fiber（rc-select 把完整数组交给 List），
+# 再用「当前可见项必须都在 fiber 数组里」验证，不通过才退回按屏滚动累积。
+# run_js 走 awaitPromise，整个滚动循环可以在一次 CDP 往返里跑完。
+_AURORA_MATERIAL_HARVEST_JS = r"""
+async function () {
+  const deadline = Date.now() + 2500;
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const visible = (n) => !!n && (n.offsetParent !== null || n.getClientRects().length > 0);
+
+  // 锁死材质自己的浮层：页面上可能同时开着别的下拉，
+  // 用通用 [class*=dropdown] 会串台（品牌探测时踩过同类事故）。
+  const panes = Array.prototype.slice.call(document.querySelectorAll(
+    '.aurora-dorami-composition-select-dropdown, .aurora-dorami-composition-select-option-pane'
+  )).filter((n) => !/hidden/.test(n.className || '') && visible(n));
+  const pane = panes[panes.length - 1];
+  if (!pane) return JSON.stringify({ ok: false, reason: 'dropdown_not_found' });
+
+  // 搜索框非空时读到的只是过滤子集，绝不能当成全量写入缓存
+  const search = pane.querySelector('input[placeholder="搜索材质"]')
+    || document.querySelector('input[placeholder="搜索材质"]');
+  if (search && String(search.value || '').trim()) {
+    return JSON.stringify({ ok: false, reason: 'search_not_empty' });
+  }
+
+  const OPTION = '.aurora-select-item-option, [class*="select-item-option"]';
+  const readName = (el) => {
+    const title = el.getAttribute && el.getAttribute('title');
+    if (title && title.trim()) return title.trim();
+    const label = el.querySelector && el.querySelector('[class*="option-label"]');
+    if (label && (label.textContent || '').trim()) return label.textContent.trim();
+    return (el.textContent || '').trim();
+  };
+
+  const domNow = () => Array.prototype.map.call(pane.querySelectorAll(OPTION), readName)
+    .filter((s) => s && s.length <= 40);
+  const firstBatch = domNow();
+  if (!firstBatch.length) return JSON.stringify({ ok: false, reason: 'no_option_rendered' });
+
+  // --- 快路径：从 fiber 上取完整数组 ---
+  const fiberNames = (() => {
+    const node = pane.querySelector(OPTION);
+    if (!node) return null;
+    const key = Object.keys(node).find((k) => k.startsWith('__reactFiber$'));
+    if (!key) return null;
+    let fiber = node[key];
+    for (let hop = 0; fiber && hop < 30; hop++, fiber = fiber.return) {
+      const props = fiber.memoizedProps;
+      if (!props) continue;
+      const arr = props.flattenOptions || props.options || props.data;
+      if (!Array.isArray(arr) || arr.length < firstBatch.length) continue;
+      const names = arr.map((it) => {
+        if (!it) return '';
+        if (typeof it === 'string') return it.trim();
+        const d = it.data || it;
+        return String(d.title || d.label || d.value || d.name || '').trim();
+      }).filter((s) => s && s.length <= 40);
+      if (names.length >= firstBatch.length) return names;
+    }
+    return null;
+  })();
+
+  if (fiberNames) {
+    // 必须被当前 DOM 可见项验证过才采信
+    const set = new Set(fiberNames);
+    if (firstBatch.every((n) => set.has(n))) {
+      return JSON.stringify({ ok: true, source: 'fiber', options: fiberNames });
+    }
+  }
+
+  // --- 主路径：按屏滚动累积 ---
+  let holder = pane.querySelector(OPTION);
+  while (holder && holder !== pane) {
+    const style = getComputedStyle(holder);
+    if (/(auto|scroll)/.test(style.overflowY) && holder.scrollHeight > holder.clientHeight + 4) break;
+    holder = holder.parentElement;
+  }
+  const seen = [];
+  const seenSet = new Set();
+  const harvest = () => {
+    for (const name of domNow()) {
+      if (seenSet.has(name)) continue;
+      seenSet.add(name);
+      seen.push(name);
+    }
+  };
+  harvest();
+  if (!holder || holder === pane) {
+    // 未启用虚拟滚动，整屏即全量
+    return JSON.stringify({ ok: true, source: 'dom-full', options: seen });
+  }
+  holder.scrollTop = 0;
+  await frame();
+  harvest();
+  let guard = 0;
+  while (Date.now() < deadline && guard++ < 80) {
+    const before = holder.scrollTop;
+    holder.scrollTop = Math.min(before + Math.max(holder.clientHeight - 20, 60), holder.scrollHeight);
+    await frame();
+    harvest();
+    if (holder.scrollTop <= before + 1) break;
+  }
+  const truncated = Date.now() >= deadline;
+  return JSON.stringify({
+    ok: !truncated,
+    reason: truncated ? ('truncated at ' + seen.length) : '',
+    source: 'dom-scroll',
+    options: seen,
+  });
+}
+"""
+
+
+def harvest_platform_material_options(new_tab, category_text=''):
+    """材质下拉已展开且搜索框为空时，顺带把平台完整材质列表采下来缓存。
+
+    纯增益动作：任何失败都只记录原因，绝不影响发布主流程
+    （调用方不加外层裸 except —— 本函数内部已做成 total function）。
+    """
+    try:
+        from .material_options_cache import record_failure, save_options
+    except Exception:
+        return False
+
+    try:
+        raw = new_tab.run_js(_AURORA_MATERIAL_HARVEST_JS, timeout=8)
+    except Exception as exc:
+        record_failure(f'run_js failed: {str(exc)[:120]}')
+        return False
+
+    try:
+        payload = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        record_failure('invalid harvest payload')
+        return False
+    if not isinstance(payload, dict):
+        record_failure('invalid harvest payload')
+        return False
+
+    options = payload.get('options') or []
+    if not payload.get('ok'):
+        record_failure(str(payload.get('reason') or 'harvest not ok'))
+        return False
+
+    saved = save_options(category_text, options, source=f"publish-{payload.get('source') or 'dropdown'}")
+    if saved:
+        print(f'已采集平台面料材质选项 {len(options)} 项（{category_text or "未识别类目"}）')
+    return saved
 
 def set_material_composition(new_tab, materials, field_id=None) -> bool:
     if not materials:
@@ -402,6 +1166,12 @@ def set_material_composition(new_tab, materials, field_id=None) -> bool:
     except Exception:
         pass
     _run_interaction_recovery(new_tab, f'set_material_composition:{active_field_id}:start')
+
+    # 抖店 UI 改版后面料材质字段使用 aurora-select-multiple 多选组件，
+    # 不再需要"添加材质"按钮，走专用填写路径。
+    if _is_aurora_composition_select(area):
+        print('检测到 aurora-select-multiple 成分选择组件，走新版填写路径')
+        return _fill_aurora_composition_select(new_tab, area, materials, active_field_id)
 
     try:
         del_btns = area.eles('xpath:.//span[contains(@class,"styles_del__")]', timeout=0.3)
@@ -483,9 +1253,9 @@ def protocol_inject_sku_data(new_tab, sku_list, price, stock=100) -> bool:
     import uuid as _uuid
 
     # 等待 schemaForm 可用
-    _time.sleep(0.5)  # 先给页面一点时间渲染
+    _time.sleep(0.2)  # 先给页面一点时间渲染
     sf_available = False
-    for attempt in range(10):
+    for attempt in range(2):  # schemaForm 已确认不可用（DouXiaoerStore 现为 AI 助手），快速失败
         probe = new_tab.run_cdp('Runtime.evaluate',
             expression='''
                 (function() {
@@ -617,8 +1387,31 @@ def protocol_inject_sku_data(new_tab, sku_list, price, stock=100) -> bool:
         return False
 
 
-_SKU_SPEC_INPUT_XPATH = 'xpath://input[@placeholder="请输入规格值"]'
+# 新版抖店规格区域：底部用 multiple cascader 打开下拉，点「创建类型」录入自定义规格值；
+# 每个已确认的颜色值会生成独立行（含单选 picker-label + 备注框 + 规格图上传区）。
+_SKU_CASCADER_PICKER_XPATH = 'xpath://div[@id="skuValue-颜色分类"]//div[contains(@class,"ecom-g-cascader-picker-multiple")]'
+_SKU_CASCADER_MENUS_XPATH = 'xpath://div[contains(@class,"ecom-g-cascader-menus") and not(contains(@class,"ecom-g-cascader-menus-hidden"))]'
+# 「创建类型」链接（在可见下拉 footer 内）；旧版找 span 已失效，实际是 <a>
+_SKU_CREATE_TYPE_LINK_XPATH = _SKU_CASCADER_MENUS_XPATH + '//div[contains(@class,"styles_addSKUName")]//a[normalize-space()="创建类型"]'
+# 点「创建类型」后在下拉 footer 出现的"请输入规格值"输入框（旧版选择器仍有效，仅出现时机变化）
+_SKU_SPEC_INPUT_XPATH = _SKU_CASCADER_MENUS_XPATH + '//input[@placeholder="请输入规格值"]'
 _SKU_REMARK_INPUT_XPATH = 'xpath://div[@id="skuValue-颜色分类"]//input[@placeholder="备注"]'
+# 派发完整鼠标事件序列：实证比 DrissionPage 真实 click 快约 3 倍，且能触发 React onClick。
+# （by_js .click() 对 cascader picker / 绿勾 / 确定 均不生效；真实 click 生效但慢）
+_SKU_MOUSE_DISPATCH_JS = (
+    "['mousedown','mouseup','click'].forEach(function(t){"
+    "this.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));"
+    "}, this);"
+)
+
+
+def _sku_dispatch_click(element) -> bool:
+    """在元素上派发鼠标事件序列触发点击。返回是否成功调用（不保证业务生效）。"""
+    try:
+        element.run_js(_SKU_MOUSE_DISPATCH_JS)
+        return True
+    except Exception:
+        return False
 _SKU_CONFIRM_BOTTOM_XPATHS = (
     'xpath://div[contains(@class,"styles_popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
     'xpath://div[contains(@class,"popupFooter")]//button[contains(@class,"ecom-g-btn-primary")]',
@@ -642,21 +1435,27 @@ def _sku_spec_input_visible_count(tab):
 
 
 def _sku_confirmed_value_label_elements(tab):
-    try:
-        labels = tab.eles(
-            'xpath://div[@id="skuValue-颜色分类"]//span[contains(@class,"ecom-g-cascader-picker-label")]',
-            timeout=0.05,
-        )
-    except Exception:
-        labels = []
-    visible = []
-    for label in labels:
+    # 每个已确认颜色值会生成独立行，值显示为单选 picker-label（实证有效）；
+    # 后两个选择器作为平台 UI 变体的兜底。
+    for xpath in (
+        'xpath://div[@id="skuValue-颜色分类"]//span[contains(@class,"ecom-g-cascader-picker-label")]',
+        'xpath://div[@id="skuValue-颜色分类"]//span[contains(@class,"ecom-g-cascader-selection-item") and not(contains(@class,"remove"))]',
+        'xpath://div[@id="skuValue-颜色分类"]//span[contains(@class,"ecom-g-tag") and not(@role="img")]',
+    ):
         try:
-            if label and label.states.is_displayed:
-                visible.append(label)
+            labels = tab.eles(xpath, timeout=0.05)
         except Exception:
-            continue
-    return visible
+            labels = []
+        visible = []
+        for label in labels:
+            try:
+                if label and label.states.is_displayed:
+                    visible.append(label)
+            except Exception:
+                continue
+        if visible:
+            return visible
+    return []
 
 
 def _sku_confirmed_value_count(tab) -> int:
@@ -670,8 +1469,85 @@ def _find_sku_anchor_by_index(tab, index: int):
     return labels[-1] if labels else None
 
 
+def _sku_switch_to_manual_mode(tab) -> bool:
+    """页面默认 AI 助手模式；如 cascader 不可见则点「切换手动填写」，等待 cascader 出现。"""
+    if _get_visible_elements(tab, _SKU_CASCADER_PICKER_XPATH, timeout=0.5):
+        return True
+    btn = tab.ele('xpath://button[contains(normalize-space(.),"切换手动填写")]', timeout=1.5)
+    if not btn:
+        return bool(_get_visible_elements(tab, _SKU_CASCADER_PICKER_XPATH, timeout=0.5))
+    try:
+        btn.click(by_js=True)
+    except Exception:
+        try:
+            btn.click()
+        except Exception:
+            pass
+    return _wait_until(
+        lambda: bool(_get_visible_elements(tab, _SKU_CASCADER_PICKER_XPATH, timeout=0.1)),
+        timeout=3.0, interval=0.1,
+    )
+
+
+def _sku_open_cascader_and_create_type(tab) -> bool:
+    """打开颜色分类 cascader 下拉（不搜索），点「创建类型」，等"请输入规格值"输入框出现。
+    返回是否成功进入创建态。"""
+    # 1. 点 picker 打开下拉（cascader 展开依赖真实 onClick/onFocus，优先真实点击）
+    pickers = _get_visible_elements(tab, _SKU_CASCADER_PICKER_XPATH, timeout=1.0)
+    if not pickers:
+        raise Exception("未找到颜色分类 cascader 输入框")
+    picker = pickers[-1]
+    try:
+        picker.scroll.to_center()
+    except Exception:
+        pass
+
+    def _menus_visible():
+        return bool(_get_visible_elements(tab, _SKU_CASCADER_MENUS_XPATH, timeout=0.05))
+
+    # dispatch 优先（快且生效），真实 click 兜底
+    opened = False
+    for opener in (
+        lambda: _sku_dispatch_click(picker),
+        lambda: picker.click(),
+    ):
+        try:
+            opener()
+        except Exception:
+            continue
+        if _wait_until(_menus_visible, timeout=1.0, interval=0.04):
+            opened = True
+            break
+    if not opened:
+        raise Exception("颜色分类下拉框未展开")
+
+    # 3. 点「创建类型」（可见下拉 footer 内的 <a>）
+    create_link = tab.ele(_SKU_CREATE_TYPE_LINK_XPATH, timeout=0.8)
+    if not create_link:
+        raise Exception("未找到「创建类型」入口")
+    clicked = False
+    for action in (
+        lambda: _sku_dispatch_click(create_link),
+        lambda: create_link.click(),
+    ):
+        try:
+            action()
+        except Exception:
+            continue
+        # 「创建类型」后"请输入规格值"框出现
+        if _wait_until(
+            lambda: bool(_get_visible_elements(tab, _SKU_SPEC_INPUT_XPATH, timeout=0.1)),
+            timeout=0.8, interval=0.04,
+        ):
+            clicked = True
+            break
+    if not clicked:
+        raise Exception("点击「创建类型」后未出现规格值输入框")
+    return True
+
+
 def _sku_find_visible_confirm_icon(tab):
-    """与原先内联逻辑一致：多枚「确认」时取最后一个可见（通常为当前规格行）。"""
+    """多枚「确认」时取最后一个可见（旧版 UI；新版无此元素则返回 None）。"""
     try:
         icons = tab.eles('xpath://span[@data-kora="确认"]', timeout=0.05)
     except Exception:
@@ -739,29 +1615,23 @@ def _sku_finish_spec_confirmation(
         )
 
     confirm_icon = _sku_find_visible_confirm_icon(new_tab)
-    if not confirm_icon:
-        raise Exception("未找到规格确认按钮")
+    if confirm_icon:
+        # 点绿勾确认（dispatch 优先，真实 click 兜底）
+        icon_confirmed = False
+        for action in (
+            lambda: _sku_dispatch_click(confirm_icon),
+            lambda: confirm_icon.click(),
+        ):
+            try:
+                action()
+            except Exception:
+                continue
+            if _wait_until(_after_icon_progress, timeout=0.8, interval=0.04):
+                icon_confirmed = True
+                break
 
-    icon_confirmed = False
-    for action in (
-        lambda: confirm_icon.click(),
-        lambda: confirm_icon.click(by_js=True),
-        lambda: confirm_icon.run_js(
-            "['mousedown','mouseup','click'].forEach(function(type){"
-            "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
-            "}, this);"
-        ),
-    ):
-        try:
-            action()
-        except Exception:
-            continue
-        if _wait_until(_after_icon_progress, timeout=1.0, interval=0.05):
-            icon_confirmed = True
-            break
-
-    if not icon_confirmed:
-        raise Exception("创建类型后未成功确认规格值")
+        if not icon_confirmed:
+            raise Exception("规格确认失败：确认按钮点击后规格值未出现")
 
     if _has_confirmed_value():
         return
@@ -774,6 +1644,14 @@ def _sku_finish_spec_confirmation(
 
     def _confirm_popup_closed():
         if _has_confirmed_value():
+            return True
+        # 新版 cascader：下拉框关闭即表示确认成功
+        cascader_menus = _get_visible_elements(
+            new_tab,
+            'xpath://div[contains(@class,"ecom-g-cascader-menus") and not(contains(@class,"ecom-g-cascader-menus-hidden"))]',
+            timeout=0.05,
+        )
+        if not cascader_menus:
             return True
         visible_n = _sku_spec_input_visible_count(new_tab)
         for selector in _SKU_CONFIRM_BOTTOM_XPATHS:
@@ -796,19 +1674,14 @@ def _sku_finish_spec_confirmation(
         except Exception:
             pass
         for action in (
+            lambda: _sku_dispatch_click(confirm_bottom),
             lambda: confirm_bottom.click(),
-            lambda: confirm_bottom.click(by_js=True),
-            lambda: confirm_bottom.run_js(
-                "['mousedown','mouseup','click'].forEach(function(type){"
-                "this.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));"
-                "}, this);"
-            ),
         ):
             try:
                 action()
             except Exception:
                 continue
-            if _wait_until(_confirm_popup_closed, timeout=1.0, interval=0.04):
+            if _wait_until(_confirm_popup_closed, timeout=0.8, interval=0.04):
                 confirmed = True
                 break
     else:
@@ -816,6 +1689,71 @@ def _sku_finish_spec_confirmation(
 
     if not confirmed:
         raise Exception("规格确认弹窗未关闭，确定按钮未生效")
+
+
+def _sku_reset_cascader_state(new_tab):
+    """关闭可能遗留打开的颜色分类下拉，回到干净状态（重试前调用，避免脏状态叠加）。"""
+    try:
+        new_tab.run_js("document.body.click();")
+    except Exception:
+        pass
+    _wait_until(
+        lambda: not _get_visible_elements(new_tab, _SKU_CASCADER_MENUS_XPATH, timeout=0.05),
+        timeout=0.8, interval=0.05,
+    )
+
+
+def _sku_create_one_value(new_tab, sku_name, before_value_count):
+    """单次尝试：打开下拉 → 创建类型 → 输入 → 绿勾确认 → 底部确定，校验 picker-label +1。"""
+    _sku_open_cascader_and_create_type(new_tab)
+    # 此刻"请输入规格值"框已出现，记录基线（确认成功后该框会消失）
+    before_spec_count = _sku_spec_input_visible_count(new_tab)
+
+    spec_input = None
+
+    def _probe_spec_input():
+        nonlocal spec_input
+        inputs = _get_visible_elements(new_tab, _SKU_SPEC_INPUT_XPATH, timeout=0.05)
+        if not inputs:
+            return False
+        spec_input = inputs[-1]
+        return spec_input.states.is_displayed
+
+    if not _wait_until(_probe_spec_input, timeout=1.0, interval=0.05) or not spec_input:
+        raise Exception("未找到规格值输入框")
+
+    spec_input.click(by_js=True)
+    spec_input.input(sku_name, clear=True)
+    if not _wait_until(
+        lambda: (spec_input.attr("value") or "").strip() == sku_name,
+        timeout=0.5, interval=0.03,
+    ):
+        raise Exception(f'规格值 "{sku_name}" 未成功写入')
+
+    _sku_finish_spec_confirmation(new_tab, sku_name, before_spec_count, before_value_count)
+    if not _wait_until(
+        lambda: _sku_confirmed_value_count(new_tab) > before_value_count,
+        timeout=2.0, interval=0.05,
+    ):
+        raise Exception(f'规格值 "{sku_name}" 确认后未出现在已选列表（picker-label 数量未增加）')
+
+
+def _sku_create_value_with_retry(new_tab, sku_name, before_value_count, attempts=2):
+    """多 SKU 场景偶发时序竞态时整体重试，提升稳定性。
+    每次重试前关闭遗留下拉；重试前先检查是否其实已成功，避免创建重复值。"""
+    last_err = None
+    for attempt in range(attempts):
+        try:
+            _sku_create_one_value(new_tab, sku_name, before_value_count)
+            return
+        except Exception as e:
+            last_err = e
+            # 确认可能已生效，仅是校验超时；避免重复创建
+            if _sku_confirmed_value_count(new_tab) > before_value_count:
+                return
+            print(f'[SKU] "{sku_name}" 第 {attempt + 1}/{attempts} 次创建失败，准备重试: {e}')
+            _sku_reset_cascader_state(new_tab)
+    raise Exception(f'规格值 "{sku_name}" 创建失败（已重试 {attempts} 次）: {last_err}')
 
 
 def _sku_unique_hover_targets(upload_trigger, hover_target, sku_anchor):
@@ -1093,6 +2031,95 @@ def _is_local_debug_address(address: str) -> bool:
     return host in {'127.0.0.1', 'localhost', '::1', '[::1]'}
 
 
+def is_logged_in_fxg_target_url(url: str) -> bool:
+    value = str(url or '').strip().lower()
+    if not value or value.startswith('devtools://'):
+        return False
+    if 'jinritemai.com' not in value:
+        return False
+    login_markers = (
+        '/login',
+        'login/common',
+        'passport',
+        'sso',
+        'oauth',
+        'sec_authorize',
+    )
+    if any(marker in value for marker in login_markers):
+        return False
+    return True
+
+
+def select_logged_in_fxg_debug_browser(
+    browsers: List[Dict[str, Any]],
+    targets_by_address: Dict[str, List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    candidates: List[Dict[str, Any]] = []
+    for browser in browsers or []:
+        address = _normalize_debug_address(str(browser.get('debug_address') or ''))
+        if not address:
+            continue
+        targets = (
+            targets_by_address.get(address)
+            or targets_by_address.get(str(browser.get('debug_address') or ''))
+            or []
+        )
+        for target in targets:
+            if str(target.get('type') or '') != 'page':
+                continue
+            url = str(target.get('url') or '')
+            if not is_logged_in_fxg_target_url(url):
+                continue
+            profile_text = f"{browser.get('user_data_dir') or ''} {browser.get('profile_directory') or ''}".lower()
+            score = 0
+            if 'upload-browser-profile' in profile_text:
+                score += 100
+            if 'chrome-fxg-cdp' in profile_text:
+                score += 80
+            if '/ffa/g/create' in url.lower():
+                score += 20
+            if '/homepage' in url.lower() or '/mshop/homepage' in url.lower():
+                score += 10
+            candidate = dict(browser)
+            candidate['debug_address'] = address
+            candidate['matched_url'] = url
+            candidate['matched_title'] = str(target.get('title') or '')
+            candidate['selection_score'] = score
+            candidates.append(candidate)
+            break
+
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda item: (int(item.get('selection_score') or 0), str(item.get('debug_address') or '')),
+        reverse=True,
+    )
+    return candidates[0]
+
+
+def fetch_cdp_page_targets(debug_address: str, timeout: float = 0.8) -> List[Dict[str, Any]]:
+    normalized = _normalize_debug_address(debug_address)
+    if not normalized:
+        return []
+    request = Request(
+        f'http://{normalized}/json/list',
+        headers={'Connection': 'close', 'User-Agent': 'dyin-debug-browser-targets'},
+    )
+    try:
+        if _is_local_debug_address(normalized):
+            opener = build_opener(ProxyHandler({}))
+            response = opener.open(request, timeout=timeout)
+        else:
+            response = urlopen(request, timeout=timeout)
+        with response:
+            payload = json.loads(response.read().decode('utf-8', errors='replace'))
+        if not isinstance(payload, list):
+            return []
+        return [item for item in payload if isinstance(item, dict)]
+    except (URLError, HTTPError, TimeoutError, OSError, ValueError):
+        return []
+
+
 def _verify_debug_browser(address: str, timeout: float = 1.0) -> Dict[str, Any]:
     normalized = _normalize_debug_address(address)
     if not normalized:
@@ -1210,9 +2237,21 @@ def attach_existing_debug_browser(debug_address: str, existing_only: bool = True
     return page
 
 
+def _get_persistent_browser_user_data_path(profile_name: str = "upload-browser-profile") -> str:
+    safe_profile = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(profile_name or "upload-browser-profile")).strip("-")
+    if not safe_profile:
+        safe_profile = "upload-browser-profile"
+    data_dir = get_data_dir(create=True)
+    base_dir = data_dir if data_dir is not None else (get_runtime_root() / "runtime")
+    profile_dir = base_dir / safe_profile
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    return str(profile_dir)
+
+
 def get_page(index_url):
     """创建ChromiumPage实例,支持自动Chrome管理"""
     co = ChromiumOptions()
+    persistent_user_data_path = _get_persistent_browser_user_data_path()
     
     # [修复] 智能Chrome路径检测与下载
     try:
@@ -1239,7 +2278,8 @@ def get_page(index_url):
     
     # 基础配置
     co.set_pref(arg='credentials_enable_service', value=False)
-    co.set_user() 
+    co.set_paths(user_data_path=persistent_user_data_path)
+    co.set_user("Default")
     
     # 额外优化配置
     co.set_argument('--disable-dev-shm-usage')  # 减少内存使用
@@ -1263,7 +2303,8 @@ def get_page(index_url):
             logger.info("[处理] 尝试使用默认配置...")
             co_fallback = ChromiumOptions()
             co_fallback.set_pref(arg='credentials_enable_service', value=False)
-            co_fallback.set_user()
+            co_fallback.set_paths(user_data_path=persistent_user_data_path)
+            co_fallback.set_user("Default")
             
             page = ChromiumPage(addr_or_opts=co_fallback)
             page.set.window.max()
@@ -1275,6 +2316,65 @@ def get_page(index_url):
         except Exception as e2:
             logger.error(f"[失败] 所有浏览器配置都失败: {e2}")
             raise Exception(f"无法启动浏览器,请检查Chrome安装状态.错误: {e2}")
+
+
+def _collect_id_mode_square_candidates(base_dir: str, supported_formats: List[str]) -> List[str]:
+    """ID 模式下为 1:1 主图收集候选文件。
+
+    采集端会把淘宝主图以两种形式落盘：
+      - 主图_XX.jpg      → 原始比例（通常是 3:4）
+      - 主图_XX_1x1.jpg  → CDN 裁剪好的 1:1 方图
+    优先使用 _1x1 后缀的方图，其次检查原始图是否本身就是 1:1。
+    """
+    if not os.path.isdir(base_dir):
+        return []
+
+    normalized_formats = {fmt.lower() for fmt in supported_formats}
+    square_1x1: List[str] = []
+    native_square: List[str] = []
+
+    try:
+        for fname in sorted(os.listdir(base_dir)):
+            fext = os.path.splitext(fname)[1].lower()
+            if fext not in normalized_formats:
+                continue
+            fpath = os.path.join(base_dir, fname)
+            stem = os.path.splitext(fname)[0]
+
+            if '_1x1' in stem:
+                square_1x1.append(fpath)
+                continue
+
+            try:
+                with Image.open(fpath) as im:
+                    width, height = im.size
+                ratio = (width / height) if height else 0
+            except Exception:
+                continue
+
+            if abs(ratio - 1.0) < 0.03:
+                native_square.append(fpath)
+    except Exception:
+        pass
+
+    result = square_1x1 + native_square
+    return result[:5]
+
+
+def _crop_three_four_to_square(src_path: str, dst_path: str) -> bool:
+    """将 3:4 图片居中裁剪为 1:1 方图并保存。"""
+    try:
+        with Image.open(src_path) as im:
+            w, h = im.size
+            side = min(w, h)
+            left = (w - side) // 2
+            top = (h - side) // 2
+            cropped = im.crop((left, top, left + side, top + side))
+            os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+            cropped.save(dst_path, 'JPEG', quality=92)
+            return True
+    except Exception:
+        return False
 
 
 def _collect_id_mode_three_four_candidates(base_dir: str, supported_formats: List[str]) -> List[str]:
@@ -1338,13 +2438,32 @@ def get_pic_list(record, key: str) -> List[str]:
         else:
             base_dir = os.path.join(record.path, folder_path)
 
+    # ID模式 1:1 主图：优先使用 _1x1 方图，其次原生 1:1，最后从 3:4 裁剪生成。
+    if record.type != 1 and key == '800':
+        candidates = _collect_id_mode_square_candidates(base_dir, supported_formats)
+        if candidates:
+            return candidates
+        # 没有现成 1:1 → 从 3:4 原始图本地居中裁剪，保存到 主图/800/ 子目录
+        crop_dir = os.path.join(record.path, '主图', '800')
+        cropped: List[str] = []
+        three_four = _collect_id_mode_three_four_candidates(base_dir, supported_formats)
+        for idx, src in enumerate(three_four[:5], start=1):
+            dst = os.path.join(crop_dir, f"主图_{idx:02d}_1x1.jpg")
+            if not os.path.isfile(dst):
+                if not _crop_three_four_to_square(src, dst):
+                    continue
+            cropped.append(dst)
+        if cropped:
+            return cropped
+        # 回退到原有命名匹配逻辑（兼容旧数据）
+
     # ID模式 3:4 主图：优先使用独立 750 目录；缺失时回退到主图目录中筛选 3:4 比例图片。
     if record.type != 1 and key == '750':
         candidates = _collect_id_mode_three_four_candidates(base_dir, supported_formats)
         if not candidates and os.path.normpath(base_dir) != os.path.normpath(os.path.join(record.path, '主图')):
             candidates = _collect_id_mode_three_four_candidates(os.path.join(record.path, '主图'), supported_formats)
         return candidates
-    
+
     for i in range(5):
         file_path = None
         
@@ -1655,6 +2774,11 @@ def caizhi_select(new_tab, key, value, index, field_id="面料材质", area=None
 
         option_selected = False
         option_selectors = [
+            # 新版 aurora-select 选项
+            f'xpath://div[contains(@class,"aurora-select-item") and not(contains(@class,"disabled")) and normalize-space(text())="{key}"]',
+            f'xpath://div[contains(@class,"aurora-select-item") and not(contains(@class,"disabled")) and contains(normalize-space(text()),"{key}")]',
+            f'xpath://div[contains(@class,"aurora-select-item-option-content") and normalize-space(text())="{key}"]',
+            # 旧版 ecom-g-select 选项
             f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and normalize-space(text())="{key}"]',
             f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and starts-with(normalize-space(text()),"{key}")]',
             f'xpath://div[contains(@class,"ecom-g-select-item-option-content") and contains(normalize-space(text()),"{key}")]',
@@ -1711,31 +2835,76 @@ def caizhi_select(new_tab, key, value, index, field_id="面料材质", area=None
     timer_record('属性设置', f'材质-{key}', 0, _time.time() - func_start, True)
 
 
+def get_select_field_value(new_tab, key):
+    """读取 ecom-g Select 字段当前选中的显示值。
+
+    该组件把选中值放在 .ecom-g-select-selection-item 上，
+    而 //div[@attr-field-id="{key}"]//input 命中的是搜索框（其 value 恒为空串）。
+    因此校验是否选中成功必须读 selection-item，读 input.value 永远为空。
+    """
+    for selector in (
+        f'xpath://div[@attr-field-id="{key}"]//*[contains(@class,"select-selection-item")]',
+        f'xpath://span[text()="{key}"]/ancestor::div[contains(@class,"ecom-g-form-item")][1]'
+        f'//*[contains(@class,"select-selection-item")]',
+    ):
+        try:
+            element = new_tab.ele(selector, timeout=0.1)
+        except Exception:
+            element = None
+        if not element:
+            continue
+        for reader in (lambda: element.attr('title'), lambda: element.text):
+            try:
+                text = ' '.join(str(reader() or '').split()).strip()
+            except Exception:
+                text = ''
+            if text:
+                return text
+    return ''
+
+
 def select_text(new_tab, key, value, extra=None):
     """
     选择下拉属性 - 极速优化版
-    
+
     优化策略:
     1. 使用最短超时时间（0.1s）
     2. 优先使用 attr-field-id 定位（最可靠）
     3. 减少不必要的等待
-    
+
     Args:
         new_tab: 浏览器标签页对象
         key: 属性名称（如"品牌"、"适用人群"）
         value: 要选择的值（如"无品牌"、"成人"）
         extra: 备用值
+
+    Returns:
+        bool: 是否确实把字段选中为 value（或 extra）。调用方对关键字段
+        （如品牌）必须检查返回值——本函数不抛异常，以免影响既有调用方。
     """
     func_start = _time.time()
     _expand_category_more(new_tab)
-    
+
+    accepted = {str(value)}
+    if extra:
+        accepted.add(str(extra))
+
+    def _value_ok():
+        return get_select_field_value(new_tab, key) in accepted
+
+    # 已经是目标值就不必再操作（回跑/重试时常见）
+    if _value_ok():
+        print(f'{key} 已是 {value}，跳过')
+        timer_record('属性设置', f'{key}={value}(已就绪)', 0, _time.time() - func_start, True)
+        return True
+
     # 优先级1: 通过 attr-field-id 定位（最快最准）
     input_element = None
     try:
         input_element = new_tab.ele(f'xpath://div[@attr-field-id="{key}"]//input', timeout=0.1)
     except:
         pass
-    
+
     # 优先级2: 其他选择器
     if not input_element:
         backup_selectors = [
@@ -1750,88 +2919,179 @@ def select_text(new_tab, key, value, extra=None):
             except:
                 input_element = None
                 continue
-    
+
     if not input_element:
         print(f'未找到字段:{key}')
         timer_record('属性设置', f'{key}(未找到)', 0, _time.time() - func_start, False)
-        return
-        
+        return False
+
     print(f'选择{key} -> {value}')
     _run_interaction_recovery(new_tab, f'select_text:{key}:open')
     input_element.click()
 
-    dropdown_selector = 'xpath://div[contains(@class,"ecom-g-select-dropdown") and not(contains(@class,"hidden"))]'
-    _wait_until(
-        lambda: bool(new_tab.ele(dropdown_selector, timeout=0.05)),
-        timeout=0.6,
-        interval=0.03,
+    # 该字段自己的下拉带 auto-dropdown-id-{key} 标记，优先用它精确定位：
+    # 通用选择器会命中页面上任何一个处于打开状态的下拉（例如材质的下拉），
+    # 一旦串台就会把选项点到别的字段上。
+    own_dropdown_selector = (
+        f'xpath://div[contains(@class,"auto-dropdown-id-{key}") and not(contains(@class,"hidden"))]'
     )
+    generic_dropdown_selector = (
+        'xpath://div[contains(@class,"ecom-g-select-dropdown") and not(contains(@class,"hidden"))]'
+    )
+    def _dropdown_with_options():
+        """返回「已渲染出选项」的下拉容器。
 
-    # 查找下拉菜单（只用一个选择器）
+        下拉出现 ≠ 选项就绪：运费模板等字段的选项是异步拉接口回来的
+        （refetchSchema?action=freight_template_options_load）。
+        原实现只等容器出现就开始匹配，于是在空列表上把
+        exact→fuzzy→search→extra 整条失败链跑完（实测约 8.3s）才落到兜底值。
+        """
+        for selector in (own_dropdown_selector, generic_dropdown_selector):
+            try:
+                menu = new_tab.ele(selector, timeout=0.05)
+            except Exception:
+                menu = None
+            if not menu:
+                continue
+            try:
+                if menu.ele('xpath:.//*[contains(@class,"select-item-option")]', timeout=0.05):
+                    return menu, selector
+            except Exception:
+                continue
+        return None, own_dropdown_selector
+
     dropdown_menu = None
-    try:
-        dropdown_menu = new_tab.ele(dropdown_selector, timeout=0.1)
-    except:
-        pass
-    
+    dropdown_selector = own_dropdown_selector
+
+    def _capture_dropdown():
+        nonlocal dropdown_menu, dropdown_selector
+        dropdown_menu, dropdown_selector = _dropdown_with_options()
+        return dropdown_menu is not None
+
+    _wait_until(_capture_dropdown, timeout=2.5, interval=0.05)
+
+    if dropdown_menu is None:
+        # 选项始终没渲染出来时，退回「只要容器在就试」的旧行为，避免直接判失败
+        for selector in (own_dropdown_selector, generic_dropdown_selector):
+            try:
+                candidate = new_tab.ele(selector, timeout=0.1)
+            except:
+                candidate = None
+            if candidate:
+                dropdown_menu = candidate
+                dropdown_selector = selector
+                break
+
+    def _click_option_and_confirm(option, context):
+        """点击选项后必须确认字段真的变成了目标值。
+
+        不能用「下拉菜单消失」当成功判据：点空、点错或组件回滚时菜单同样会关闭，
+        那会把失败判成成功（品牌漏填就是这么发生的）。
+        """
+        _run_interaction_recovery(new_tab, f'select_text:{context}')
+        try:
+            option.click()
+        except Exception:
+            try:
+                option.click(by_js=True)
+            except Exception:
+                return False
+        return _wait_until(_value_ok, timeout=1.2, interval=0.05)
+
+    def _search_and_pick(keyword):
+        """在搜索框输入关键词过滤后再选，用于选项需异步加载的长列表。"""
+        if not keyword:
+            return False
+        try:
+            input_element.input(keyword, clear=True)
+        except Exception:
+            return False
+        option_selectors = (
+            f'xpath:.//*[contains(@class,"select-item-option-content") and text()="{keyword}"]',
+            f'xpath:.//*[@title="{keyword}"]',
+            f'xpath:.//*[text()="{keyword}"]',
+        )
+
+        def _find_option():
+            menu = dropdown_menu
+            try:
+                refreshed = new_tab.ele(dropdown_selector, timeout=0.05)
+            except Exception:
+                refreshed = None
+            if refreshed:
+                menu = refreshed
+            if not menu:
+                return None
+            for option_selector in option_selectors:
+                try:
+                    found = menu.ele(option_selector, timeout=0.05)
+                except Exception:
+                    found = None
+                if found:
+                    return found
+            return None
+
+        if not _wait_until(lambda: _find_option() is not None, timeout=1.5, interval=0.05):
+            return False
+        target = _find_option()
+        if not target:
+            return False
+        return _click_option_and_confirm(target, f'{key}:choose_search')
+
+
     if dropdown_menu and dropdown_menu.states.is_displayed:
         # 直接查找选项（使用最精确的选择器）
         try:
             option = dropdown_menu.ele(f'xpath:.//div[@class="ecom-g-select-item-option-content"][text()="{value}"]', timeout=0.1)
             if option and option.states.is_displayed:
-                _run_interaction_recovery(new_tab, f'select_text:{key}:choose_exact')
-                option.click()
-                _wait_until(
-                    lambda: (str(input_element.attr('value') or '').strip() in {str(value), str(extra or '')})
-                    or (not bool(new_tab.ele(dropdown_selector, timeout=0.05))),
-                    timeout=0.6,
-                    interval=0.03,
-                )
-                timer_record('属性设置', f'{key}={value}', 0, _time.time() - func_start, True)
-                return
+                if _click_option_and_confirm(option, f'{key}:choose_exact'):
+                    timer_record('属性设置', f'{key}={value}', 0, _time.time() - func_start, True)
+                    return True
         except:
             pass
-        
+
         # 备用：模糊匹配
         try:
             option = dropdown_menu.ele(f'xpath:.//*[text()="{value}"]', timeout=0.1)
             if option and option.states.is_displayed:
-                _run_interaction_recovery(new_tab, f'select_text:{key}:choose_fuzzy')
-                option.click()
-                _wait_until(
-                    lambda: (str(input_element.attr('value') or '').strip() in {str(value), str(extra or '')})
-                    or (not bool(new_tab.ele(dropdown_selector, timeout=0.05))),
-                    timeout=0.6,
-                    interval=0.03,
-                )
-                timer_record('属性设置', f'{key}={value}', 0, _time.time() - func_start, True)
-                return
+                if _click_option_and_confirm(option, f'{key}:choose_fuzzy'):
+                    timer_record('属性设置', f'{key}={value}', 0, _time.time() - func_start, True)
+                    return True
         except:
             pass
-        
+
+        # 长列表（品牌等）需要先输入关键词过滤才会渲染出目标选项
+        if _search_and_pick(str(value)):
+            timer_record('属性设置', f'{key}={value}(搜索)', 0, _time.time() - func_start, True)
+            return True
+
         # 尝试备用值
         if extra:
             try:
                 option = dropdown_menu.ele(f'xpath:.//*[text()="{extra}"]', timeout=0.1)
                 if option and option.states.is_displayed:
-                    _run_interaction_recovery(new_tab, f'select_text:{key}:choose_extra')
-                    option.click()
-                    _wait_until(
-                        lambda: str(input_element.attr('value') or '').strip() == str(extra)
-                        or (not bool(new_tab.ele(dropdown_selector, timeout=0.05))),
-                        timeout=0.6,
-                        interval=0.03,
-                    )
-                    timer_record('属性设置', f'{key}={extra}', 0, _time.time() - func_start, True)
-                    return
+                    if _click_option_and_confirm(option, f'{key}:choose_extra'):
+                        # 用兜底值成功 ≠ 按配置设置成功。运费模板这类字段静默降级
+                        # 会让实际包邮范围与预期不符，必须显式告警。
+                        print(f'⚠ {key} 未找到配置值「{value}」，已降级为兜底值「{extra}」，请到设置里核对该字段')
+                        timer_record('属性设置', f'{key}={extra}(降级)', 0, _time.time() - func_start, True)
+                        return True
             except:
                 pass
+            if _search_and_pick(str(extra)):
+                print(f'⚠ {key} 未找到配置值「{value}」，已降级为兜底值「{extra}」，请到设置里核对该字段')
+                timer_record('属性设置', f'{key}={extra}(搜索降级)', 0, _time.time() - func_start, True)
+                return True
             print(f'未在下拉菜单中找到选项:{value} 或 {extra}')
         else:
             print(f'未在下拉菜单中找到选项:{value}')
     else:
         print('未找到下拉菜单')
+
+    current = get_select_field_value(new_tab, key)
+    print(f'{key} 设置失败，当前值:[{current or "空"}] 期望:[{value}]')
     timer_record('属性设置', f'{key}(失败)', 0, _time.time() - func_start, False)
+    return False
 
 
 def get_sex(title):
@@ -2281,7 +3541,77 @@ def _page_has_text(tab, texts, timeout: float = 0.03) -> bool:
     return False
 
 
+_WHITE_BG_STATE_PROBE_JS = r'''
+const blockingTexts = arguments[0] || [];
+const processingTexts = arguments[1] || [];
+const textOf = function (node) {
+    if (!node) return '';
+    return (node.innerText || node.textContent || '').replace(/\s+/g, ' ');
+};
+const hasAny = function (node, needles) {
+    if (!node) return false;
+    const text = textOf(node);
+    for (let i = 0; i < needles.length; i++) {
+        if (text.indexOf(needles[i]) !== -1) return true;
+    }
+    return false;
+};
+const field = document.querySelector('[attr-field-id="白底图"]');
+const bodyText = textOf(document.body);
+let blocking = hasAny(field, blockingTexts);
+if (!blocking) {
+    blocking = bodyText.indexOf('图片存在“非白底”问题') !== -1
+        || bodyText.indexOf('图片存在"非白底"问题') !== -1;
+}
+let busy = !!document.querySelector('span[class*="ecom-g-btn-loading-icon"]')
+    || bodyText.indexOf('上传中') !== -1;
+let panel = null;
+const candidates = document.querySelectorAll(
+    'div[class*="auxo-drawer-wrapper-body"], div[class*="ecom-g-modal"], div[class*="drawer"], div[class*="Drawer"]'
+);
+for (let i = 0; i < candidates.length; i++) {
+    const node = candidates[i];
+    if (!(node.offsetParent || node.getClientRects().length > 0)) continue;
+    if (textOf(node).indexOf('AI素材工具') !== -1) { panel = node; break; }
+}
+const processing = busy
+    || hasAny(field, processingTexts)
+    || hasAny(panel, processingTexts);
+return { blocking: blocking, processing: processing };
+'''
+
+
+def _white_bg_state(tab):
+    """一次 JS 取回白底图区域的阻断/处理中状态。
+
+    原实现要跑 _is_upload_busy + 两次 _get_white_bg_field + 三组逐条文本 xpath
+    + _find_ai_material_tool_panel，单轮约 0.9s；而调用方
+    wait_white_bg_processing_complete 的预算只有 3s，导致稳定计数根本累加不到阈值、
+    必然走超时分支。这里压成一次往返。
+
+    顺带修掉一个隐藏缺陷：_WHITE_BG_BLOCKING_TEXTS 里含直双引号的文案
+    （图片存在"非白底"问题）拼进 xpath 会生成非法表达式并被 except 吞掉，
+    等于该文案的检测一直失效；JS 用字符串包含判断不存在这个问题。
+
+    返回 None 表示 JS 不可用，调用方回退原逐条探测。
+    """
+    try:
+        state = tab.run_js(
+            _WHITE_BG_STATE_PROBE_JS,
+            list(_WHITE_BG_BLOCKING_TEXTS),
+            list(_WHITE_BG_PROCESSING_TEXTS),
+        )
+    except Exception:
+        return None
+    if isinstance(state, dict) and 'blocking' in state and 'processing' in state:
+        return {'blocking': bool(state.get('blocking')), 'processing': bool(state.get('processing'))}
+    return None
+
+
 def _white_bg_has_blocking_issue(tab) -> bool:
+    state = _white_bg_state(tab)
+    if state is not None:
+        return state['blocking']
     field = _get_white_bg_field(tab, timeout=0.05)
     if _scope_has_text(field, _WHITE_BG_BLOCKING_TEXTS):
         return True
@@ -2289,6 +3619,9 @@ def _white_bg_has_blocking_issue(tab) -> bool:
 
 
 def _white_bg_is_processing(tab) -> bool:
+    state = _white_bg_state(tab)
+    if state is not None:
+        return state['processing']
     if _is_upload_busy(tab):
         return True
     field = _get_white_bg_field(tab, timeout=0.05)
@@ -2304,11 +3637,19 @@ def wait_white_bg_processing_complete(tab, timeout: float = 30.0, interval: floa
     stable_checks = 0
     saw_processing = False
 
+    def _snapshot():
+        """一次取回两个状态，避免每轮重复探测同一片 DOM。"""
+        state = _white_bg_state(tab)
+        if state is not None:
+            return state['blocking'], state['processing']
+        return _white_bg_has_blocking_issue(tab), _white_bg_is_processing(tab)
+
     while _time.time() - start < timeout:
-        if _white_bg_has_blocking_issue(tab):
+        blocking, processing = _snapshot()
+        if blocking:
             return False
 
-        if _white_bg_is_processing(tab):
+        if processing:
             saw_processing = True
             stable_checks = 0
             _time.sleep(interval)
@@ -2873,69 +4214,33 @@ def set_sku_info(new_tab, index, sku, remark):
         if not sku_name:
             raise Exception("SKU名称为空")
 
+        # 新版抖店规格区默认 AI 助手模式，先切换为手动填写
         step_start = _time.time()
-        before_spec_count = _sku_spec_input_visible_count(new_tab)
+        if not _sku_switch_to_manual_mode(new_tab):
+            raise Exception("无法切换到手动填写模式（未找到 cascader 或切换按钮）")
+
         before_value_count = _sku_confirmed_value_count(new_tab)
 
-        color_inputs = _get_visible_elements(new_tab, 'xpath://div[@id="skuValue-颜色分类"]//input', timeout=0.2)
-        if not color_inputs:
-            raise Exception("未找到颜色分类输入框")
-        color_inputs[-1].scroll.to_center()
-        color_inputs[-1].click(by_js=True)
-
-        add_btn = new_tab.ele(f'xpath:{new_btn_xpath}', timeout=0.8)
-        if not add_btn:
-            raise Exception("未找到添加规格按钮")
-        add_btn.click(by_js=True)
-        timer_record('SKU阶段', f'{index + 1}-打开新增规格', 0, _time.time() - step_start, True)
-
-        spec_input = None
-
-        step_start = _time.time()
-        def _probe_spec_input():
-            nonlocal spec_input
-            inputs = _get_visible_elements(new_tab, _SKU_SPEC_INPUT_XPATH, timeout=0.05)
-            if not inputs:
-                return False
-            if len(inputs) > before_spec_count:
-                spec_input = inputs[-1]
-                return True
-            spec_input = inputs[-1]
-            return spec_input.states.is_displayed
-
-        if not _wait_until(_probe_spec_input, timeout=0.6, interval=0.04) or not spec_input:
-            raise Exception("未找到规格值输入框")
-
-        spec_input.click(by_js=True)
-        spec_input.input(sku_name, clear=True)
-
-        if not _wait_until(
-            lambda: (spec_input.attr("value") or "").strip() == sku_name,
-            timeout=0.35,
-            interval=0.03
-        ):
-            raise Exception(f'规格值 "{sku_name}" 未成功写入')
-        timer_record('SKU阶段', f'{index + 1}-写入规格值', 0, _time.time() - step_start, True)
-
-        step_start = _time.time()
-        _sku_finish_spec_confirmation(new_tab, sku_name, before_spec_count, before_value_count)
-        timer_record('SKU阶段', f'{index + 1}-确认规格值', 0, _time.time() - step_start, True)
+        # 核心：打开下拉 → 创建类型 → 输入 → 绿勾确认 → 底部确定（带整体重试，多 SKU 更稳）
+        _sku_create_value_with_retry(new_tab, sku_name, before_value_count)
+        timer_record('SKU阶段', f'{index + 1}-创建并确认规格值', 0, _time.time() - step_start, True)
 
         remark_text = str(remark or '').strip()
         if remark_text:
             remark_inputs = _get_visible_elements(new_tab, _SKU_REMARK_INPUT_XPATH, timeout=0.1)
             if remark_inputs:
                 remark_inputs[-1].input(remark_text + '\n')
-                _time.sleep(0.01)
 
+        # 新建行总是第 before_value_count 个 picker-label（0-based），比循环序号 index 更鲁棒
+        new_row_index = before_value_count
         literal = _xpath_literal(sku_name)
         sku_anchor_selector = f'xpath://div[@id="skuValue-颜色分类"]//*[contains(normalize-space(.), {literal})]'
-        sku_anchor = _find_sku_anchor_by_index(new_tab, index)
+        sku_anchor = _find_sku_anchor_by_index(new_tab, new_row_index)
 
         step_start = _time.time()
         def _probe_sku_anchor():
             nonlocal sku_anchor
-            sku_anchor = _find_sku_anchor_by_index(new_tab, index)
+            sku_anchor = _find_sku_anchor_by_index(new_tab, new_row_index)
             if sku_anchor:
                 return True
             anchor = new_tab.ele(sku_anchor_selector, timeout=0.05)

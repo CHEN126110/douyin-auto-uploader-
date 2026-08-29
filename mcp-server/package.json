@@ -7,7 +7,23 @@
   "scripts": {
     "start": "node server.js",
     "start:http": "node server-http.js",
-    "check": "node --check core.js && node --check server.js && node --check server-http.js"
+    "check": "node --check cdp-client.js && node --check cdp-price-stock.js && node --check cdp-tools.js && node --check core.js && node --check ops-metrics-cdp.js && node --check fxg-category-matrix-probe.js && node --check fxg-freight-probe.js && node --check fxg-material-probe.js && node --check fxg-protocol-capture.js && node --check fxg-qualification-probe.js && node --check fxg-runtime-options-probe.js && node --check fxg-schema-probe.js && node --check fxg-submit-probe.js && node --check fxg-upload-probe.js && node --check fxg-webpack-bootstrap.js && node --check server.js && node --check server-http.js && node --check scripts/capture-fxg-protocol-requests.mjs && node --check scripts/capture-fxg-submit-preflight.mjs && node --check scripts/capture-price-stock-apis.mjs && node --check scripts/check-cdp-environment.mjs && node --check scripts/start-fxg-cdp-chrome.mjs && node --check scripts/probe-fxg-category-matrix.mjs && node --check scripts/probe-fxg-freight.mjs && node --check scripts/probe-fxg-material.mjs && node --check scripts/probe-fxg-qualification.mjs && node --check scripts/probe-fxg-runtime-options.mjs && node --check scripts/probe-fxg-schema.mjs && node --check scripts/probe-fxg-submit.mjs && node --check scripts/probe-fxg-upload.mjs && node --check scripts/probe-dom-snapshot.mjs && node --check scripts/probe-dom-oldversion.mjs && node --check scripts/probe-return-old-diag.mjs && node --check scripts/probe-verify-return-old.mjs && node --check scripts/probe-step1-selectors.mjs && node --check scripts/probe-step2-anchors.mjs && node --check scripts/probe-verify-fix-e2e.mjs && node --check scripts/probe-brand-field.mjs && node --check scripts/probe-brand-select.mjs && node --check scripts/probe-select-options.mjs && node --check scripts/probe-freight-options.mjs && node --check scripts/cdp-dismiss-dialog.mjs",
+    "test:ops": "node --test tests/*.test.mjs",
+    "capture:price-stock": "node scripts/capture-price-stock-apis.mjs",
+    "capture:fxg-protocol": "node scripts/capture-fxg-protocol-requests.mjs",
+    "capture:fxg-submit-preflight": "node scripts/capture-fxg-submit-preflight.mjs",
+    "check:cdp": "node scripts/check-cdp-environment.mjs",
+    "start:fxg-cdp": "node scripts/start-fxg-cdp-chrome.mjs",
+    "probe:fxg-category-matrix": "node scripts/probe-fxg-category-matrix.mjs",
+    "probe:fxg-freight": "node scripts/probe-fxg-freight.mjs",
+    "probe:fxg-material": "node scripts/probe-fxg-material.mjs",
+    "probe:fxg-qualification": "node scripts/probe-fxg-qualification.mjs",
+    "probe:fxg-runtime-options": "node scripts/probe-fxg-runtime-options.mjs",
+    "probe:fxg-schema": "node scripts/probe-fxg-schema.mjs",
+    "probe:fxg-submit": "node scripts/probe-fxg-submit.mjs",
+    "probe:fxg-upload": "node scripts/probe-fxg-upload.mjs",
+    "probe:main34-replace": "node ../protocol-research/scripts/probe_main34_replace_via_cdp.mjs",
+    "inject:main-image-onchange": "node ../protocol-research/scripts/inject_main_image_via_onchange_cdp.mjs"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +31,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "express": "^5.2.1",
+    "ws": "^8.18.0",
     "zod": "^4.3.6"
   }
 }

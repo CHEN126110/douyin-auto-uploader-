@@ -7,15 +7,19 @@
 ## 📋 一、当前项目架构总览
 
 ### 1.1 技术栈
-| 层级 | 当前技术 | 迁移目标 |
-|------|---------|---------|
-| 桌面框架 | PySide6 + QWebEngineView | Tauri (Rust) |
-| 前端 | HTML/CSS/JS + Layui | Vue 3 + TypeScript + Element Plus |
-| 后端 | Flask (Python) | Python Sidecar (保持Flask) |
-| 数据库 | SQLite (Peewee ORM) | SQLite (保持) |
-| 浏览器自动化 | DrissionPage | DrissionPage (保持) |
+
+
+| 层级     | 当前技术                     | 迁移目标                              |
+| ------ | ------------------------ | --------------------------------- |
+| 桌面框架   | PySide6 + QWebEngineView | Tauri (Rust)                      |
+| 前端     | HTML/CSS/JS + Layui      | Vue 3 + TypeScript + Element Plus |
+| 后端     | Flask (Python)           | Python Sidecar (保持Flask)          |
+| 数据库    | SQLite (Peewee ORM)      | SQLite (保持)                       |
+| 浏览器自动化 | DrissionPage             | DrissionPage (保持)                 |
+
 
 ### 1.2 文件结构映射
+
 ```
 当前结构                          → Tauri结构
 ├── app.py (Flask主入口)          → python-sidecar/app.py
@@ -37,6 +41,7 @@
 ## 🎨 二、视觉设计规格
 
 ### 2.1 主色调系统
+
 ```css
 /* 品牌色 - 必须保持一致 */
 --primary-color: #5c7cfa;           /* 主色 - 蓝紫色 */
@@ -66,6 +71,7 @@
 ```
 
 ### 2.2 圆角系统
+
 ```css
 --radius-sm: 8px;                   /* 按钮、输入框 */
 --radius-md: 12px;                  /* 卡片、面板 */
@@ -73,6 +79,7 @@
 ```
 
 ### 2.3 阴影系统
+
 ```css
 --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
 --shadow-md: 0 4px 16px rgba(92, 124, 250, 0.3);
@@ -81,6 +88,7 @@
 ```
 
 ### 2.4 字体系统
+
 ```css
 --font-family: 'Microsoft YaHei UI', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 --font-size-xs: 12px;
@@ -92,6 +100,7 @@
 ```
 
 ### 2.5 布局尺寸
+
 ```css
 /* 左侧面板 */
 --left-panel-width: 420px;
@@ -114,74 +123,96 @@
 ### 3.1 产品管理（主页面）
 
 #### 3.1.1 左侧面板 - 产品列表
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
-| 产品列表展示 | 显示所有待上传产品 | GET `/api/products` |
-| 列表点击 | 切换右侧配置区域 | GET `/load_detail?_id={id}` |
-| 右键菜单 | 打开/删除产品 | 自定义右键菜单 |
-| 选中状态 | 高亮当前选中行 | CSS `.active` 类 |
-| 缓存优化 | 已加载数据缓存 | 前端 `detailCache` Map |
+
+
+| 功能     | 描述        | 实现方式                        |
+| ------ | --------- | --------------------------- |
+| 产品列表展示 | 显示所有待上传产品 | GET `/api/products`         |
+| 列表点击   | 切换右侧配置区域  | GET `/load_detail?_id={id}` |
+| 右键菜单   | 打开/删除产品   | 自定义右键菜单                     |
+| 选中状态   | 高亮当前选中行   | CSS `.active` 类             |
+| 缓存优化   | 已加载数据缓存   | 前端 `detailCache` Map        |
+
 
 #### 3.1.2 链接采集区域
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
-| URL输入 | 粘贴淘宝/天猫链接 | Input组件 |
-| 开始采集 | 启动采集任务 | POST `/api/capture/start` |
-| 进度显示 | 实时采集进度 | 轮询 `/api/capture/status/{task_id}` |
-| 状态展示 | 采集状态文字+进度条 | 响应式UI |
+
+
+| 功能    | 描述         | 实现方式                               |
+| ----- | ---------- | ---------------------------------- |
+| URL输入 | 粘贴淘宝/天猫链接  | Input组件                            |
+| 开始采集  | 启动采集任务     | POST `/api/capture/start`          |
+| 进度显示  | 实时采集进度     | 轮询 `/api/capture/status/{task_id}` |
+| 状态展示  | 采集状态文字+进度条 | 响应式UI                              |
+
 
 #### 3.1.3 右侧面板 - 配置区域
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
-| 类目选择 | 下拉选择类目 | Select (0-4: 船袜/短袜/中筒袜/长筒袜/袜套) |
-| 标题输入 | 商品标题 (60字限制) | Input + 字数统计 |
-| 智能标题 | AI标题建议 | POST `/api/generate_smart_title` |
-| 增强标题 | 热门词+标题 | POST `/api/generate_smart_title_enhanced` |
-| 卖点备注 | 备注说明 | Input |
-| 库存设置 | 数字输入 | Number Input |
-| 单价设置 | 价格输入 | Number Input |
-| 智能填充 | 基于成本计算价格 | POST `/api/pricing/calculate_smart_prices` |
-| 简单填充 | 统一填充价格 | 前端逻辑 |
-| 保存 | 保存配置 | POST `/save_info` |
+
+
+| 功能   | 描述           | 实现方式                                       |
+| ---- | ------------ | ------------------------------------------ |
+| 类目选择 | 下拉选择类目       | Select (0-4: 船袜/短袜/中筒袜/长筒袜/袜套)             |
+| 标题输入 | 商品标题 (60字限制) | Input + 字数统计                               |
+| 智能标题 | AI标题建议       | POST `/api/generate_smart_title`           |
+| 增强标题 | 热门词+标题       | POST `/api/generate_smart_title_enhanced`  |
+| 卖点备注 | 备注说明         | Input                                      |
+| 库存设置 | 数字输入         | Number Input                               |
+| 单价设置 | 价格输入         | Number Input                               |
+| 智能填充 | 基于成本计算价格     | POST `/api/pricing/calculate_smart_prices` |
+| 简单填充 | 统一填充价格       | 前端逻辑                                       |
+| 保存   | 保存配置         | POST `/save_info`                          |
+
 
 #### 3.1.4 SKU管理区域
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
-| SKU列表 | 缩略图+名称+价格+删除 | 虚拟滚动 (>50项) |
-| 图片预览 | 悬停显示大图 | 悬浮面板 |
-| SKU选中 | 点击选中/取消 | CSS `.sku-selected` 类 |
-| SKU删除 | 删除单个SKU | POST `/delete_sku` |
-| 懒加载 | 图片懒加载优化 | LazyLoader |
+
+
+| 功能    | 描述           | 实现方式                  |
+| ----- | ------------ | --------------------- |
+| SKU列表 | 缩略图+名称+价格+删除 | 虚拟滚动 (>50项)           |
+| 图片预览  | 悬停显示大图       | 悬浮面板                  |
+| SKU选中 | 点击选中/取消      | CSS `.sku-selected` 类 |
+| SKU删除 | 删除单个SKU      | POST `/delete_sku`    |
+| 懒加载   | 图片懒加载优化      | LazyLoader            |
+
 
 #### 3.1.5 底部操作按钮
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
-| 开始上传 | 启动自动化上传 | POST `/start` |
-| 取消勾选 | 清除SKU选中状态 | 前端逻辑 |
-| 清空全部 | 删除所有产品 | DELETE `/delete_all` |
-| 设置 | 打开设置弹窗 | GET `/settings/page` |
+
+
+| 功能   | 描述        | 实现方式                 |
+| ---- | --------- | -------------------- |
+| 开始上传 | 启动自动化上传   | POST `/start`        |
+| 取消勾选 | 清除SKU选中状态 | 前端逻辑                 |
+| 清空全部 | 删除所有产品    | DELETE `/delete_all` |
+| 设置   | 打开设置弹窗    | GET `/settings/page` |
+
 
 ### 3.2 设置页面
-| 功能 | 描述 | API |
-|------|-----|-----|
-| 成本项目管理 | 添加/编辑/删除成本项 | POST `/api/pricing/cost-item` |
-| 利润率配置 | 设置目标利润率 | POST `/api/pricing/profit-margin-config` |
-| 图片命名规则 | 支持格式/过滤器 | POST `/settings` |
-| UI设置 | 主题/动画/悬停图片 | POST `/settings` |
-| 处理设置 | 自动检测/批量模式 | POST `/settings` |
+
+
+| 功能     | 描述          | API                                      |
+| ------ | ----------- | ---------------------------------------- |
+| 成本项目管理 | 添加/编辑/删除成本项 | POST `/api/pricing/cost-item`            |
+| 利润率配置  | 设置目标利润率     | POST `/api/pricing/profit-margin-config` |
+| 图片命名规则 | 支持格式/过滤器    | POST `/settings`                         |
+| UI设置   | 主题/动画/悬停图片  | POST `/settings`                         |
+| 处理设置   | 自动检测/批量模式   | POST `/settings`                         |
+
 
 ### 3.3 文件导入（拖拽）
-| 功能 | 描述 | 实现方式 |
-|------|-----|---------|
+
+
+| 功能   | 描述       | 实现方式                    |
+| ---- | -------- | ----------------------- |
 | 拖拽导入 | 将文件夹拖入窗口 | Tauri `tauri://drop` 事件 |
-| 文件扫描 | 扫描SKU图片 | Python后端处理 |
-| 数据入库 | 创建产品记录 | Record.create() |
+| 文件扫描 | 扫描SKU图片  | Python后端处理              |
+| 数据入库 | 创建产品记录   | Record.create()         |
+
 
 ---
 
 ## 📡 四、API接口清单
 
 ### 4.1 产品管理
+
 ```typescript
 // 获取产品列表
 GET /api/products
@@ -213,6 +244,7 @@ GET /menu_delete?_id={id}
 ```
 
 ### 4.2 采集功能
+
 ```typescript
 // 开始采集
 POST /api/capture/start
@@ -230,6 +262,7 @@ Response: { success: boolean, ... }
 ```
 
 ### 4.3 智能标题
+
 ```typescript
 // 标准版标题生成
 POST /api/generate_smart_title
@@ -247,6 +280,7 @@ Body: { record_id: string, style: string }
 ```
 
 ### 4.4 价格计算
+
 ```typescript
 // 智能价格计算
 POST /api/pricing/calculate_smart_prices
@@ -262,6 +296,7 @@ POST /api/pricing/profit-margin-config
 ```
 
 ### 4.5 设置管理
+
 ```typescript
 // 获取设置
 GET /settings
@@ -279,6 +314,7 @@ GET /settings/page
 ```
 
 ### 4.6 上传功能
+
 ```typescript
 // 开始上传
 POST /start
@@ -290,6 +326,7 @@ Response: { success: boolean, msg: string }
 ## 🗃️ 五、数据模型
 
 ### 5.1 Record 表
+
 ```python
 class Record(Model):
     id = PrimaryKeyField()
@@ -308,6 +345,7 @@ class Record(Model):
 ```
 
 ### 5.2 SKU数据结构
+
 ```typescript
 interface SKU {
     path: string;       // 图片文件路径
@@ -322,23 +360,27 @@ interface SKU {
 ## 🎯 六、交互规格
 
 ### 6.1 列表行点击
+
 1. 显示选中状态 (左侧蓝色边框 + 渐变背景)
 2. 加载产品详情 (带缓存检查)
 3. 更新右侧配置区域
 4. 渲染SKU列表
 
 ### 6.2 SKU缩略图交互
+
 1. **点击**: 切换选中状态 (`.sku-selected`)
 2. **悬停**: 显示预览大图面板 (右上角 220x220)
 3. **选中效果**: 蓝色边框 + 缩放1.05 + 蓝色阴影
 
 ### 6.3 右键菜单
+
 1. 触发: 右键点击列表行
 2. 位置: 鼠标位置 (clientX, clientY)
 3. 选项: 打开、删除
 4. 关闭: 点击其他区域
 
 ### 6.4 弹窗样式
+
 1. 标题栏: 蓝紫渐变背景, 白色文字
 2. 关闭按钮: 垂直居中于标题栏
 3. 内容区: 白色背景
@@ -349,31 +391,35 @@ interface SKU {
 ## 🚀 七、迁移步骤
 
 ### Phase 1: 基础设施 (Day 1-2)
-- [ ] 安装 Rust + Tauri CLI
-- [ ] 创建 Tauri 项目结构
-- [ ] 配置 Python Sidecar
-- [ ] 验证 Flask 后端在 Sidecar 中运行
+
+- 安装 Rust + Tauri CLI
+- 创建 Tauri 项目结构
+- 配置 Python Sidecar
+- 验证 Flask 后端在 Sidecar 中运行
 
 ### Phase 2: 前端迁移 (Day 3-5)
-- [ ] 设置 Vue 3 + Vite
-- [ ] 安装 Element Plus
-- [ ] 迁移 CSS 变量系统
-- [ ] 实现主布局组件
-- [ ] 实现产品列表组件
-- [ ] 实现 SKU 管理组件
-- [ ] 实现设置弹窗组件
+
+- 设置 Vue 3 + Vite
+- 安装 Element Plus
+- 迁移 CSS 变量系统
+- 实现主布局组件
+- 实现产品列表组件
+- 实现 SKU 管理组件
+- 实现设置弹窗组件
 
 ### Phase 3: API集成 (Day 6-7)
-- [ ] 实现 Tauri Commands (Rust ↔ Python)
-- [ ] 实现前端 API 服务层
-- [ ] 实现拖拽文件导入
-- [ ] 实现右键菜单
+
+- 实现 Tauri Commands (Rust ↔ Python)
+- 实现前端 API 服务层
+- 实现拖拽文件导入
+- 实现右键菜单
 
 ### Phase 4: 测试优化 (Day 8-10)
-- [ ] 功能完整性测试
-- [ ] 视觉一致性验证
-- [ ] 性能优化
-- [ ] 打包测试
+
+- 功能完整性测试
+- 视觉一致性验证
+- 性能优化
+- 打包测试
 
 ---
 

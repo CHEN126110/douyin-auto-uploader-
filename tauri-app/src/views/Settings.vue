@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { Back } from "@element-plus/icons-vue";
 import SettingsPanel from "@/components/SettingsPanel.vue";
 
 const router = useRouter();
@@ -22,13 +23,11 @@ function goBack() {
 <template>
   <div class="settings-page">
     <div class="page-header">
-      <div class="header-left">
-        <el-button @click="goBack">返回</el-button>
-        <div class="header-text">
-          <h1>{{ pageTitle }}</h1>
-          <p>设置内容已迁移为独立页面，保存逻辑与原弹窗保持一致。</p>
-        </div>
+      <div class="header-text">
+        <h1>{{ pageTitle }}</h1>
+        <p>设置内容已迁移为独立页面，保存逻辑与原弹窗保持一致。</p>
       </div>
+      <el-button :icon="Back" @click="goBack">返回</el-button>
     </div>
 
     <SettingsPanel />
@@ -51,13 +50,8 @@ function goBack() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
   gap: 16px;
+  margin-bottom: 20px;
 }
 
 .header-text {

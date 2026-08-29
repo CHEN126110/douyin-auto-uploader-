@@ -135,10 +135,16 @@ def _mkerr(errcode, **kw):
     msg = friendly
     for k, v in kw.items():
         msg = msg.replace("{" + k + "}", str(v))
-    return {"success": False, "error": {
+    error = {
         "code": errcode, "category": cat,
         "message": msg, "fix_hint": hint.format(**kw) if "{" in hint else hint,
-    }}
+    }
+    detail = str(kw.get("detail") or "").strip()
+    if detail:
+        error["detail"] = detail
+        if not error["fix_hint"]:
+            error["fix_hint"] = detail
+    return {"success": False, "error": error}
 
 
 # ============================================================
@@ -161,7 +167,11 @@ class CDPSession:
             resp = urlopen(f"http://{self.host}:{self.port}/json/list", timeout=3)
             targets = json.loads(resp.read())
         except Exception as e:
-            raise RuntimeError(f"[CDP] 无法连接 Chrome @ {self.host}:{self.port}: {e}")
+            raise RuntimeError(
+                f"Chrome调试端口未开启。请用以下命令启动Chrome：\n"
+                f"  chrome.exe --remote-debugging-port={self.port}\n"
+                f"然后在Chrome中打开 https://fxg.jinritemai.com 并登录抖店后台"
+            )
 
         # 优先找发品页，其次任意 jinritemai 页面
         target = None
@@ -175,7 +185,9 @@ class CDPSession:
             if not target:
                 target = t  # 第一个 jinritemai 页面作为备选
         if not target:
-            raise RuntimeError("[CDP] 未找到 jinritemai.com 标签页，请先在Chrome中打开并登录")
+            raise RuntimeError(
+                "未找到抖店后台页面。请在Chrome中打开 https://fxg.jinritemai.com 并登录后重试"
+            )
 
         self._debug_url = target["webSocketDebuggerUrl"]
         self.ws = websocket.create_connection(self._debug_url, timeout=timeout, suppress_origin=True)
@@ -305,7 +317,16 @@ def step_session(cdp):
         return _mkerr("NO_PUBLISH_ID", detail=str(js_result)[:200])
 
     publish_id = session.get("publishId", "")
-    shop_id_val = session.get("shopId", "155450371")
+    # 严禁兜底：未拿到 shop_id 时直接报错。
+    # 历史上这里 fallback 到测试店铺 ID `155450371`，会导致用户在自己浏览器登录 A 店铺，
+    # 却把商品提交到别人店铺。宁可报错也不能用兜底掩盖。
+    shop_id_val = (session.get("shopId") or "").strip()
+    if not shop_id_val:
+        return _mkerr(
+            "NO_PUBLISH_ID",
+            detail="未能从浏览器 cookie 中检测到当前店铺（ecom_gray_shop_id 缺失），"
+                   "请确认 Chrome 已登录抖店发布页（fxg.jinritemai.com）后重试"
+        )
     print(f"[v4:1/5] publishId={publish_id[:16]}... shopId={shop_id_val}")
     return {"success": True, "data": {
         "cookie_str": cookie_str,
@@ -319,6 +340,7 @@ def step_session(cdp):
 # ============================================================
 
 def _resize_to_ratio(image_path, target_w, target_h):
+    """按目标比例裁剪 + 等比缩放（适用于主图/SKU 图，会中心裁切）。"""
     if not HAS_PIL:
         return image_path
     try:
@@ -340,7 +362,33 @@ def _resize_to_ratio(image_path, target_w, target_h):
         return image_path
 
 
-def _upload_single(image_path, cookie_str):
+def _resize_to_max_side(image_path, max_side):
+    """按长边等比缩放，保持原始比例，不裁切。
+    专给详情图用——详情图常是 800×6000 这种长条图，强行裁成 1:1 会丢内容。
+    若长边已经不超过 max_side，则原样返回。
+    """
+    if not HAS_PIL:
+        return image_path
+    try:
+        img = Image.open(image_path)
+        w, h = img.size
+        long_side = max(w, h)
+        if long_side <= max_side:
+            return image_path
+        scale = max_side / float(long_side)
+        new_w = max(int(w * scale), 1)
+        new_h = max(int(h * scale), 1)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=os.path.splitext(image_path)[1] or ".jpg", delete=False
+        )
+        img.save(tmp.name, quality=95)
+        return tmp.name
+    except Exception:
+        return image_path
+
+
+def _upload_single(image_path, cookie_str, timeout=15):
     if not os.path.exists(image_path):
         return None
     ext = os.path.splitext(image_path)[1].lower()
@@ -369,13 +417,29 @@ def _upload_single(image_path, cookie_str):
     try:
         req = Request("https://fxg.jinritemai.com/product/img/batchupload",
                       data=body, headers=headers, method="POST")
-        resp = urlopen(req, timeout=30)
+        resp = urlopen(req, timeout=timeout)
         result = json.loads(resp.read().decode("utf-8"))
         if result.get("errno") == 0 and result.get("data"):
             return result["data"][0]
+        else:
+            print(f"  [WARN] 图片上传返回异常: errno={result.get('errno')} msg={result.get('msg','')[:50]}")
     except Exception as e:
-        print(f"  [WARN] 图片上传失败: {image_path} -> {e}")
+        print(f"  [WARN] 图片上传失败: {os.path.basename(image_path)} -> {str(e)[:80]}")
     return None
+
+
+def _validate_cookie(cookie_str):
+    """快速验证 cookie 是否有效。返回 True/False。"""
+    if not cookie_str or len(cookie_str) < 100:
+        return False
+    try:
+        req = Request("https://fxg.jinritemai.com/ffa/g/create",
+                      headers={"Cookie": cookie_str, "User-Agent": "Mozilla/5.0"},
+                      method="HEAD")
+        resp = urlopen(req, timeout=5)
+        return resp.status < 400
+    except Exception:
+        return False
 
 
 def step_upload_images(image_paths, cookie_str):
@@ -383,17 +447,26 @@ def step_upload_images(image_paths, cookie_str):
 
     image_paths: {"main_3x4": [...], "main_1x1": [...], "detail": [...]}
     返回: {"success": True, "data": {main_3x4: [...], main_1x1: [...], detail: [...], white: "..."}}
+
+    处理策略：
+      - 主图 / SKU 规格图：严格按目标比例中心裁切（与平台展示比例对齐）
+      - 详情图：仅按长边 1440 等比缩放，保持原始长条比例，**不裁切**
+        （历史版本曾把详情图也强行裁成 1:1，会切掉长图绝大部分内容）
     """
-    urls = {"main_3x4": [], "main_1x1": [], "detail": [], "white": ""}
+    urls = {"main_3x4": [], "main_1x1": [], "detail": [], "sku": [], "white": ""}
     errors = []
 
+    # (label, target_w, target_h, mode)：mode="ratio" 按比例裁切, "longest" 按长边等比缩放
     label_map = {
-        "main_3x4": ("3:4主图", 1440, 1920),
-        "main_1x1": ("1:1主图", 1440, 1440),
-        "detail":   ("详情图",  1440, 1440),
+        "main_3x4": ("3:4主图",   1440, 1920, "ratio"),
+        "main_1x1": ("1:1主图",   1440, 1440, "ratio"),
+        "detail":   ("详情图",    1440, 1440, "longest"),
+        "sku":      ("SKU规格图", 1440, 1440, "ratio"),
     }
 
-    for key, (label, tw, th) in label_map.items():
+    total_files = sum(len(v) for v in image_paths.values() if v)
+    uploaded = 0
+    for key, (label, tw, th, mode) in label_map.items():
         files = image_paths.get(key, [])
         if not files:
             continue
@@ -401,8 +474,13 @@ def step_upload_images(image_paths, cookie_str):
             if not os.path.exists(f):
                 errors.append({"path": f, "label": label, "error": "NOT_FOUND"})
                 continue
-            processed = _resize_to_ratio(f, tw, th)
-            url = _upload_single(processed, cookie_str)
+            uploaded += 1
+            print(f"[v4:2/5] 上传 {label} ({uploaded}/{total_files}): {os.path.basename(f)[:40]}")
+            if mode == "longest":
+                processed = _resize_to_max_side(f, max(tw, th))
+            else:
+                processed = _resize_to_ratio(f, tw, th)
+            url = _upload_single(processed, cookie_str, timeout=15)
             if processed != f:
                 try: os.unlink(processed)
                 except: pass
@@ -461,7 +539,7 @@ def _wait_schemaform(cdp, timeout=12):
     return False
 
 
-def step_inject_state(cdp, product_data, image_urls, category_config):
+def step_inject_state(cdp, product_data, image_urls, category_config, freight_id=""):
     """通过 React state 注入标题、规格、SKU、价格等。
 
     注入策略：
@@ -470,6 +548,8 @@ def step_inject_state(cdp, product_data, image_urls, category_config):
       3. 构建完整的 model 字段 (图片、类目、描述等)
       4. 批量 setState 注入
       5. 验证注入结果
+
+    freight_id 为运费模板 ID，若提供会一并注入到 React state 中。
 
     返回: {"success": True, "data": {specs, skus}}
     """
@@ -511,9 +591,10 @@ def step_inject_state(cdp, product_data, image_urls, category_config):
     size_id = spec_detail[1]["spec_values"][0]["id"]
 
     # 构建 sku_detail：每个颜色一个 SKU
+    # 价格/库存严格要求调用方传入，缺失即报错（避免兜底掩盖问题）
     sku_detail = []
     for i, color in enumerate(colors):
-        sku_price = 9.9
+        sku_price = 0.0
         if i < len(sku_list):
             try:
                 p = float(sku_list[i].get("price", 0))
@@ -521,15 +602,25 @@ def step_inject_state(cdp, product_data, image_urls, category_config):
                     sku_price = p
             except (ValueError, TypeError):
                 pass
+        if sku_price <= 0:
+            return _mkerr(
+                "NO_SKU",
+                detail=f"第 {i+1} 个 SKU「{color}」未配置有效价格"
+            )
 
-        sku_stock = 100
+        sku_stock = 0
         if i < len(sku_list):
             try:
-                s = int(sku_list[i].get("stock", 100))
+                s = int(sku_list[i].get("stock", 0))
                 if s > 0:
                     sku_stock = s
             except (ValueError, TypeError):
                 pass
+        if sku_stock <= 0:
+            return _mkerr(
+                "NO_SKU",
+                detail=f"第 {i+1} 个 SKU「{color}」未配置有效库存"
+            )
 
         sid = f"{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:8]}"
         sku_detail.append({
@@ -595,6 +686,12 @@ def step_inject_state(cdp, product_data, image_urls, category_config):
                 var descVal = {json.dumps(description, ensure_ascii=False)};
                 if (descVal) sf.n("description").setState({{value: descVal}}, "inject");
 
+                // 运费模板（按用户在设置里选择的模板名称解析得到的 ID）
+                var freightIdVal = {json.dumps(str(freight_id or ""))};
+                if (freightIdVal) {{
+                    try {{ sf.n("freight_id").setState({{value: freightIdVal}}, "inject"); }} catch(e) {{}}
+                }}
+
                 // 返回验证数据
                 return JSON.stringify({{
                     ok: true,
@@ -603,7 +700,8 @@ def step_inject_state(cdp, product_data, image_urls, category_config):
                     pics: {len(pic_value)},
                     mitf: {len(mitf_value)},
                     wbg: {1 if wbg_value else 0},
-                    desc_len: {len(description)}
+                    desc_len: {len(description)},
+                    freight_id: freightIdVal
                 }});
             }} catch(e) {{
                 return JSON.stringify({{error: e.message || String(e)}});
@@ -944,6 +1042,136 @@ def validate_title(title):
         return {"ok": False, "detail": f"标题{cn_chars}个汉字，超过平台限制30个汉字(60字符)"}
     return {"ok": True, "detail": f"标题合规({cn_chars}字)"}
 
+
+def _normalize_freight_name(name):
+    return re.sub(r"[\s\-_—/\\|,，。；;:：()（）\[\]【】]+", "", str(name or "").strip().lower())
+
+
+def _freight_match_tokens(name):
+    normalized = _normalize_freight_name(name)
+    tokens = []
+    for keyword in ("中通", "圆通", "韵达", "申通", "顺丰", "京东", "极兔", "邮政", "偏远", "非偏远"):
+        if keyword in normalized:
+            tokens.append(keyword)
+    if "不包邮" in normalized:
+        tokens.append("不包邮")
+    elif "包邮" in normalized:
+        tokens.append("包邮")
+    return tokens
+
+
+def _match_freight_template(options, configured_name):
+    configured = str(configured_name or "").strip()
+    normalized_configured = _normalize_freight_name(configured)
+    available = [opt for opt in (options or []) if not opt.get("disabled")]
+
+    for opt in available:
+        if _normalize_freight_name(opt.get("name")) == normalized_configured:
+            return opt, "exact"
+
+    for opt in available:
+        candidate = _normalize_freight_name(opt.get("name"))
+        if normalized_configured and normalized_configured in candidate:
+            return opt, "contains"
+
+    tokens = _freight_match_tokens(configured)
+    if tokens:
+        matches = [
+            opt for opt in available
+            if all(token in _normalize_freight_name(opt.get("name")) for token in tokens)
+        ]
+        if len(matches) == 1:
+            return matches[0], "tokens:" + "+".join(tokens)
+
+    return None, ""
+
+
+def step_load_freight_options(cdp, category_leaf_id, publish_id):
+    """通过协议接口拉取当前店铺的运费模板列表。
+
+    走的是抖店发布页本身的 refetchSchema 动作：
+      POST /product/tproduct/refetchSchema?action=freight_template_options_load
+    返回结构里 model.freight_id 的 additions/extra/options 字段会包含可用模板。
+
+    返回: {"success": True, "data": [{"id": "300713474", "name": "中通包邮"}, ...]}
+         若拉取失败或字段不识别，data 为空数组，由调用方决定是否中止。
+    """
+    js = f'''
+        (async function() {{
+            if (!window.__fxgPost) {{
+                var chunkName = Object.keys(window).find(function(k) {{
+                    return k.includes("@ecom-mcenter/ffa-goods");
+                }});
+                if (!chunkName) return JSON.stringify({{error: "no chunk"}});
+                if (!window.__fxgWebpackRequire) {{
+                    window[chunkName].push([[Math.floor(Math.random() * 1e9)], {{}}, function(req) {{
+                        window.__fxgWebpackRequire = req;
+                    }}]);
+                }}
+                window.__fxgPost = window.__fxgWebpackRequire(90665).bE;
+            }}
+            try {{
+                var ctx = {{
+                    category_id: "{category_leaf_id}",
+                    operation_type: "normal",
+                    ability: [],
+                    feature: {{session_publish_id: "helper_{publish_id}"}}
+                }};
+                var resp = await window.__fxgPost(
+                    "/product/tproduct/refetchSchema?action=freight_template_options_load",
+                    {{context: ctx, model: {{}}}},
+                    {{timeout: 15000}}
+                );
+                return JSON.stringify(resp);
+            }} catch(e) {{
+                return JSON.stringify({{error: true, msg: e.msg || String(e)}});
+            }}
+        }})()
+    '''
+    try:
+        raw = cdp.evaluate(js, timeout=25)
+        resp = json.loads(raw)
+    except (json.JSONDecodeError, Exception) as e:
+        return {"success": False, "error": {"message": f"运费模板拉取失败: {str(e)[:120]}"}, "data": []}
+
+    if resp.get("error"):
+        return {"success": False, "error": {"message": resp.get("msg", "运费模板拉取异常")}, "data": []}
+
+    data = resp.get("data") if isinstance(resp, dict) else None
+    model = (data or {}).get("model") if isinstance(data, dict) else None
+    field = (model or {}).get("freight_id") if isinstance(model, dict) else None
+    if not isinstance(field, dict):
+        return {"success": False, "error": {"message": "返回结构里没有 freight_id 字段"}, "data": []}
+
+    # 抖店把候选项藏在 additions / extra / options / values / value_options / freight_options 这些位置
+    candidates = []
+    additions = field.get("additions") if isinstance(field.get("additions"), dict) else {}
+    extra = field.get("extra") if isinstance(field.get("extra"), dict) else {}
+    for source in (field.get("options"), field.get("values"), field.get("value_options"),
+                   additions.get("options"), additions.get("value_options"), additions.get("freight_options"),
+                   extra.get("options"), extra.get("value_options"), extra.get("freight_options")):
+        if isinstance(source, list) and source:
+            candidates = source
+            break
+
+    options = []
+    for opt in candidates:
+        if not isinstance(opt, dict):
+            continue
+        opt_id = opt.get("value_id") or opt.get("id") or opt.get("value") or opt.get("freight_id") or opt.get("template_id")
+        opt_name = opt.get("value_name") or opt.get("name") or opt.get("label") or opt.get("template_name")
+        if not opt_id or not opt_name:
+            continue
+        options.append({
+            "id": str(opt_id),
+            "name": str(opt_name),
+            "disabled": bool(opt.get("disabled")),
+        })
+
+    print(f"[v4:freight] 拉到 {len(options)} 个运费模板")
+    return {"success": True, "data": options}
+
+
 def step_get_schema_for_body(cdp, category_leaf_id, publish_id):
     """通过 CDP webpack 获取 schema。用于离线 body 构建时获取真实 value_id。
 
@@ -997,10 +1225,12 @@ def step_get_schema_for_body(cdp, category_leaf_id, publish_id):
     print(f"[v4:schema] Schema获取: {len(items)} 类目属性, leaf_id={category_leaf_id}")
     return {"success": True, "data": {"items": items, "model": model}}
 
-def step_build_body_offline(product_data, image_urls, category_config, publish_id, shop_id, schema_data=None):
+def step_build_body_offline(product_data, image_urls, category_config, publish_id, shop_id, schema_data=None, freight_id=""):
     """离线构造 addWithSchema body（从 v2 移植）。
 
     当页面 schemaForm 不可用时（类目未选择/标题未填）使用此路径。
+    freight_id 必须由调用方真实传入（通过 step_load_freight_options 拉取并按用户设置匹配），
+    不再使用历史的硬编码默认值 "300713474"。
     已验证: product_id=3819288252247048401 (2026-05-11)
     """
     title = product_data.get("title", "")
@@ -1094,12 +1324,22 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
 
     # -- spec_detail --
     colors = list(dict.fromkeys(str(s.get("name", "默认")).strip() for s in sku_list)) or ["默认"]
+
+    # SKU 规格图 URL（按颜色顺序），没有则空字符串
+    sku_urls = image_urls.get("sku", [])
+    sku_image_map = {}
+    for i, s in enumerate(sku_list):
+        color_name = str(s.get("name", "")).strip()
+        if color_name and color_name not in sku_image_map and i < len(sku_urls):
+            sku_image_map[color_name] = sku_urls[i]
+
     spec_detail = [
         {
             "id": "10000", "cp_id": 2752, "name": "颜色分类",
             "spec_values": [
                 {"id": str(996874532588296900 + i + 18), "name": c,
-                 "cpv_id": 0, "cpv_path": [], "img_url": None}
+                 "cpv_id": 0, "cpv_path": [],
+                 "img_url": sku_image_map.get(c, None)}
                 for i, c in enumerate(colors)
             ]
         },
@@ -1115,20 +1355,38 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
     size_id = spec_detail[1]["spec_values"][0]["id"]
 
     # -- sku_detail --
+    # 严禁兜底：每个 SKU 的 price/stock 必须由调用方真实提供。
+    # 历史上 price 默认 9.9、stock 默认 100，会让用户在不知情下用错价格/错库存提交。
     sku_detail = []
     for i in range(len(colors)):
-        sku_price = 9.9
+        sku_price = 0.0
         if i < len(sku_list):
             try:
                 p = float(sku_list[i].get("price", 0))
                 if p > 0: sku_price = p
             except: pass
-        sku_stock = 100
+        if sku_price <= 0:
+            return _mkerr(
+                "NO_SKU",
+                detail=f"第 {i+1} 个 SKU「{colors[i]}」未配置有效价格，请在产品列表中填写单价"
+            )
+        sku_stock = 0
         if i < len(sku_list):
             try:
                 s = int(sku_list[i].get("stock", 0))
                 if s > 0: sku_stock = s
             except: pass
+        if sku_stock <= 0:
+            return _mkerr(
+                "NO_SKU",
+                detail=f"第 {i+1} 个 SKU「{colors[i]}」未配置有效库存，请在产品列表中填写库存数量"
+            )
+        # SKU 规格图：对应颜色的第一个匹配图片
+        sku_color = colors[i]
+        sku_pic_urls = []
+        if sku_color in sku_image_map and sku_image_map[sku_color]:
+            sku_pic_urls = [sku_image_map[sku_color]]
+
         sid = f"{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:8]}"
         sku_detail.append({
             "id": sid,
@@ -1137,16 +1395,15 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
             "confirm_no_barcode": False,
             "spec_detail_ids": [color_ids[i], size_id],
             "price": str(sku_price),
+            "sku_pic": sku_pic_urls,
         })
 
-    # -- 描述 --
-    desc_parts = []
-    for u in image_urls.get("main_3x4", [])[:1]:
-        desc_parts.append(f'<img src="{u}" style="max-width:100%;"/>')
-    for u in image_urls.get("main_1x1", [])[:1]:
-        desc_parts.append(f'<img src="{u}" style="max-width:100%;"/>')
-    for u in image_urls.get("detail", []):
-        desc_parts.append(f'<img src="{u}" style="max-width:100%;"/>')
+    # -- 描述（与 React 注入路径保持一致：只放详情图，按上传顺序，最多 15 张） --
+    # 历史版本曾在详情页前面强行塞 1 张 3:4 主图 + 1 张 1:1 主图，
+    # 导致用户的"详情_1, 详情_2 ..."顺序前面凭空多出主图，看起来像"切片顺序错乱"。
+    # 现已撤销，统一为只放详情图。
+    detail_imgs = image_urls.get("detail", [])[:15]
+    desc_parts = [f'<img src="{u}" style="max-width:100%;"/>' for u in detail_imgs]
     description = "<p>" + "".join(desc_parts) + "</p>" if desc_parts else ""
 
     # -- 组装 model --
@@ -1165,7 +1422,12 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
     model["description"] = w(description)
     model["spec_detail"] = w(spec_detail)
     model["sku_detail"] = w(sku_detail)
-    model["freight_id"] = w("300713474")
+    if not freight_id:
+        return _mkerr(
+            "SUBMIT_FAILED",
+            detail="未指定运费模板 ID，无法构造提交体。请先在设置中选择运费模板，或检查协议拉取模板是否成功"
+        )
+    model["freight_id"] = w(str(freight_id))
     model["pickup_method"] = w("0")
     model["start_sale_type"] = w("0")
     model["product_type"] = w("0")
@@ -1179,9 +1441,11 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
     model["alli_promotion_plan_switch"] = w(False)
     model["area_stock_switcher"] = w(False)
     model["goods_category_appeal"] = w(False)
+    # 免息分期：默认关闭。早期版本曾硬编码挂载一个测试活动 ID 并默认开启，
+    # 会让用户在不知情时自动加入活动产生意外手续费/合规风险，已撤销该兜底。
     model["interest_free_activity"] = w([])
-    model["interest_free_activity_id"] = w({"activity_template_id": "IFA202508061521201431032346"})
-    model["interest_free_open"] = w(True)
+    model["interest_free_activity_id"] = w({})
+    model["interest_free_open"] = w(False)
     model["reference_price_enable"] = w(False)
     model["detail_prettify_uri"] = w("")
 
@@ -1245,7 +1509,7 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
 # 一键流水线
 # ============================================================
 
-def run(category_leaf_id, product_data, image_paths, category_config=None, shop_id=None, progress_callback=None):
+def run(category_leaf_id, product_data, image_paths, category_config=None, shop_id=None, progress_callback=None, cdp_port=None, shipping_template_name="", stop_before_submit=False):
     """执行完整协议发布流水线。
 
     Args:
@@ -1255,6 +1519,11 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
         category_config: 可选 {first_cid, first_cname, ...}
         shop_id: 可选
         progress_callback: 可选 callable(pct, msg, step_name, steps) 用于实时进度
+        cdp_port: CDP调试端口 (默认从环境变量 CDP_PORT 读取，其次 9222)
+        shipping_template_name: 用户在设置里选择的运费模板名称（如"中通包邮"）。
+            会通过协议接口实时拉取当前店铺的模板列表并按名称匹配 ID。
+            匹配不到时整个商品发布会被中止并提示用户修复设置/改用 DOM 模式。
+        stop_before_submit: True 时只跑到提交前校验，不调用平台提交接口。
 
     Returns:
         {success: bool, data: {product_id, steps: [...]}}
@@ -1286,6 +1555,7 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
                 "read_state": "校验商品数据",
                 "get_schema": "获取类目属性",
                 "build_body_offline": "组装发布数据",
+                "stop_before_submit": "提交前截停",
                 "submit": "提交到平台",
             }
             friendly_name = step_label_map.get(entry["name"], entry["name"])
@@ -1320,7 +1590,12 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
         return {**_mkerr("NO_TITLE", detail=title_check["detail"]), "steps": []}
     print(f"[V4] 标题预检: {title_check['detail']}")
 
-    cdp = CDPSession()
+    # 确定 CDP 端口: 参数 > 环境变量 > 默认9222 > 扫描可用端口
+    if cdp_port is None:
+        cdp_port = int(os.environ.get("CDP_PORT", "0") or "0")
+    if not cdp_port or cdp_port == 0:
+        cdp_port = int(os.environ.get("CDP_PORT", "9222"))
+    cdp = CDPSession(port=cdp_port)
 
     try:
         # [1/5] 会话
@@ -1341,8 +1616,36 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
             return {**upload_res, "steps": steps}
         image_urls = upload_res["data"]
         _done(entry, t0, True,
-              f"3:4={len(image_urls['main_3x4'])} 1:1={len(image_urls['main_1x1'])} "
-              f"detail={len(image_urls['detail'])}", step_index=1)
+              f"主图={len(image_urls['main_1x1'])} 详情={len(image_urls['detail'])} SKU图={len(image_urls['sku'])}",
+              step_index=1)
+
+        # [可选] 拉取运费模板并按用户设置匹配 ID（"可撤回"逻辑：拉不到/匹配不到 → 直接中止该商品发布）
+        # 修复历史硬编码 "300713474" 会发到错店铺的问题。
+        freight_id_resolved = ""
+        if shipping_template_name:
+            freight_res = step_load_freight_options(cdp, category_leaf_id, session["publish_id"])
+            options = freight_res.get("data") or []
+            matched_opt, match_reason = _match_freight_template(options, shipping_template_name)
+            if matched_opt:
+                freight_id_resolved = matched_opt["id"]
+            if not freight_id_resolved:
+                names = [o["name"] for o in options if not o.get("disabled")][:6]
+                names_hint = ("可用模板: " + " / ".join(names)) if names else "当前账号下未检测到任何可用运费模板"
+                err = _mkerr(
+                    "SUBMIT_FAILED",
+                    detail=f"在抖店账号中找不到运费模板「{shipping_template_name}」。{names_hint}。"
+                           "请到设置中改成正确的模板名，或切换为浏览器自动发布模式手动选择"
+                )
+                err["steps"] = steps
+                return err
+            print(f"[v4:freight] 已匹配模板「{shipping_template_name}」→ {matched_opt.get('name')} ({freight_id_resolved}, {match_reason})")
+        else:
+            err = _mkerr(
+                "SUBMIT_FAILED",
+                detail="未提供运费模板名称。请先到设置中选择「当前使用」的运费模板，或切换为浏览器自动发布模式"
+            )
+            err["steps"] = steps
+            return err
 
         # [可选] 白底图 AI 检测 (仅警告，不阻断)
         white_url = image_urls.get("white", "")
@@ -1355,7 +1658,7 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
         if schemaform_ok:
             # === React注入路径 ===
             t0, entry = _step("inject_state")
-            inject_res = step_inject_state(cdp, product_data, image_urls, category_config)
+            inject_res = step_inject_state(cdp, product_data, image_urls, category_config, freight_id=freight_id_resolved)
             if not inject_res["success"]:
                 _done(entry, t0, False, inject_res["error"]["message"], step_index=2)
                 return {**inject_res, "steps": steps}
@@ -1384,8 +1687,9 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
             body_res = step_build_body_offline(product_data, image_urls,
                                                 category_config or {},
                                                 session["publish_id"],
-                                                session.get("shop_id", shop_id or "155450371"),
-                                                schema_data=schema_data)
+                                                session.get("shop_id") or shop_id or "",
+                                                schema_data=schema_data,
+                                                freight_id=freight_id_resolved)
             if not body_res["success"]:
                 _done(entry, t0, False, body_res["error"]["message"], step_index=3)
                 return {**body_res, "steps": steps}
@@ -1393,11 +1697,27 @@ def run(category_leaf_id, product_data, image_paths, category_config=None, shop_
             submit_body = body_res["data"]["body"]
             used_path = "offline"
 
+        if stop_before_submit:
+            t0, entry = _step("stop_before_submit")
+            _done(entry, t0, True, f"已完成{used_path}路径预检，未提交到平台", step_index=4)
+            print(f"[V4] 已到提交前截停点 path={used_path}，本次不提交")
+            return {
+                "success": True,
+                "data": {
+                    "product_id": "",
+                    "raw": "",
+                    "via": used_path,
+                    "path": used_path,
+                    "stopped_before_submit": True,
+                },
+                "steps": steps,
+            }
+
         # [5/5] 提交
         t0, entry = _step("submit")
         submit_res = step_submit(cdp, category_leaf_id,
                                  session["publish_id"],
-                                 session.get("shop_id", shop_id or "155450371"),
+                                 session.get("shop_id") or shop_id or "",
                                  body_override=submit_body)
         if not submit_res["success"]:
             _done(entry, t0, False, submit_res["error"]["message"], step_index=4)

@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { ElLoading, ElMessage, ElMessageBox } from "element-plus";
+import { ElLoading, ElMessage } from "element-plus";
 import { api, initializeApi } from "@/services/api";
-import type { Product, ProductDetail } from "@/types";
+import type { Product, ProductDetail, UploadStartOptions } from "@/types";
 
 export const useProductStore = defineStore("product", () => {
   const products = ref<Product[]>([]);
@@ -347,27 +347,6 @@ export const useProductStore = defineStore("product", () => {
             duration: 0,
           });
         }
-        if (false && duplicateProducts.length > 0) {
-          const preview = duplicateProducts
-            .slice(0, 5)
-            .map((product: any) => {
-              const groups = product.duplicate_groups || [];
-              const detailText = groups
-                .map((group: any) => `- ${group.display_name} x${group.count}`)
-                .join("\n");
-              return `《${product.product_name}》\n${detailText}`;
-            })
-            .join("\n\n");
-          const extraCount = duplicateProducts.length - 5;
-          const extraText =
-            extraCount > 0 ? `\n\n还有 ${extraCount} 个商品未展开显示。` : "";
-
-          await ElMessageBox.alert(
-            `导入已完成，但以下商品存在重复 SKU 名称，上传前请先修改：\n\n${preview}${extraText}`,
-            "重复 SKU 预警",
-            { type: "warning" }
-          );
-        }
 
         if (response.data?.errors?.length) {
           console.warn("Some folders failed to import:", response.data.errors);
@@ -402,34 +381,19 @@ export const useProductStore = defineStore("product", () => {
     }
   }
 
-  async function startUpload(recordId?: number) {
+  async function startUpload(recordId?: number, options?: UploadStartOptions) {
     try {
-      return await api.startUpload(recordId);
+      return await api.startUpload(recordId, options);
     } catch (error) {
       console.error("Failed to start upload:", error);
       return { success: false, msg: "上传失败" };
     }
   }
 
+  // 拿不到状态 ≠ 上传失败：后端上传跑在后台线程里，轮询失败不影响它。
+  // 这里让传输层异常如实上抛，由调用方决定重试还是终止监控。
   async function getUploadStatus(taskId: string) {
-    try {
-      return await api.getUploadStatus(taskId);
-    } catch (error) {
-      console.error("Failed to get upload status:", error);
-      return {
-        success: false,
-        data: {
-          task_id: taskId,
-          record_id: 0,
-          record_name: "",
-          status: "failed" as const,
-          progress: 0,
-          message: "获取状态失败",
-          error: String(error),
-        },
-        msg: "获取状态失败",
-      };
-    }
+    return await api.getUploadStatus(taskId);
   }
 
   function clearCache() {

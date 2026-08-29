@@ -34,6 +34,32 @@ class Record(BaseModel):
     publish_time = DateTimeField(null=True)
     # --- 新增字段 ---
     shipping_template = CharField(null=True, default='中通包邮') # 增加一个默认值
+    import_source = CharField(null=True, default='manual')
+    source_url = CharField(null=True)
+    managed_files = BooleanField(default=False)
 
 
-database.create_tables([Record])    
+def _ensure_record_columns():
+    """补齐旧数据库缺失字段，避免升级后读取 Record 时缺列。"""
+    columns = {
+        row[1]
+        for row in database.execute_sql('PRAGMA table_info("record")').fetchall()
+    }
+    migrations = [
+        ('shipping_template', 'ALTER TABLE "record" ADD COLUMN "shipping_template" VARCHAR(255) DEFAULT \'中通包邮\''),
+        ('import_source', 'ALTER TABLE "record" ADD COLUMN "import_source" VARCHAR(32) DEFAULT \'manual\''),
+        ('source_url', 'ALTER TABLE "record" ADD COLUMN "source_url" VARCHAR(2048)'),
+        ('managed_files', 'ALTER TABLE "record" ADD COLUMN "managed_files" INTEGER DEFAULT 0'),
+    ]
+    for column_name, sql in migrations:
+        if column_name not in columns:
+            database.execute_sql(sql)
+
+
+def initialize_database_schema():
+    """初始化数据库表结构，并补齐旧版本缺失字段。"""
+    database.create_tables([Record])
+    _ensure_record_columns()
+
+
+initialize_database_schema()

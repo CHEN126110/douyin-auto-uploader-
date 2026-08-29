@@ -1,0 +1,224 @@
+# 桌面端发布流水线：打 tag 即构建 Windows 安装包、签名、生成 latest.json 并发 Release。
+#
+# 客户端自动更新链路：
+#   tauri.conf.json 的 plugins.updater.endpoints 指向
+#   https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest/download/latest.json
+#   → 所以本工作流必须把 latest.json 作为 asset 传到「正式（非草稿、非预发布）」Release 上，
+#     否则 releases/latest 命不中，客户端检查更新会 404。
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 配置：
+#   TAURI_SIGNING_PRIVATE_KEY           更新签名私钥「文件内容」（不是路径）
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  生成密钥时用的密码
+name: 发布桌面端
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本 tag（例如 v4.0.29，需已存在）"
+        required: true
+      notes:
+        description: "更新说明（会显示在客户端的更新弹窗里）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  # GitHub Release 会把 asset 名里的非 ASCII 字符替换成 '.'，中文产品名会让
+  # latest.json 里的下载 URL 对不上，所以统一重命名成这个 ASCII 前缀。
+  ASSET_PREFIX: DouyinSockPublisher
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: 解析并校验版本号
+        id: version
+        shell: pwsh
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $tag = if ($env:INPUT_TAG) { $env:INPUT_TAG } else { $env:REF_NAME }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "tag 格式不合法: '$tag'（需形如 v4.0.29）"
+          }
+          $version = $tag.Substring(1)
+
+          # 版本号分散在 4 处，任何一处对不上都会让「界面显示的版本」和「updater 比对的版本」打架
+          $pkg  = (Get-Content "tauri-app/package.json" -Raw | ConvertFrom-Json).version
+          $conf = (Get-Content "tauri-app/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+
+          $cargoLine = (Get-Content "tauri-app/src-tauri/Cargo.toml") |
+                       Where-Object { $_ -match '^version\s*=\s*"' } |
+                       Select-Object -First 1
+          $cargoVersion = [regex]::Match($cargoLine, '"([^"]+)"').Groups[1].Value
+
+          $cfgLine = (Get-Content "cfg.yaml") |
+                     Where-Object { $_ -match '^\s*version:\s*' } |
+                     Select-Object -First 1
+          $cfgVersion = [regex]::Match($cfgLine, 'version:\s*(.+)$').Groups[1].Value.Trim()
+
+          $mismatch = @()
+          if ($pkg -ne $version)          { $mismatch += "tauri-app/package.json = $pkg" }
+          if ($conf -ne $version)         { $mismatch += "tauri.conf.json = $conf" }
+          if ($cargoVersion -ne $version) { $mismatch += "Cargo.toml = $cargoVersion" }
+          if ($cfgVersion -ne $version)   { $mismatch += "cfg.yaml = $cfgVersion" }
+          if ($mismatch.Count -gt 0) {
+            $detail = $mismatch -join "; "
+            throw "版本号与 tag '$tag' 不一致：$detail。请先运行 tauri-app/scripts/bump-version.ps1 $version 再打 tag"
+          }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "版本校验通过: $tag"
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri-app/src-tauri -> target
+
+      - name: 安装 Python 依赖
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tauri-app/python-sidecar/requirements.txt
+
+      - name: 准备构建前置资产
+        shell: pwsh
+        run: python tauri-app/scripts/ci_prepare_build_assets.py
+
+      - name: 构建 Python sidecar
+        shell: pwsh
+        run: |
+          python tauri-app/python-sidecar/build_sidecar.py
+          $exe = "tauri-app/src-tauri/sidecar/python-backend.exe"
+          if (-not (Test-Path $exe)) { throw "sidecar 构建产物缺失: $exe" }
+          Write-Host ("sidecar 大小: {0:N1} MB" -f ((Get-Item $exe).Length / 1MB))
+
+      - name: 安装前端依赖
+        working-directory: tauri-app
+        run: npm ci
+
+      - name: 构建 Tauri 安装包（含更新签名）
+        working-directory: tauri-app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build
+
+      - name: 整理产物并生成 latest.json
+        id: artifacts
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          INPUT_NOTES: ${{ github.event.inputs.notes }}
+          REPO: ${{ github.repository }}
+        run: |
+          $version = $env:VERSION
+          $bundleDir = "tauri-app/src-tauri/target/release/bundle/nsis"
+
+          $installer = Get-ChildItem $bundleDir -Filter "*-setup.exe" -ErrorAction Stop |
+                       Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $sig = "$($installer.FullName).sig"
+          if (-not (Test-Path $sig)) {
+            throw "未找到更新签名文件: $sig（确认已配置 TAURI_SIGNING_PRIVATE_KEY，且 bundle.createUpdaterArtifacts=true）"
+          }
+
+          # 重命名成 ASCII：GitHub 会把 asset 名里的中文替换成 '.'，
+          # 直接用中文名会导致 latest.json 的 url 与实际 asset 名不匹配 → 更新下载 404
+          $stageDir = "release-assets"
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+          $assetName = "{0}_{1}_x64-setup.exe" -f $env:ASSET_PREFIX, $version
+          Copy-Item $installer.FullName (Join-Path $stageDir $assetName) -Force
+          Copy-Item $sig (Join-Path $stageDir ($assetName + ".sig")) -Force
+
+          $notes = $env:INPUT_NOTES
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "版本 $version" }
+
+          $downloadUrl = "https://github.com/{0}/releases/download/v{1}/{2}" -f $env:REPO, $version, $assetName
+          $manifest = [ordered]@{
+            version   = $version
+            notes     = $notes
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = (Get-Content $sig -Raw).Trim()
+                url       = $downloadUrl
+              }
+            }
+          }
+          # UTF-8 无 BOM：updater 解析 latest.json 不接受 BOM，notes 含中文需正确编码
+          [System.IO.File]::WriteAllText(
+            (Join-Path $stageDir "latest.json"),
+            ($manifest | ConvertTo-Json -Depth 6),
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+          Get-ChildItem $stageDir | ForEach-Object {
+            Write-Host ("  {0}  ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
+          }
+          "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "notes=$notes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: 发布 Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NOTES: ${{ steps.artifacts.outputs.notes }}
+        run: |
+          $tag = $env:TAG
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag 已存在，覆盖上传 asset"
+            gh release upload $tag (Get-ChildItem release-assets | ForEach-Object { $_.FullName }) --clobber
+          } else {
+            # --latest 明确标记为最新版：endpoint 用的是 releases/latest/download/latest.json
+            gh release create $tag (Get-ChildItem release-assets | ForEach-Object { $_.FullName }) --title $tag --notes $env:NOTES --latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw "发布 Release 失败" }
+
+      - name: 校验更新端点可达
+        shell: pwsh
+        env:
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $url = "https://github.com/{0}/releases/latest/download/latest.json" -f $env:REPO
+          $manifest = Invoke-RestMethod -Uri $url -MaximumRedirection 5
+          Write-Host "latest.json 可达，version=$($manifest.version)"
+          if ($manifest.version -ne $env:VERSION) {
+            throw "latest.json 版本($($manifest.version))与本次发布($($env:VERSION))不一致"
+          }
+          $assetUrl = $manifest.platforms.'windows-x86_64'.url
+          $head = Invoke-WebRequest -Uri $assetUrl -Method Head -MaximumRedirection 5
+          Write-Host "安装包下载地址可达: HTTP $($head.StatusCode)"

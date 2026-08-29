@@ -8,6 +8,7 @@
 use std::fs::OpenOptions;
 #[cfg(not(debug_assertions))]
 use std::fs::File;
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -17,6 +18,9 @@ use tauri::Manager;
 
 #[cfg(all(target_os = "windows", not(debug_assertions)))]
 use std::os::windows::process::CommandExt;
+
+#[cfg(all(target_os = "windows", not(debug_assertions)))]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct PythonProcess(Mutex<Option<Child>>);
 
@@ -132,6 +136,29 @@ fn prepare_sidecar_stdio(log_dir: &Path) -> Result<(Stdio, Stdio), String> {
     Ok((Stdio::from(stdout), Stdio::from(stderr)))
 }
 
+#[cfg(not(debug_assertions))]
+fn build_sidecar_command(
+    sidecar_path: &Path,
+    resource_root: &Path,
+    app_data_dir: &Path,
+) -> Command {
+    let mut command = Command::new(sidecar_path);
+
+    command
+        .current_dir(app_data_dir)
+        .env("PARENT_PID", std::process::id().to_string())
+        .env("SIDECAR_MODE", "1")
+        .env("SIDECAR_PORT", "5001")
+        .env("DOUYIN_RESOURCE_DIR", path_to_string(resource_root))
+        .env("DOUYIN_DATA_DIR", path_to_string(app_data_dir))
+        .env("DOUYIN_RUNTIME_ROOT", path_to_string(app_data_dir));
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command
+}
+
 fn resolve_packaged_runtime_paths(
     app: &tauri::AppHandle,
 ) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf), String> {
@@ -178,12 +205,115 @@ fn kill_and_wait(child: &mut Child, timeout: Duration) {
     }
 }
 
+fn cleanup_python_process(app: &tauri::AppHandle, reason: &str) {
+    log_runtime(app, &format!("cleanup_python_process invoked: {reason}"));
+    if let Some(state) = app.try_state::<PythonProcess>() {
+        if let Ok(mut process) = state.0.lock() {
+            if let Some(ref mut child) = *process {
+                kill_and_wait(child, Duration::from_secs(2));
+                *process = None;
+                println!("Python sidecar stopped.");
+                log_runtime(app, &format!("sidecar stopped: {reason}"));
+            }
+        }
+    }
+    shutdown_existing_backend(app, &format!("cleanup request: {reason}"));
+}
+
+fn is_backend_port_alive() -> bool {
+    let address: SocketAddr = match "127.0.0.1:5001".parse() {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
+}
+
+#[cfg(target_os = "windows")]
+fn force_kill_known_backend_processes(app: &tauri::AppHandle, reason: &str) {
+    let script = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+Get-CimInstance Win32_Process |
+  Where-Object {
+    $_.Name -eq 'python-backend.exe' -or
+    ($_.Name -eq 'python.exe' -and $_.CommandLine -like '*python-sidecar/app.py*')
+  } |
+  ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force
+  }
+"#;
+
+    match Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        Ok(status) => log_runtime(
+            app,
+            &format!("force_kill_known_backend_processes executed: {reason}, status={status}"),
+        ),
+        Err(error) => log_runtime(
+            app,
+            &format!("force_kill_known_backend_processes failed: {reason}, error={error}"),
+        ),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn force_kill_known_backend_processes(_app: &tauri::AppHandle, _reason: &str) {}
+
+fn shutdown_existing_backend(app: &tauri::AppHandle, reason: &str) {
+    if !is_backend_port_alive() {
+        return;
+    }
+
+    log_runtime(app, &format!("shutdown_existing_backend invoked: {reason}"));
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(800))
+        .build()
+    {
+        Ok(value) => value,
+        Err(error) => {
+            log_runtime(app, &format!("shutdown_existing_backend client build failed: {error}"));
+            return;
+        }
+    };
+
+    let _ = client
+        .post("http://127.0.0.1:5001/internal/terminate")
+        .send();
+
+    let started_at = Instant::now();
+    while started_at.elapsed() < Duration::from_secs(2) {
+        if !is_backend_port_alive() {
+            log_runtime(app, &format!("shutdown_existing_backend succeeded: {reason}"));
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    force_kill_known_backend_processes(app, reason);
+
+    let started_at = Instant::now();
+    while started_at.elapsed() < Duration::from_secs(2) {
+        if !is_backend_port_alive() {
+            log_runtime(app, &format!("shutdown_existing_backend force kill succeeded: {reason}"));
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    log_runtime(app, &format!("shutdown_existing_backend still alive after cleanup: {reason}"));
+}
+
 #[tauri::command]
 async fn start_python_backend(
     _app: tauri::AppHandle,
     state: tauri::State<'_, PythonProcess>,
 ) -> Result<String, String> {
     log_runtime(&_app, "start_python_backend invoked");
+    shutdown_existing_backend(&_app, "start_python_backend before spawn");
     let mut process = state.0.lock().map_err(|e| e.to_string())?;
 
     if let Some(ref mut child) = *process {
@@ -213,9 +343,6 @@ async fn start_python_backend(
         let log_dir = resolve_runtime_log_dir(&_app);
         let (stdout, stderr) = prepare_sidecar_stdio(&log_dir)?;
 
-        #[cfg(target_os = "windows")]
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
         log_runtime(
             &_app,
             &format!(
@@ -227,36 +354,10 @@ async fn start_python_backend(
             ),
         );
 
-        #[cfg(target_os = "windows")]
-        {
-            Command::new(sidecar_path)
-                .current_dir(&app_data_dir)
-                .env("PARENT_PID", std::process::id().to_string())
-                .env("SIDECAR_MODE", "1")
-                .env("SIDECAR_PORT", "5001")
-                .env("DOUYIN_RESOURCE_DIR", path_to_string(&resource_root))
-                .env("DOUYIN_DATA_DIR", path_to_string(&app_data_dir))
-                .env("DOUYIN_RUNTIME_ROOT", path_to_string(&app_data_dir))
-                .creation_flags(CREATE_NO_WINDOW)
-                .stdout(stdout)
-                .stderr(stderr)
-                .spawn()
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            Command::new(sidecar_path)
-                .current_dir(&app_data_dir)
-                .env("PARENT_PID", std::process::id().to_string())
-                .env("SIDECAR_MODE", "1")
-                .env("SIDECAR_PORT", "5001")
-                .env("DOUYIN_RESOURCE_DIR", path_to_string(&resource_root))
-                .env("DOUYIN_DATA_DIR", path_to_string(&app_data_dir))
-                .env("DOUYIN_RUNTIME_ROOT", path_to_string(&app_data_dir))
-                .stdout(stdout)
-                .stderr(stderr)
-                .spawn()
-        }
+        build_sidecar_command(&sidecar_path, &resource_root, &app_data_dir)
+            .stdout(stdout)
+            .stderr(stderr)
+            .spawn()
     };
 
     match result {
@@ -274,14 +375,19 @@ async fn start_python_backend(
 }
 
 #[tauri::command]
-async fn stop_python_backend(state: tauri::State<'_, PythonProcess>) -> Result<String, String> {
+async fn stop_python_backend(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, PythonProcess>,
+) -> Result<String, String> {
     let mut process = state.0.lock().map_err(|e| e.to_string())?;
 
     if let Some(ref mut child) = *process {
         kill_and_wait(child, Duration::from_secs(2));
         *process = None;
+        shutdown_existing_backend(&app, "stop_python_backend command");
         Ok("Python backend stopped".to_string())
     } else {
+        shutdown_existing_backend(&app, "stop_python_backend command without child");
         Ok("Python backend not running".to_string())
     }
 }
@@ -471,16 +577,48 @@ fn get_app_info(app: tauri::AppHandle) -> serde_json::Value {
 }
 
 fn main() {
+    // panic=abort 的 release 构建里，任何线程 panic 都会让进程无声退出（无事件、无 WER）。
+    // 装一个全局钩子，在 abort 前把 panic 内容与堆栈写入 logs\panic.log，便于现场取证。
+    std::panic::set_hook(Box::new(|info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_default();
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let report = format!(
+            "[{}] PANIC: {}\nAT: {}\nBACKTRACE:\n{}\n",
+            format_log_timestamp(),
+            payload,
+            location,
+            backtrace
+        );
+        let dir = std::env::var("LOCALAPPDATA")
+            .map(|p| PathBuf::from(p).join("com.dyin.sock-publisher").join("logs"))
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("panic.log"), report);
+    }));
+
     #[cfg(target_os = "windows")]
     std::env::set_var(
         "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-        "--disable-gpu --disable-gpu-compositing",
+        // WebView2 运行时 151 与旧的 --disable-gpu/--disable-gpu-compositing 组合会渲染白屏，
+        // 已移除。--no-proxy-server 让窗口直连 Vite/后端，避免系统代理/TUN 拦截本地流量。
+        "--no-proxy-server",
     );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(PythonProcess(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             start_python_backend,
@@ -528,12 +666,10 @@ fn main() {
             println!("Desktop shell started.");
             println!("Tauri version: {}", tauri::VERSION);
             println!("Starting Python sidecar...");
+            shutdown_existing_backend(&app.handle(), "setup before spawn");
 
             let state = app.state::<PythonProcess>();
             let mut process = state.0.lock().unwrap();
-
-            #[cfg(all(target_os = "windows", not(debug_assertions)))]
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
 
             #[cfg(debug_assertions)]
             let debug_project_dir =
@@ -543,90 +679,75 @@ fn main() {
             println!("Debug backend cwd: {:?}", debug_project_dir);
 
             #[cfg(debug_assertions)]
-            let result = {
-                #[cfg(target_os = "windows")]
-                {
-                    Command::new("python")
-                        .args(["python-sidecar/app.py"])
-                        .env("PARENT_PID", std::process::id().to_string())
-                        .env("SIDECAR_MODE", "1")
-                        .env("SIDECAR_PORT", "5001")
-                        .current_dir(&debug_project_dir)
-                        .stdout(Stdio::inherit())
-                        .stderr(Stdio::inherit())
-                        .spawn()
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                {
-                    Command::new("python")
-                        .args(["python-sidecar/app.py"])
-                        .env("PARENT_PID", std::process::id().to_string())
-                        .env("SIDECAR_MODE", "1")
-                        .env("SIDECAR_PORT", "5001")
-                        .current_dir(&debug_project_dir)
-                        .stdout(Stdio::inherit())
-                        .stderr(Stdio::inherit())
-                        .spawn()
+            let result: Option<std::process::Child> = match Command::new("python")
+                .args(["python-sidecar/app.py"])
+                .env("PARENT_PID", std::process::id().to_string())
+                .env("SIDECAR_MODE", "1")
+                .env("SIDECAR_PORT", "5001")
+                .current_dir(&debug_project_dir)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+            {
+                Ok(child) => Some(child),
+                Err(e) => {
+                    println!("Failed to start Python sidecar: {e}");
+                    log_runtime(&app.handle(), &format!("setup sidecar spawn failed: {e}"));
+                    None
                 }
             };
 
             #[cfg(not(debug_assertions))]
-            let result = {
-                let (resource_root, app_data_dir, _webview_data_dir, sidecar_path) =
-                    resolve_packaged_runtime_paths(&app.handle())
-                        .expect("failed to resolve packaged runtime paths");
-                let log_dir = resolve_runtime_log_dir(&app.handle());
-                let (stdout, stderr) = prepare_sidecar_stdio(&log_dir)
-                    .map_err(|e| std::io::Error::other(e))
-                    .expect("failed to prepare sidecar log files");
-                println!("Sidecar path: {:?}", sidecar_path);
-                println!("Packaged app data dir: {:?}", app_data_dir);
-                log_runtime(
-                    &app.handle(),
-                    &format!(
-                        "setup release spawn: sidecar={}, resource_root={}, app_data_dir={}, log_dir={}",
-                        sidecar_path.display(),
-                        resource_root.display(),
-                        app_data_dir.display(),
-                        log_dir.display()
-                    ),
-                );
+            let result: Option<std::process::Child> = {
+                if is_backend_port_alive() {
+                    println!("Python backend already running on port 5001.");
+                    log_runtime(&app.handle(), "setup: backend already alive, skip sidecar spawn");
+                    None
+                } else {
+                    match resolve_packaged_runtime_paths(&app.handle()) {
+                        Ok((resource_root, app_data_dir, _webview_data_dir, sidecar_path)) => {
+                            if !sidecar_path.exists() {
+                                println!("Sidecar not found: {:?}", sidecar_path);
+                                log_runtime(&app.handle(), &format!("sidecar not found: {}", sidecar_path.display()));
+                                None
+                            } else {
+                                let log_dir = resolve_runtime_log_dir(&app.handle());
+                                match prepare_sidecar_stdio(&log_dir) {
+                                    Ok((stdout, stderr)) => {
+                                        log_runtime(&app.handle(), &format!("setup release spawn: sidecar={}", sidecar_path.display()));
 
-                #[cfg(target_os = "windows")]
-                {
-                    Command::new(&sidecar_path)
-                        .current_dir(&app_data_dir)
-                        .env("PARENT_PID", std::process::id().to_string())
-                        .env("SIDECAR_MODE", "1")
-                        .env("SIDECAR_PORT", "5001")
-                        .env("DOUYIN_RESOURCE_DIR", path_to_string(&resource_root))
-                        .env("DOUYIN_DATA_DIR", path_to_string(&app_data_dir))
-                        .env("DOUYIN_RUNTIME_ROOT", path_to_string(&app_data_dir))
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .stdout(stdout)
-                        .stderr(stderr)
-                        .spawn()
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                {
-                    Command::new(&sidecar_path)
-                        .current_dir(&app_data_dir)
-                        .env("PARENT_PID", std::process::id().to_string())
-                        .env("SIDECAR_MODE", "1")
-                        .env("SIDECAR_PORT", "5001")
-                        .env("DOUYIN_RESOURCE_DIR", path_to_string(&resource_root))
-                        .env("DOUYIN_DATA_DIR", path_to_string(&app_data_dir))
-                        .env("DOUYIN_RUNTIME_ROOT", path_to_string(&app_data_dir))
-                        .stdout(stdout)
-                        .stderr(stderr)
-                        .spawn()
+                                        match build_sidecar_command(&sidecar_path, &resource_root, &app_data_dir)
+                                            .stdout(stdout)
+                                            .stderr(stderr)
+                                            .spawn()
+                                        {
+                                            Ok(child) => Some(child),
+                                            Err(e) => {
+                                                println!("Failed to start Python sidecar: {e}");
+                                                log_runtime(&app.handle(), &format!("setup sidecar spawn failed: {e}"));
+                                                None
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        println!("Failed to prepare sidecar log files: {e}");
+                                        log_runtime(&app.handle(), &format!("prepare sidecar log files failed: {e}"));
+                                        None
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to resolve runtime paths: {e}");
+                            log_runtime(&app.handle(), &format!("resolve failed: {e}"));
+                            None
+                        }
+                    }
                 }
             };
 
             match result {
-                Ok(child) => {
+                Some(child) => {
                     log_runtime(
                         &app.handle(),
                         &format!("setup sidecar started: pid={}", child.id()),
@@ -634,9 +755,11 @@ fn main() {
                     *process = Some(child);
                     println!("Python sidecar started.");
                 }
-                Err(e) => {
-                    log_runtime(&app.handle(), &format!("setup sidecar failed: {e}"));
-                    println!("Failed to start Python sidecar: {e}");
+                None => {
+                    log_runtime(
+                        &app.handle(),
+                        "setup: no sidecar process registered (see reason logged above)",
+                    );
                 }
             }
 
@@ -647,34 +770,25 @@ fn main() {
             tauri::WindowEvent::CloseRequested { .. } => {
                 println!("Application closing, cleaning up resources...");
                 log_runtime(&window.app_handle(), "window close requested");
-                if let Some(state) = window.try_state::<PythonProcess>() {
-                    if let Ok(mut process) = state.0.lock() {
-                        if let Some(ref mut child) = *process {
-                            kill_and_wait(child, Duration::from_secs(2));
-                            *process = None;
-                            println!("Python sidecar stopped.");
-                            log_runtime(&window.app_handle(), "sidecar stopped on window close");
-                        }
-                    }
-                }
+                cleanup_python_process(&window.app_handle(), "window close requested");
             }
             _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                println!("Application exiting, final cleanup...");
-                log_runtime(&app_handle, "run event exit received");
-                let state = app_handle.state::<PythonProcess>();
-                let mut lock = state.0.lock().unwrap();
-
-                if let Some(ref mut child) = *lock {
-                    kill_and_wait(child, Duration::from_secs(2));
-                    *lock = None;
-                    println!("Final cleanup complete: Python sidecar stopped.");
-                    log_runtime(&app_handle, "final cleanup stopped sidecar");
+            match event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    println!("Application exit requested, cleaning up resources...");
+                    log_runtime(&app_handle, "run event exit requested received");
+                    cleanup_python_process(&app_handle, "run event exit requested");
                 }
+                tauri::RunEvent::Exit => {
+                    println!("Application exiting, final cleanup...");
+                    log_runtime(&app_handle, "run event exit received");
+                    cleanup_python_process(&app_handle, "run event exit");
+                }
+                _ => {}
             }
         });
 }

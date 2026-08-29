@@ -24,6 +24,13 @@ DATA_FILES: list[tuple[Path, str]] = [
     (PROJECT_ROOT / "pricing_config.json", "."),
     (TAURI_APP_DIR / "user_settings.json", "."),
     (PROJECT_ROOT / "trending_keywords.db", "."),
+    (PROJECT_ROOT / "protocol-research" / "fxg_protocol_v2.py", "protocol-research"),
+    (PROJECT_ROOT / "protocol-research" / "fxg_errors.py", "protocol-research"),
+    # 协议上传 v4 主脚本：app.py 在 _execute_protocol_flow() 中通过
+    # sys.path.insert(0, <_base>/protocol-research-clean-20260505/scripts) 后 import fxg_protocol_v4
+    # 之前没加进打包，frozen 模式下导致 "No module named 'fxg_protocol_v4'"
+    (PROJECT_ROOT / "protocol-research-clean-20260505" / "scripts" / "fxg_protocol_v4.py",
+     "protocol-research-clean-20260505/scripts"),
 ]
 
 HIDDEN_IMPORTS = [
@@ -50,6 +57,7 @@ HIDDEN_IMPORTS = [
     "src.config",
     "src.utils",
     "src.runtime_paths",
+    "src.material_options_cache",
     "src.chrome_manager",
     "src.enhanced_category_selector",
     "src.smart_pricing_engine",

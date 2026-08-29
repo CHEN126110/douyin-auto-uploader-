@@ -5,7 +5,6 @@
 
 import axios from "axios";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import type {
   ApiResponse,
   Product,
@@ -15,7 +14,6 @@ import type {
   PricingStatistics,
   CaptureStatus,
   CaptureHistoryTask,
-  FxgRuntimeOptionsResult,
   UploadTaskSummary,
   UploadStartOptions,
   Settings,
@@ -84,56 +82,14 @@ http.interceptors.response.use(
 
 // ========== Tauri 命令 ==========
 
+// 后端生命周期（启动/停止/状态）由 Rust 壳层独占管理，前端不提供任何拉起或停止封装。
 export const tauriCommands = {
-  /** 启动Python后端 */
-  async startBackend(): Promise<string> {
-    try {
-      return await invoke<string>("start_python_backend");
-    } catch (error) {
-      console.error("启动后端失败:", error);
-      throw error;
-    }
-  },
-
-  /** 停止Python后端 */
-  async stopBackend(): Promise<string> {
-    try {
-      return await invoke<string>("stop_python_backend");
-    } catch (error) {
-      console.error("停止后端失败:", error);
-      throw error;
-    }
-  },
-
-  /** 检查后端状态 */
-  async checkBackendStatus(): Promise<{
-    success: boolean;
-    status: string;
-    message?: string;
-  }> {
-    try {
-      return await invoke("check_backend_status");
-    } catch (error) {
-      return { success: false, status: "error", message: String(error) };
-    }
-  },
-
   /** 打开文件夹 */
   async openFolder(path: string): Promise<void> {
     try {
       await invoke("open_folder", { path });
     } catch (error) {
       console.error("打开文件夹失败:", error);
-      throw error;
-    }
-  },
-
-  /** 导入拖入的文件 */
-  async importDroppedFiles(paths: string[]): Promise<ApiResponse> {
-    try {
-      return await invoke("import_dropped_files", { paths });
-    } catch (error) {
-      console.error("导入文件失败:", error);
       throw error;
     }
   },
@@ -168,16 +124,6 @@ export const tauriCommands = {
       console.error("获取应用信息失败:", error);
       throw error;
     }
-  },
-
-  /** 监听文件拖入事件 */
-  async onFilesDropped(
-    callback: (paths: string[]) => void
-  ): Promise<() => void> {
-    const unlisten = await listen<string[]>("files-dropped", (event) => {
-      callback(event.payload);
-    });
-    return unlisten;
   },
 };
 
@@ -354,31 +300,6 @@ export const api = {
     });
   },
 
-  /** 获取价格配置 */
-  getPricingConfig(): Promise<ApiResponse> {
-    return http.get("/api/pricing/config");
-  },
-
-  /** 保存成本配置 */
-  saveCostConfig(data: Record<string, unknown>): Promise<ApiResponse> {
-    return http.post("/api/pricing/cost-config", data);
-  },
-
-  /** 获取成本项目列表 */
-  getCostItems(): Promise<ApiResponse> {
-    return http.get("/api/pricing/cost-items");
-  },
-
-  /** 保存成本项目 */
-  saveCostItem(data: Record<string, unknown>): Promise<ApiResponse> {
-    return http.post("/api/pricing/cost-item", data);
-  },
-
-  /** 保存利润率配置 */
-  saveProfitMarginConfig(data: Record<string, unknown>): Promise<ApiResponse> {
-    return http.post("/api/pricing/profit-margin-config", data);
-  },
-
   // ========== 采集功能 ==========
 
   /** 开始采集 */
@@ -454,16 +375,6 @@ export const api = {
     return http.post("/settings", settings);
   },
 
-  /** 读取抖店平台实时类目/运费/发布控制配置，只读调试接口 */
-  getFxgRuntimeOptions(payload: {
-    category_keyword?: string;
-    category_keywords?: string[];
-    category_id?: string;
-    timeout_seconds?: number;
-  }): Promise<ApiResponse<FxgRuntimeOptionsResult>> {
-    return http.post("/api/protocol/fxg/runtime-options", payload);
-  },
-
   /** 导入自动化设置中的水洗标/吊牌图 */
   importAutomationWashLabelTagImage(sourcePath: string): Promise<
     ApiResponse<{
@@ -486,6 +397,30 @@ export const api = {
   /** 重置设置 */
   resetSettings(): Promise<ApiResponse> {
     return http.post("/settings/reset");
+  },
+
+  /**
+   * 测试 AI 模型连接
+   * 后端接收 { [provider]: { enabled, api_key, model } } 形态，
+   * 一次只测一个 provider，由调用方按 provider 包装 payload。
+   */
+  testAiConfig(payload: Record<string, {
+    enabled: boolean;
+    api_key: string;
+    model: string;
+  }>): Promise<ApiResponse<Record<string, { success: boolean; error?: string }>>> {
+    return http.post("/api/ai/test", payload);
+  },
+
+  /**
+   * 获取某厂商可用模型列表（OpenAI 兼容 GET /models）
+   */
+  listAiModels(payload: {
+    provider: string;
+    api_key: string;
+    api_base: string;
+  }): Promise<ApiResponse<{ models: string[] }>> {
+    return http.post("/api/ai/models", payload);
   },
 
   // ========== 热门关键词 ==========
@@ -522,13 +457,6 @@ export const api = {
     } catch {
       return { success: false, status: "offline" };
     }
-  },
-
-  // ========== GUI控制 ==========
-
-  /** 切换拖拽区域显示 */
-  toggleDragArea(show: boolean): Promise<ApiResponse> {
-    return http.post("/gui/toggle_drag_area", { show });
   },
 };
 

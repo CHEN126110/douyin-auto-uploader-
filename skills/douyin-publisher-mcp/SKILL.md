@@ -37,7 +37,7 @@ Use this skill when work should happen through the local app's MCP layer instead
 4. Use `prepare_product_draft` for the main edit flow when the user wants title plus pricing suggestions together.
 5. Use `apply_preparation_draft`, `update_product_info`, `set_product_category`, or `update_settings` only when the user wants changes persisted.
 6. Before upload, use `validate_product_for_upload` and, when files matter, `validate_product_assets`.
-7. For one product, prefer `start_validated_upload`, then poll `get_upload_status`.
+7. For one product, prefer `start_validated_upload` for safe preflight, then poll `get_upload_status`; upload starts default to `stopBeforeSubmit=true`.
 8. Use `list_upload_tasks` or `cancel_upload` when task coordination matters. Use browser debug tools only for troubleshooting.
 
 ## When To Use Which Tool
@@ -47,6 +47,7 @@ Use this skill when work should happen through the local app's MCP layer instead
 - Pricing work: `analyze_sku_quantities`, optional `quantityOverrides`, then `calculate_smart_prices` or `prepare_product_draft`.
 - Save title, remark, repo, or SKU edits: `update_product_info`.
 - Settings read or write: `get_settings`, `update_settings`, `reset_settings`.
+- Daily operations loop: `ops_health_check`, `ops_read_shop_metrics_cdp`, `ops_read_strategy_signals_cdp`, `ops_sync_shop_metrics`, `ops_sync_strategy_signals`, `ops_product_issue_actions`, `ops_update_product_issue_action`, `ops_sync_product_record_mappings`, `ops_product_record_mappings`, `ops_evaluate_product`, `ops_stock_plan`, `ops_product_candidates`, `ops_apply_candidate_pricing`, `ops_daily_plan`, `ops_daily_review`.
 - File and asset inspection: `list_product_files`, `get_product_asset_manifest`, `list_sku_assets`, `validate_product_assets`, `open_product_folder`.
 - Upload safety: `validate_product_for_upload`, `start_validated_upload`, `get_upload_status`, `list_upload_tasks`, `cancel_upload`.
 - Capture safety: `start_capture`, `start_capture_batch`, `get_capture_status`, `import_capture_result`, `cancel_capture`.
@@ -59,6 +60,7 @@ Use this skill when work should happen through the local app's MCP layer instead
 - Import folders: `mcporter call douyin-publisher.import_product_folders --args '{"paths":["D:\\\\your-product-folder"]}' --output json`
 - Capture one link: `mcporter call douyin-publisher.start_capture url:https://detail.tmall.com/item.htm?... --output json`
 - Validate upload: `mcporter call douyin-publisher.validate_product_for_upload recordId:123 --output json`
+- Safe upload preflight: `mcporter call douyin-publisher.start_validated_upload --args '{"recordId":123}' --output json`
 - Apply draft: `mcporter call douyin-publisher.apply_preparation_draft recordId:123 unitPrice:3.8 applyTitle:true applyPrices:true --output json`
 
 ## Prompts
@@ -78,10 +80,11 @@ Use this skill when work should happen through the local app's MCP layer instead
 - Use `set_product_category` when the user speaks in category labels instead of raw category codes.
 - Prefer `quantityOverrides` with `skuPath` when the correct pair count comes from model judgment or image review. Avoid `skuName` overrides for duplicated names.
 - Use `validate_product_assets` when the question is about missing folders, pictures, videos, or upload materials.
-- Use `validate_product_for_upload` or `start_validated_upload` instead of blindly starting uploads.
+- Use `validate_product_for_upload` or `start_validated_upload` instead of blindly starting uploads. Upload starts default to `stopBeforeSubmit=true`; final publish requires both `stopBeforeSubmit=false` and `confirmFinalPublish=true` after explicit user confirmation.
 - If upload is already running, switch to `get_upload_status`, `list_upload_tasks`, or `cancel_upload` instead of starting a duplicate task.
 - Do not treat a validation error as a transport failure. Surface blocker categories clearly.
 - Do not mutate local files unless the user explicitly asked for file-level changes.
+- Do not call external AI providers from the local app. Operations decisions must use Codex reasoning plus local/browser/SQLite data only.
 - Prefer `start_capture_batch` over ad hoc loops when the user provides multiple source links.
 - Keep browser debug tools for troubleshooting and upload failure analysis, not as the default operating path.
 

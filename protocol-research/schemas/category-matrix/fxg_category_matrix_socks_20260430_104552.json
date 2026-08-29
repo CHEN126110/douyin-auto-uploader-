@@ -1,0 +1,2703 @@
+{
+  "ok": true,
+  "categoryCount": 4,
+  "categories": [
+    {
+      "input": {
+        "keyword": "长筒袜",
+        "categoryId": ""
+      },
+      "ok": true,
+      "category": {
+        "leafId": "1000010275",
+        "path": "服装 > 内衣裤袜 > 袜子 > 长筒袜",
+        "raw": {
+          "first_name": "服装",
+          "second_name": "内衣裤袜",
+          "third_name": "袜子",
+          "fourth_name": "长筒袜",
+          "first_cid": 1000003282,
+          "second_cid": 1000009114,
+          "third_cid": 1000009597,
+          "fourth_cid": 1000010275,
+          "categoryLeafId": 1000010275,
+          "enable": true,
+          "industry_status": 0
+        }
+      },
+      "responseContextSummary": {
+        "category_id": "1000010275",
+        "operation_type": "normal",
+        "product_id": "0",
+        "model_type": "",
+        "version": "v1_v8_v9_v10_v11_v12",
+        "grayComponentsCount": 146
+      },
+      "modelKeyCount": 53,
+      "modelKeys": [
+        "after_sale",
+        "ai_gen_spec",
+        "alli_promotion_plan_switch",
+        "area_stock_switcher",
+        "category_properties",
+        "category_property_pic",
+        "common_reject",
+        "default_process_time",
+        "delivery_delay_day",
+        "description",
+        "detail_prettify_uri",
+        "freight_id",
+        "goods_category",
+        "goods_category_appeal",
+        "home_install_service",
+        "interest_free_activity",
+        "interest_free_activity_id",
+        "interest_free_open",
+        "is_evaluate_opened",
+        "long_pic",
+        "main_image_three_to_four",
+        "main_pic_video",
+        "max_buy_num",
+        "min_buy_num",
+        "pic",
+        "pickup_method",
+        "presell_end_time",
+        "presell_end_time_switch",
+        "presell_type",
+        "privilege_service",
+        "product_instant_discount_coupon",
+        "product_type",
+        "qualification",
+        "reduce_type",
+        "reference_price",
+        "reference_price_certificate_type",
+        "reference_price_certificate_urls",
+        "reference_price_enable",
+        "sale_channel_type",
+        "search_strategy_2c",
+        "short_product_name",
+        "size_info_template_id",
+        "sku_detail",
+        "spec_detail",
+        "start_sale_type",
+        "title",
+        "title_prefix",
+        "title_suffix",
+        "title_use_brand_name",
+        "total_buy_num",
+        "weight_unit",
+        "weight_value",
+        "white_background_pic"
+      ],
+      "fields": {
+        "title": {
+          "present": true,
+          "label": "商品标题",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "goods_category": {
+          "present": true,
+          "label": "商品类目",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "category_properties": {
+          "present": true,
+          "label": "",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 12,
+          "columnCount": null
+        },
+        "pic": {
+          "present": true,
+          "label": "主图",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_image_three_to_four": {
+          "present": true,
+          "label": "主图3:4",
+          "required": false,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "white_background_pic": {
+          "present": true,
+          "label": "白底图",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_pic_video": {
+          "present": true,
+          "label": "主图视频",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "description": {
+          "present": true,
+          "label": "商品详情",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "qualification": {
+          "present": true,
+          "label": "资质信息",
+          "required": false,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 5,
+          "columnCount": null
+        },
+        "freight_id": {
+          "present": true,
+          "label": "运费模板",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "spec_detail": {
+          "present": true,
+          "label": "商品规格",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": 3,
+          "columnCount": null
+        },
+        "sku_detail": {
+          "present": true,
+          "label": "sku",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": 22
+        }
+      },
+      "requiredFieldKeys": [
+        "title",
+        "goods_category",
+        "category_properties",
+        "pic",
+        "description",
+        "freight_id",
+        "spec_detail",
+        "sku_detail"
+      ],
+      "categoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 11,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "exact",
+              "value_id": "1991",
+              "value_name": "通用"
+            }
+          ]
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "241",
+          "label": "厚度",
+          "required": false,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1825",
+          "label": "服饰工艺",
+          "required": false,
+          "optionCount": 10,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1869",
+          "label": "图案",
+          "required": false,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "810",
+          "label": "功能",
+          "required": false,
+          "optionCount": 9,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1343",
+          "label": "适用季节",
+          "required": false,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2592",
+          "label": "风格",
+          "required": false,
+          "optionCount": 18,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        },
+        {
+          "id": "3171",
+          "label": "货号",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2549",
+          "label": "里料材质成分含量",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        }
+      ],
+      "requiredCategoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 11,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "exact",
+              "value_id": "1991",
+              "value_name": "通用"
+            }
+          ]
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "measureProperties": [
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "specAxes": [
+        {
+          "id": "10000",
+          "cp_id": 2752,
+          "name": "颜色分类",
+          "specValueCount": 0
+        },
+        {
+          "id": "20000",
+          "cp_id": 3939,
+          "name": "码数",
+          "specValueCount": 0
+        },
+        {
+          "id": "30000",
+          "cp_id": 4706,
+          "name": "筒高长度",
+          "specValueCount": 0
+        }
+      ],
+      "skuColumns": [
+        {
+          "key": "sku_id",
+          "label": "SKUID",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "price",
+          "label": "价格",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "stock_info",
+          "label": "库存",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "step_stock_info",
+          "label": "阶梯库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "reserved_stock_info",
+          "label": "预留库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "sku_renewal_promotion",
+          "label": "优惠套餐配置",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "source_product",
+          "label": "关联货品",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "code",
+          "label": "商家编码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "weight",
+          "label": "重量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "outer_sku_id",
+          "label": "",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "barcodes",
+          "label": "条形码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "spec_model_code",
+          "label": "国补商品型号",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "imei_num",
+          "label": "IMEI数量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "gold_process_charge",
+          "label": "黄金加工费",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "supplier_id",
+          "label": "供应商编码",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "sku_status",
+          "label": "SKU状态",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "custom_price_switch",
+          "label": "自定义",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "suit_num",
+          "label": "套装件数",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "volume",
+          "label": "净含量(ml)",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "quantity_num",
+          "label": "份量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "mobile_service_fee",
+          "label": "套餐资费",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "origin_price",
+          "label": "发售价",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "input": {
+        "keyword": "中筒袜",
+        "categoryId": ""
+      },
+      "ok": true,
+      "category": {
+        "leafId": "1000010267",
+        "path": "服装 > 内衣裤袜 > 袜子 > 中筒袜",
+        "raw": {
+          "first_name": "服装",
+          "second_name": "内衣裤袜",
+          "third_name": "袜子",
+          "fourth_name": "中筒袜",
+          "first_cid": 1000003282,
+          "second_cid": 1000009114,
+          "third_cid": 1000009597,
+          "fourth_cid": 1000010267,
+          "categoryLeafId": 1000010267,
+          "enable": true,
+          "industry_status": 0
+        }
+      },
+      "responseContextSummary": {
+        "category_id": "1000010267",
+        "operation_type": "normal",
+        "product_id": "0",
+        "model_type": "",
+        "version": "v1_v8_v9_v10_v11_v12",
+        "grayComponentsCount": 146
+      },
+      "modelKeyCount": 53,
+      "modelKeys": [
+        "after_sale",
+        "ai_gen_spec",
+        "alli_promotion_plan_switch",
+        "area_stock_switcher",
+        "category_properties",
+        "category_property_pic",
+        "common_reject",
+        "default_process_time",
+        "delivery_delay_day",
+        "description",
+        "detail_prettify_uri",
+        "freight_id",
+        "goods_category",
+        "goods_category_appeal",
+        "home_install_service",
+        "interest_free_activity",
+        "interest_free_activity_id",
+        "interest_free_open",
+        "is_evaluate_opened",
+        "long_pic",
+        "main_image_three_to_four",
+        "main_pic_video",
+        "max_buy_num",
+        "min_buy_num",
+        "pic",
+        "pickup_method",
+        "presell_end_time",
+        "presell_end_time_switch",
+        "presell_type",
+        "privilege_service",
+        "product_instant_discount_coupon",
+        "product_type",
+        "qualification",
+        "reduce_type",
+        "reference_price",
+        "reference_price_certificate_type",
+        "reference_price_certificate_urls",
+        "reference_price_enable",
+        "sale_channel_type",
+        "search_strategy_2c",
+        "short_product_name",
+        "size_info_template_id",
+        "sku_detail",
+        "spec_detail",
+        "start_sale_type",
+        "title",
+        "title_prefix",
+        "title_suffix",
+        "title_use_brand_name",
+        "total_buy_num",
+        "weight_unit",
+        "weight_value",
+        "white_background_pic"
+      ],
+      "fields": {
+        "title": {
+          "present": true,
+          "label": "商品标题",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "goods_category": {
+          "present": true,
+          "label": "商品类目",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "category_properties": {
+          "present": true,
+          "label": "",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 14,
+          "columnCount": null
+        },
+        "pic": {
+          "present": true,
+          "label": "主图",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_image_three_to_four": {
+          "present": true,
+          "label": "主图3:4",
+          "required": false,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "white_background_pic": {
+          "present": true,
+          "label": "白底图",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_pic_video": {
+          "present": true,
+          "label": "主图视频",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "description": {
+          "present": true,
+          "label": "商品详情",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "qualification": {
+          "present": true,
+          "label": "资质信息",
+          "required": false,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 5,
+          "columnCount": null
+        },
+        "freight_id": {
+          "present": true,
+          "label": "运费模板",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "spec_detail": {
+          "present": true,
+          "label": "商品规格",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": 4,
+          "columnCount": null
+        },
+        "sku_detail": {
+          "present": true,
+          "label": "sku",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": 22
+        }
+      },
+      "requiredFieldKeys": [
+        "title",
+        "goods_category",
+        "category_properties",
+        "pic",
+        "description",
+        "freight_id",
+        "spec_detail",
+        "sku_detail"
+      ],
+      "categoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 12,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "3171",
+          "label": "货号",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "exact",
+              "value_id": "1991",
+              "value_name": "通用"
+            }
+          ]
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "241",
+          "label": "厚度",
+          "required": false,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1825",
+          "label": "服饰工艺",
+          "required": false,
+          "optionCount": 11,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1869",
+          "label": "图案",
+          "required": false,
+          "optionCount": 15,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "810",
+          "label": "功能",
+          "required": false,
+          "optionCount": 13,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1343",
+          "label": "适用季节",
+          "required": false,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2592",
+          "label": "风格",
+          "required": false,
+          "optionCount": 24,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "contains",
+              "value_id": "10929",
+              "value_name": "少女风"
+            }
+          ]
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        },
+        {
+          "id": "1880",
+          "label": "产地",
+          "required": false,
+          "optionCount": 250,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "784",
+          "label": "里料材质",
+          "required": false,
+          "optionCount": 457,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        },
+        {
+          "id": "2549",
+          "label": "里料材质成分含量",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        }
+      ],
+      "requiredCategoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 12,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "exact",
+              "value_id": "1991",
+              "value_name": "通用"
+            }
+          ]
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 4,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "measureProperties": [
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "specAxes": [
+        {
+          "id": "10000",
+          "cp_id": 2752,
+          "name": "颜色分类",
+          "specValueCount": 0
+        },
+        {
+          "id": "20000",
+          "cp_id": 3939,
+          "name": "码数",
+          "specValueCount": 0
+        },
+        {
+          "id": "30000",
+          "cp_id": 4706,
+          "name": "筒高长度",
+          "specValueCount": 0
+        },
+        {
+          "id": "40000",
+          "cp_id": 93,
+          "name": "规格",
+          "specValueCount": 0
+        }
+      ],
+      "skuColumns": [
+        {
+          "key": "sku_id",
+          "label": "SKUID",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "price",
+          "label": "价格",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "stock_info",
+          "label": "库存",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "step_stock_info",
+          "label": "阶梯库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "reserved_stock_info",
+          "label": "预留库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "sku_renewal_promotion",
+          "label": "优惠套餐配置",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "source_product",
+          "label": "关联货品",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "code",
+          "label": "商家编码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "weight",
+          "label": "重量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "outer_sku_id",
+          "label": "",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "barcodes",
+          "label": "条形码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "spec_model_code",
+          "label": "国补商品型号",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "imei_num",
+          "label": "IMEI数量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "gold_process_charge",
+          "label": "黄金加工费",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "supplier_id",
+          "label": "供应商编码",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "sku_status",
+          "label": "SKU状态",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "custom_price_switch",
+          "label": "自定义",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "suit_num",
+          "label": "套装件数",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "volume",
+          "label": "净含量(ml)",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "quantity_num",
+          "label": "份量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "mobile_service_fee",
+          "label": "套餐资费",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "origin_price",
+          "label": "发售价",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "input": {
+        "keyword": "短袜",
+        "categoryId": ""
+      },
+      "ok": true,
+      "category": {
+        "leafId": "1000010270",
+        "path": "服装 > 内衣裤袜 > 袜子 > 短袜",
+        "raw": {
+          "first_name": "服装",
+          "second_name": "内衣裤袜",
+          "third_name": "袜子",
+          "fourth_name": "短袜",
+          "first_cid": 1000003282,
+          "second_cid": 1000009114,
+          "third_cid": 1000009597,
+          "fourth_cid": 1000010270,
+          "categoryLeafId": 1000010270,
+          "enable": true,
+          "industry_status": 0
+        }
+      },
+      "responseContextSummary": {
+        "category_id": "1000010270",
+        "operation_type": "normal",
+        "product_id": "0",
+        "model_type": "",
+        "version": "v1_v8_v9_v10_v11_v12",
+        "grayComponentsCount": 146
+      },
+      "modelKeyCount": 53,
+      "modelKeys": [
+        "after_sale",
+        "ai_gen_spec",
+        "alli_promotion_plan_switch",
+        "area_stock_switcher",
+        "category_properties",
+        "category_property_pic",
+        "common_reject",
+        "default_process_time",
+        "delivery_delay_day",
+        "description",
+        "detail_prettify_uri",
+        "freight_id",
+        "goods_category",
+        "goods_category_appeal",
+        "home_install_service",
+        "interest_free_activity",
+        "interest_free_activity_id",
+        "interest_free_open",
+        "is_evaluate_opened",
+        "long_pic",
+        "main_image_three_to_four",
+        "main_pic_video",
+        "max_buy_num",
+        "min_buy_num",
+        "pic",
+        "pickup_method",
+        "presell_end_time",
+        "presell_end_time_switch",
+        "presell_type",
+        "privilege_service",
+        "product_instant_discount_coupon",
+        "product_type",
+        "qualification",
+        "reduce_type",
+        "reference_price",
+        "reference_price_certificate_type",
+        "reference_price_certificate_urls",
+        "reference_price_enable",
+        "sale_channel_type",
+        "search_strategy_2c",
+        "short_product_name",
+        "size_info_template_id",
+        "sku_detail",
+        "spec_detail",
+        "start_sale_type",
+        "title",
+        "title_prefix",
+        "title_suffix",
+        "title_use_brand_name",
+        "total_buy_num",
+        "weight_unit",
+        "weight_value",
+        "white_background_pic"
+      ],
+      "fields": {
+        "title": {
+          "present": true,
+          "label": "商品标题",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "goods_category": {
+          "present": true,
+          "label": "商品类目",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "category_properties": {
+          "present": true,
+          "label": "",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 15,
+          "columnCount": null
+        },
+        "pic": {
+          "present": true,
+          "label": "主图",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_image_three_to_four": {
+          "present": true,
+          "label": "主图3:4",
+          "required": false,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "white_background_pic": {
+          "present": true,
+          "label": "白底图",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_pic_video": {
+          "present": true,
+          "label": "主图视频",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "description": {
+          "present": true,
+          "label": "商品详情",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "qualification": {
+          "present": true,
+          "label": "资质信息",
+          "required": false,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 5,
+          "columnCount": null
+        },
+        "freight_id": {
+          "present": true,
+          "label": "运费模板",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "spec_detail": {
+          "present": true,
+          "label": "商品规格",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": 4,
+          "columnCount": null
+        },
+        "sku_detail": {
+          "present": true,
+          "label": "sku",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": 22
+        }
+      },
+      "requiredFieldKeys": [
+        "title",
+        "goods_category",
+        "category_properties",
+        "pic",
+        "description",
+        "freight_id",
+        "spec_detail",
+        "sku_detail"
+      ],
+      "categoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 12,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "3171",
+          "label": "货号",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "716",
+          "label": "适用人群",
+          "required": true,
+          "optionCount": 2,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "contains",
+              "value_id": "35286",
+              "value_name": "男女通用"
+            }
+          ]
+        },
+        {
+          "id": "4495",
+          "label": "组合件数",
+          "required": false,
+          "optionCount": 5,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "241",
+          "label": "厚度",
+          "required": false,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1869",
+          "label": "图案",
+          "required": false,
+          "optionCount": 2,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1825",
+          "label": "服饰工艺",
+          "required": false,
+          "optionCount": 9,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2052",
+          "label": "成分含量",
+          "required": false,
+          "optionCount": 10,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            }
+          ]
+        },
+        {
+          "id": "810",
+          "label": "功能",
+          "required": false,
+          "optionCount": 10,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1343",
+          "label": "适用季节",
+          "required": false,
+          "optionCount": 5,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2592",
+          "label": "风格",
+          "required": false,
+          "optionCount": 22,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "contains",
+              "value_id": "10929",
+              "value_name": "少女风"
+            }
+          ]
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        },
+        {
+          "id": "2549",
+          "label": "里料材质成分含量",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        }
+      ],
+      "requiredCategoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 12,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1865",
+          "label": "筒高",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "长筒袜",
+              "matchType": "exact",
+              "value_id": "37773",
+              "value_name": "长筒袜"
+            },
+            {
+              "keyword": "短筒袜",
+              "matchType": "exact",
+              "value_id": "196262",
+              "value_name": "短筒袜"
+            },
+            {
+              "keyword": "中筒袜",
+              "matchType": "exact",
+              "value_id": "31904",
+              "value_name": "中筒袜"
+            }
+          ]
+        },
+        {
+          "id": "716",
+          "label": "适用人群",
+          "required": true,
+          "optionCount": 2,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "1577",
+          "label": "适用性别",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": [
+            {
+              "keyword": "女",
+              "matchType": "exact",
+              "value_id": "27851",
+              "value_name": "女"
+            },
+            {
+              "keyword": "男",
+              "matchType": "exact",
+              "value_id": "16687",
+              "value_name": "男"
+            },
+            {
+              "keyword": "通用",
+              "matchType": "contains",
+              "value_id": "35286",
+              "value_name": "男女通用"
+            }
+          ]
+        },
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "measureProperties": [
+        {
+          "id": "785",
+          "label": "面料材质",
+          "required": true,
+          "optionCount": 144,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": [
+            {
+              "keyword": "棉",
+              "matchType": "exact",
+              "value_id": "19165",
+              "value_name": "棉"
+            },
+            {
+              "keyword": "氨纶",
+              "matchType": "exact",
+              "value_id": "27486",
+              "value_name": "氨纶"
+            }
+          ]
+        }
+      ],
+      "specAxes": [
+        {
+          "id": "10000",
+          "cp_id": 2752,
+          "name": "颜色分类",
+          "specValueCount": 0
+        },
+        {
+          "id": "20000",
+          "cp_id": 3939,
+          "name": "码数",
+          "specValueCount": 0
+        },
+        {
+          "id": "30000",
+          "cp_id": 4706,
+          "name": "筒高长度",
+          "specValueCount": 0
+        },
+        {
+          "id": "40000",
+          "cp_id": 93,
+          "name": "规格",
+          "specValueCount": 0
+        }
+      ],
+      "skuColumns": [
+        {
+          "key": "sku_id",
+          "label": "SKUID",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "price",
+          "label": "价格",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "stock_info",
+          "label": "库存",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "step_stock_info",
+          "label": "阶梯库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "reserved_stock_info",
+          "label": "预留库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "sku_renewal_promotion",
+          "label": "优惠套餐配置",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "source_product",
+          "label": "关联货品",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "code",
+          "label": "商家编码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "weight",
+          "label": "重量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "outer_sku_id",
+          "label": "",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "barcodes",
+          "label": "条形码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "spec_model_code",
+          "label": "国补商品型号",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "imei_num",
+          "label": "IMEI数量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "gold_process_charge",
+          "label": "黄金加工费",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "supplier_id",
+          "label": "供应商编码",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "sku_status",
+          "label": "SKU状态",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "custom_price_switch",
+          "label": "自定义",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "suit_num",
+          "label": "套装件数",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "volume",
+          "label": "净含量(ml)",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "quantity_num",
+          "label": "份量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "mobile_service_fee",
+          "label": "套餐资费",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "origin_price",
+          "label": "发售价",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "input": {
+        "keyword": "船袜",
+        "categoryId": ""
+      },
+      "ok": true,
+      "category": {
+        "leafId": "1000010271",
+        "path": "服装 > 内衣裤袜 > 袜子 > 船袜",
+        "raw": {
+          "first_name": "服装",
+          "second_name": "内衣裤袜",
+          "third_name": "袜子",
+          "fourth_name": "船袜",
+          "first_cid": 1000003282,
+          "second_cid": 1000009114,
+          "third_cid": 1000009597,
+          "fourth_cid": 1000010271,
+          "categoryLeafId": 1000010271,
+          "enable": true,
+          "industry_status": 0
+        }
+      },
+      "responseContextSummary": {
+        "category_id": "1000010271",
+        "operation_type": "normal",
+        "product_id": "0",
+        "model_type": "",
+        "version": "v1_v8_v9_v10_v11_v12",
+        "grayComponentsCount": 146
+      },
+      "modelKeyCount": 53,
+      "modelKeys": [
+        "after_sale",
+        "ai_gen_spec",
+        "alli_promotion_plan_switch",
+        "area_stock_switcher",
+        "category_properties",
+        "category_property_pic",
+        "common_reject",
+        "default_process_time",
+        "delivery_delay_day",
+        "description",
+        "detail_prettify_uri",
+        "freight_id",
+        "goods_category",
+        "goods_category_appeal",
+        "home_install_service",
+        "interest_free_activity",
+        "interest_free_activity_id",
+        "interest_free_open",
+        "is_evaluate_opened",
+        "long_pic",
+        "main_image_three_to_four",
+        "main_pic_video",
+        "max_buy_num",
+        "min_buy_num",
+        "pic",
+        "pickup_method",
+        "presell_end_time",
+        "presell_end_time_switch",
+        "presell_type",
+        "privilege_service",
+        "product_instant_discount_coupon",
+        "product_type",
+        "qualification",
+        "reduce_type",
+        "reference_price",
+        "reference_price_certificate_type",
+        "reference_price_certificate_urls",
+        "reference_price_enable",
+        "sale_channel_type",
+        "search_strategy_2c",
+        "short_product_name",
+        "size_info_template_id",
+        "sku_detail",
+        "spec_detail",
+        "start_sale_type",
+        "title",
+        "title_prefix",
+        "title_suffix",
+        "title_use_brand_name",
+        "total_buy_num",
+        "weight_unit",
+        "weight_value",
+        "white_background_pic"
+      ],
+      "fields": {
+        "title": {
+          "present": true,
+          "label": "商品标题",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "goods_category": {
+          "present": true,
+          "label": "商品类目",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "category_properties": {
+          "present": true,
+          "label": "",
+          "required": true,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 4,
+          "columnCount": null
+        },
+        "pic": {
+          "present": true,
+          "label": "主图",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_image_three_to_four": {
+          "present": true,
+          "label": "主图3:4",
+          "required": false,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "white_background_pic": {
+          "present": true,
+          "label": "白底图",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "main_pic_video": {
+          "present": true,
+          "label": "主图视频",
+          "required": false,
+          "hidden": false,
+          "valueType": "null",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "description": {
+          "present": true,
+          "label": "商品详情",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "qualification": {
+          "present": true,
+          "label": "资质信息",
+          "required": false,
+          "hidden": false,
+          "valueType": "object",
+          "itemCount": 5,
+          "columnCount": null
+        },
+        "freight_id": {
+          "present": true,
+          "label": "运费模板",
+          "required": true,
+          "hidden": false,
+          "valueType": "string",
+          "itemCount": null,
+          "columnCount": null
+        },
+        "spec_detail": {
+          "present": true,
+          "label": "商品规格",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": 4,
+          "columnCount": null
+        },
+        "sku_detail": {
+          "present": true,
+          "label": "sku",
+          "required": true,
+          "hidden": false,
+          "valueType": "array",
+          "itemCount": null,
+          "columnCount": 22
+        }
+      },
+      "requiredFieldKeys": [
+        "title",
+        "goods_category",
+        "category_properties",
+        "pic",
+        "description",
+        "freight_id",
+        "spec_detail",
+        "sku_detail"
+      ],
+      "categoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 11,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "3127",
+          "label": "材质",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": []
+        },
+        {
+          "id": "3171",
+          "label": "货号",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "2549",
+          "label": "里料材质成分含量",
+          "required": false,
+          "optionCount": 0,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        }
+      ],
+      "requiredCategoryProperties": [
+        {
+          "id": "1687",
+          "label": "品牌",
+          "required": true,
+          "optionCount": 11,
+          "hasMeasureTemplates": false,
+          "matchedKeywords": []
+        },
+        {
+          "id": "3127",
+          "label": "材质",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": []
+        }
+      ],
+      "measureProperties": [
+        {
+          "id": "3127",
+          "label": "材质",
+          "required": true,
+          "optionCount": 3,
+          "hasMeasureTemplates": true,
+          "matchedKeywords": []
+        }
+      ],
+      "specAxes": [
+        {
+          "id": "10000",
+          "cp_id": 2752,
+          "name": "颜色分类",
+          "specValueCount": 0
+        },
+        {
+          "id": "20000",
+          "cp_id": 3939,
+          "name": "码数",
+          "specValueCount": 0
+        },
+        {
+          "id": "30000",
+          "cp_id": 4706,
+          "name": "筒高长度",
+          "specValueCount": 0
+        },
+        {
+          "id": "40000",
+          "cp_id": 93,
+          "name": "规格",
+          "specValueCount": 0
+        }
+      ],
+      "skuColumns": [
+        {
+          "key": "sku_id",
+          "label": "SKUID",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "price",
+          "label": "价格",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "stock_info",
+          "label": "库存",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "step_stock_info",
+          "label": "阶梯库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "reserved_stock_info",
+          "label": "预留库存",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "sku_renewal_promotion",
+          "label": "优惠套餐配置",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "source_product",
+          "label": "关联货品",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "code",
+          "label": "商家编码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "weight",
+          "label": "重量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "outer_sku_id",
+          "label": "",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "barcodes",
+          "label": "条形码",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "spec_model_code",
+          "label": "国补商品型号",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "imei_num",
+          "label": "IMEI数量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "gold_process_charge",
+          "label": "黄金加工费",
+          "required": true,
+          "hidden": false
+        },
+        {
+          "key": "supplier_id",
+          "label": "供应商编码",
+          "required": false,
+          "hidden": true
+        },
+        {
+          "key": "sku_status",
+          "label": "SKU状态",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "custom_price_switch",
+          "label": "自定义",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "suit_num",
+          "label": "套装件数",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "volume",
+          "label": "净含量(ml)",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "quantity_num",
+          "label": "份量",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "mobile_service_fee",
+          "label": "套餐资费",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "key": "origin_price",
+          "label": "发售价",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    }
+  ],
+  "diff": {
+    "requiredFieldUnion": [
+      "category_properties",
+      "description",
+      "freight_id",
+      "goods_category",
+      "pic",
+      "sku_detail",
+      "spec_detail",
+      "title"
+    ],
+    "requiredCategoryPropertyUnion": [
+      "品牌",
+      "材质",
+      "筒高",
+      "适用人群",
+      "适用性别",
+      "面料材质"
+    ],
+    "specAxisUnion": [
+      "码数",
+      "筒高长度",
+      "规格",
+      "颜色分类"
+    ],
+    "skuColumnUnion": [
+      "barcodes",
+      "code",
+      "custom_price_switch",
+      "gold_process_charge",
+      "imei_num",
+      "mobile_service_fee",
+      "origin_price",
+      "outer_sku_id",
+      "price",
+      "quantity_num",
+      "reserved_stock_info",
+      "sku_id",
+      "sku_renewal_promotion",
+      "sku_status",
+      "source_product",
+      "spec_model_code",
+      "step_stock_info",
+      "stock_info",
+      "suit_num",
+      "supplier_id",
+      "volume",
+      "weight"
+    ],
+    "byCategory": [
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 长筒袜",
+        "leafId": "1000010275",
+        "requiredFieldKeys": [
+          "title",
+          "goods_category",
+          "category_properties",
+          "pic",
+          "description",
+          "freight_id",
+          "spec_detail",
+          "sku_detail"
+        ],
+        "requiredCategoryPropertyLabels": [
+          "品牌",
+          "适用性别",
+          "筒高",
+          "面料材质"
+        ],
+        "measurePropertyLabels": [
+          "面料材质"
+        ],
+        "specAxisNames": [
+          "颜色分类",
+          "码数",
+          "筒高长度"
+        ],
+        "skuColumnKeys": [
+          "sku_id",
+          "price",
+          "stock_info",
+          "step_stock_info",
+          "reserved_stock_info",
+          "sku_renewal_promotion",
+          "source_product",
+          "code",
+          "weight",
+          "outer_sku_id",
+          "barcodes",
+          "spec_model_code",
+          "imei_num",
+          "gold_process_charge",
+          "supplier_id",
+          "sku_status",
+          "custom_price_switch",
+          "suit_num",
+          "volume",
+          "quantity_num",
+          "mobile_service_fee",
+          "origin_price"
+        ]
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 中筒袜",
+        "leafId": "1000010267",
+        "requiredFieldKeys": [
+          "title",
+          "goods_category",
+          "category_properties",
+          "pic",
+          "description",
+          "freight_id",
+          "spec_detail",
+          "sku_detail"
+        ],
+        "requiredCategoryPropertyLabels": [
+          "品牌",
+          "适用性别",
+          "筒高",
+          "面料材质"
+        ],
+        "measurePropertyLabels": [
+          "面料材质"
+        ],
+        "specAxisNames": [
+          "颜色分类",
+          "码数",
+          "筒高长度",
+          "规格"
+        ],
+        "skuColumnKeys": [
+          "sku_id",
+          "price",
+          "stock_info",
+          "step_stock_info",
+          "reserved_stock_info",
+          "sku_renewal_promotion",
+          "source_product",
+          "code",
+          "weight",
+          "outer_sku_id",
+          "barcodes",
+          "spec_model_code",
+          "imei_num",
+          "gold_process_charge",
+          "supplier_id",
+          "sku_status",
+          "custom_price_switch",
+          "suit_num",
+          "volume",
+          "quantity_num",
+          "mobile_service_fee",
+          "origin_price"
+        ]
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 短袜",
+        "leafId": "1000010270",
+        "requiredFieldKeys": [
+          "title",
+          "goods_category",
+          "category_properties",
+          "pic",
+          "description",
+          "freight_id",
+          "spec_detail",
+          "sku_detail"
+        ],
+        "requiredCategoryPropertyLabels": [
+          "品牌",
+          "筒高",
+          "适用人群",
+          "适用性别",
+          "面料材质"
+        ],
+        "measurePropertyLabels": [
+          "面料材质"
+        ],
+        "specAxisNames": [
+          "颜色分类",
+          "码数",
+          "筒高长度",
+          "规格"
+        ],
+        "skuColumnKeys": [
+          "sku_id",
+          "price",
+          "stock_info",
+          "step_stock_info",
+          "reserved_stock_info",
+          "sku_renewal_promotion",
+          "source_product",
+          "code",
+          "weight",
+          "outer_sku_id",
+          "barcodes",
+          "spec_model_code",
+          "imei_num",
+          "gold_process_charge",
+          "supplier_id",
+          "sku_status",
+          "custom_price_switch",
+          "suit_num",
+          "volume",
+          "quantity_num",
+          "mobile_service_fee",
+          "origin_price"
+        ]
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 船袜",
+        "leafId": "1000010271",
+        "requiredFieldKeys": [
+          "title",
+          "goods_category",
+          "category_properties",
+          "pic",
+          "description",
+          "freight_id",
+          "spec_detail",
+          "sku_detail"
+        ],
+        "requiredCategoryPropertyLabels": [
+          "品牌",
+          "材质"
+        ],
+        "measurePropertyLabels": [
+          "材质"
+        ],
+        "specAxisNames": [
+          "颜色分类",
+          "码数",
+          "筒高长度",
+          "规格"
+        ],
+        "skuColumnKeys": [
+          "sku_id",
+          "price",
+          "stock_info",
+          "step_stock_info",
+          "reserved_stock_info",
+          "sku_renewal_promotion",
+          "source_product",
+          "code",
+          "weight",
+          "outer_sku_id",
+          "barcodes",
+          "spec_model_code",
+          "imei_num",
+          "gold_process_charge",
+          "supplier_id",
+          "sku_status",
+          "custom_price_switch",
+          "suit_num",
+          "volume",
+          "quantity_num",
+          "mobile_service_fee",
+          "origin_price"
+        ]
+      }
+    ],
+    "categoryDifferences": [
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 长筒袜",
+        "leafId": "1000010275",
+        "missingRequiredFieldsFromUnion": [],
+        "missingRequiredCategoryPropertiesFromUnion": [
+          "材质",
+          "适用人群"
+        ],
+        "missingSpecAxesFromUnion": [
+          "规格"
+        ],
+        "missingSkuColumnsFromUnion": []
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 中筒袜",
+        "leafId": "1000010267",
+        "missingRequiredFieldsFromUnion": [],
+        "missingRequiredCategoryPropertiesFromUnion": [
+          "材质",
+          "适用人群"
+        ],
+        "missingSpecAxesFromUnion": [],
+        "missingSkuColumnsFromUnion": []
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 短袜",
+        "leafId": "1000010270",
+        "missingRequiredFieldsFromUnion": [],
+        "missingRequiredCategoryPropertiesFromUnion": [
+          "材质"
+        ],
+        "missingSpecAxesFromUnion": [],
+        "missingSkuColumnsFromUnion": []
+      },
+      {
+        "category": "服装 > 内衣裤袜 > 袜子 > 船袜",
+        "leafId": "1000010271",
+        "missingRequiredFieldsFromUnion": [],
+        "missingRequiredCategoryPropertiesFromUnion": [
+          "筒高",
+          "适用人群",
+          "适用性别",
+          "面料材质"
+        ],
+        "missingSpecAxesFromUnion": [],
+        "missingSkuColumnsFromUnion": []
+      }
+    ]
+  },
+  "riskFindings": [
+    "类目属性差异是常态，协议流水线不能硬编码筒高、面料材质、品牌等属性，必须按 schema 动态映射。",
+    "规格轴名称和数量可能因类目变化，SKU 生成不能固定为颜色分类/码数。",
+    "SKU 表列会随类目和能力开关变化，价格/库存只应按列 key 写入，不能按固定列序号写入。"
+  ]
+}

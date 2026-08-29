@@ -8,6 +8,11 @@ from .runtime_paths import resolve_data_file
 
 default = "\nbase:\n  name: 抖音袜子发布工具\n  version: 4.0.0\n  access_token: ''\n"
 
+# 材质名称长度上限（防脏数据写入配置；平台真实材质名远短于此）
+MATERIAL_NAME_MAX_LENGTH = 40
+
+# 初始默认材质选项。**不再作为白名单**——用户可自定义输入，
+# 也可由发布流程从平台实时采集后覆盖（见 material_options）。
 PLATFORM_MATERIAL_OPTIONS = [
     '棉',
     '氨纶',
@@ -22,6 +27,77 @@ PLATFORM_MATERIAL_OPTIONS = [
     '桑蚕丝',
     '再生纤维素纤维'
 ]
+
+
+# 发布信息优化允许接入的 LLM 厂商（仅用于标题/属性/卖点优化；
+# 运营决策 ops 仍只用本地规则，见 ops_engine.AI_POLICY，经营数据不外泄）。
+ALLOWED_PUBLISH_AI_PROVIDERS = ('deepseek', 'xiaomi')
+
+# 厂商预设：base_url / 可选模型。多数国产大模型提供 OpenAI 兼容接口。
+# 小米大模型对外端点未官方确认，base_url 留空由用户在设置中填写（按小米开放平台实际端点）。
+LLM_PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
+    'deepseek': {
+        'label': 'DeepSeek',
+        'base_url': 'https://api.deepseek.com',
+        'models': ['deepseek-chat', 'deepseek-reasoner'],
+        'openai_compatible': True,
+    },
+    'xiaomi': {
+        'label': '小米大模型(MiMo)',
+        # 小米 MiMo 开放平台，OpenAI 兼容（实证 https://api.xiaomimimo.com/v1/chat/completions 返回标准 401）
+        'base_url': 'https://api.xiaomimimo.com/v1',
+        'models': ['mimo-v2.5-pro', 'mimo-v2.5-pro-ultraspeed'],
+        'openai_compatible': True,
+    },
+}
+
+
+def external_ai_policy() -> Dict[str, Any]:
+    """运营决策(ops)的 AI 政策：仍只用本地规则，不调外部 AI，经营数据不外泄。
+    注意：发布信息优化的 LLM 接入是独立开关，见 ALLOWED_PUBLISH_AI_PROVIDERS。"""
+    return {
+        'external_ai_disabled': True,
+        'decision_source': 'codex_only',
+        'scope': 'ops_decision_only',
+        'blocked_providers': ['openai', 'ollama', 'claude', 'third_party'],
+        'publish_ai_providers_allowed': list(ALLOWED_PUBLISH_AI_PROVIDERS),
+    }
+
+
+def sanitize_model_configs(configs: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """仅保留发布优化允许厂商(小米/DeepSeek)且字段合法的模型配置；过滤其它厂商。
+    运营决策(ops)不读取这些配置。"""
+    if not isinstance(configs, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for c in configs:
+        if not isinstance(c, dict):
+            continue
+        provider = str(c.get('provider') or '').strip().lower()
+        if provider not in ALLOWED_PUBLISH_AI_PROVIDERS:
+            continue
+        preset = LLM_PROVIDER_PRESETS.get(provider, {})
+        api_key = str(c.get('api_key') or '').strip()
+        # 兼容前端字段名(api_base/model_name)与后端字段名(base_url/model)
+        base_url = str(c.get('base_url') or c.get('api_base') or preset.get('base_url') or '').strip().rstrip('/')
+        preset_models = preset.get('models') or []
+        model = str(c.get('model') or c.get('model_name') or '').strip() or (preset_models[0] if preset_models else '')
+        name = str(c.get('name') or preset.get('label') or provider)
+        enabled = bool(c.get('enabled', True)) and bool(api_key) and bool(base_url)
+        out.append({
+            'id': str(c.get('id') or provider),
+            'name': name,
+            'provider': provider,
+            'label': str(c.get('label') or preset.get('label') or provider),
+            'api_key': api_key,
+            # 同时输出两套字段名，前端读 api_base/model_name，后端用 base_url/model
+            'base_url': base_url,
+            'api_base': base_url,
+            'model': model,
+            'model_name': model,
+            'enabled': enabled,
+        })
+    return out
 
 
 def default_automation_config() -> Dict[str, Any]:
@@ -181,6 +257,8 @@ class UserSettings:
             ]
         if self.model_configs is None:
             self.model_configs = []
+        else:
+            self.model_configs = sanitize_model_configs(self.model_configs)
         if self.automation_config is None:
             self.automation_config = default_automation_config()
 
@@ -212,19 +290,25 @@ class SettingsManager:
         if shipping_template not in shipping_templates:
             shipping_templates.append(shipping_template)
 
+        # 材质选项不再按内置白名单过滤：平台会持续新增面料，
+        # 写死白名单会把「从平台拉取的新材质」和「用户自定义材质」一起静默丢掉。
+        # 这里只做去空白/去重/长度保护，PLATFORM_MATERIAL_OPTIONS 退化为初始默认值。
         material_options = data.get('material_options')
         if isinstance(material_options, list) and len(material_options) > 0:
-            material_options = [
-                str(item).strip()
-                for item in material_options
-                if str(item).strip() in default_config['material_options']
-            ]
+            seen = set()
+            cleaned_options = []
+            for item in material_options:
+                name = str(item).strip()
+                if not name or len(name) > MATERIAL_NAME_MAX_LENGTH or name in seen:
+                    continue
+                seen.add(name)
+                cleaned_options.append(name)
+            material_options = cleaned_options
         else:
             material_options = list(default_config['material_options'])
         if len(material_options) == 0:
             material_options = list(default_config['material_options'])
 
-        option_set = set(material_options)
         materials = data.get('material_compositions')
         normalized_materials = []
         if isinstance(materials, list):
@@ -236,7 +320,9 @@ class SettingsManager:
                     percentage = int(float(item.get('percentage')))
                 except Exception:
                     percentage = 0
-                if material and material in option_set and percentage > 0:
+                # 允许自定义材质：不再要求命中 material_options，
+                # 名称是否被平台接受由发布流程在真实页面上校验并报错。
+                if material and len(material) <= MATERIAL_NAME_MAX_LENGTH and percentage > 0:
                     normalized_materials.append({'material': material, 'percentage': percentage})
         if len(normalized_materials) == 0:
             normalized_materials = default_config['material_compositions']
@@ -249,6 +335,24 @@ class SettingsManager:
             # 历史版本只有合格证图片入口，用户可能已把水洗标/吊牌图配置在该字段中。
             wash_label_tag_image_path = qualification_certificate_path
 
+        # 采集偏好：分平台独立保存。1688 和 淘宝/天猫 是两个独立平台，采集协议互不交叉。
+        legacy_capture_mode = str(data.get('capture_mode') or 'dom').strip().lower()
+        if legacy_capture_mode not in ('dom', 'protocol'):
+            legacy_capture_mode = 'dom'
+
+        raw_prefs = data.get('capture_preferences')
+        if not isinstance(raw_prefs, dict):
+            raw_prefs = {}
+
+        def _normalize_mode(value: Any, fallback: str) -> str:
+            v = str(value or '').strip().lower()
+            return v if v in ('dom', 'protocol') else fallback
+
+        capture_preferences = {
+            'alibaba_1688_mode': _normalize_mode(raw_prefs.get('alibaba_1688_mode'), legacy_capture_mode),
+            'taobao_tmall_mode': _normalize_mode(raw_prefs.get('taobao_tmall_mode'), legacy_capture_mode),
+        }
+
         return {
             'shipping_template': shipping_template,
             'shipping_templates': shipping_templates,
@@ -259,7 +363,9 @@ class SettingsManager:
             'runtime_category_keyword': runtime_category_keyword,
             'runtime_matrix_keywords': runtime_matrix_keywords,
             'publish_mode': str(data.get('publish_mode') or 'dom').strip(),
-            'capture_mode': str(data.get('capture_mode') or 'dom').strip(),
+            # 旧字段：保留兼容，新调用方应使用 capture_preferences 分平台读取
+            'capture_mode': legacy_capture_mode,
+            'capture_preferences': capture_preferences,
         }
     
     def load_settings(self) -> UserSettings:
@@ -277,7 +383,7 @@ class SettingsManager:
                 # 加载定价相关配置
                 pricing_config = data.get('pricing_config')
                 cost_items = data.get('cost_items')
-                model_configs = data.get('model_configs')
+                model_configs = sanitize_model_configs(data.get('model_configs'))
                 automation_config = data.get('automation_config')
                 automation_config = self.normalize_automation_config(automation_config)
                 
@@ -359,7 +465,7 @@ class SettingsManager:
             
             # 更新模型配置
             if 'model_configs' in settings_dict:
-                self.settings.model_configs = settings_dict['model_configs']
+                self.settings.model_configs = sanitize_model_configs(settings_dict['model_configs'])
                 print(f"[Config] 更新模型配置: {len(self.settings.model_configs)} 个")
             
             # 更新自动化配置

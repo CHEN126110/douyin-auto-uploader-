@@ -10,6 +10,7 @@ peewee>=3.16.0
 
 # 网络请求
 requests>=2.31.0
+websocket-client>=1.6.0
 types-requests>=2.31.0  # 类型存根，消除IDE警告
 aiohttp>=3.9.0
 psutil>=5.9.0

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>抖店经营 · 2.5D 驾驶舱</title>
+  <link rel="stylesheet" href="/console/styles.css" />
+</head>
+<body>
+  <!-- 背景景深粒子层 -->
+  <canvas id="bgCanvas" class="bg-canvas"></canvas>
+
+  <div class="cockpit">
+    <!-- 顶部 HUD -->
+    <header class="hud">
+      <div class="hud-brand">
+        <span class="hud-logo">◣◢</span>
+        <div class="hud-titles">
+          <h1>抖店经营 · 2.5D 驾驶舱</h1>
+          <p id="hudSubtitle">正在连接经营数据…</p>
+        </div>
+      </div>
+      <div class="hud-status">
+        <div class="status-chip" id="chipBrowser"><i></i><span>浏览器</span></div>
+        <div class="status-chip" id="chipLogin"><i></i><span>登录态</span></div>
+        <div class="hud-clock" id="hudClock">--:--:--</div>
+        <button class="hud-refresh" id="btnRefresh" title="刷新全部数据">⟳ 刷新</button>
+      </div>
+    </header>
+
+    <!-- 2.5D 场景 -->
+    <main class="scene" id="scene">
+      <div class="world" id="world">
+        <div class="floor"></div>
+        <div class="floor-glow"></div>
+
+        <!-- 罗盘核心指标浮层 -->
+        <section class="kpi-deck" id="kpiDeck" aria-label="罗盘核心指标">
+          <div class="kpi-deck-title">罗盘核心指标 · 今日</div>
+          <div class="kpi-row" id="kpiRow">
+            <div class="kpi-empty">指标加载中…</div>
+          </div>
+        </section>
+
+        <!-- 业务域站台 -->
+        <section class="stations" id="stations" aria-label="业务域"></section>
+      </div>
+    </main>
+
+    <!-- 域详情抽屉 -->
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div class="drawer-title">
+          <span class="drawer-icon" id="drawerIcon">📦</span>
+          <h2 id="drawerName">域详情</h2>
+          <span class="drawer-count" id="drawerCount"></span>
+        </div>
+        <button class="drawer-close" id="drawerClose">✕</button>
+      </div>
+      <div class="drawer-body" id="drawerBody"></div>
+      <div class="drawer-foot" id="drawerFoot"></div>
+    </aside>
+
+    <div class="scrim" id="scrim"></div>
+  </div>
+
+  <script src="/console/app.js"></script>
+</body>
+</html>

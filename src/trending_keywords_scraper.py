@@ -770,7 +770,7 @@ class TrendingKeywordsScraper:
         
         # 长尾关键词模板
         templates = [
-            "{category}哪个牌子好",
+            "{category}哪款好穿",
             "{category}性价比高",
             "{category}质量好的推荐",
             "{category}舒适透气款",
@@ -778,7 +778,7 @@ class TrendingKeywordsScraper:
             "{category}上班族专用",
             "好穿的{category}推荐",
             "不掉跟的{category}",
-            "防臭{category}品牌",
+            "防臭{category}推荐",
             "纯棉{category}哪款好"
         ]
         

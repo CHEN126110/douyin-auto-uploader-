@@ -1,6 +1,6 @@
 {
   "name": "douyin-sock-publisher",
-  "version": "4.0.8",
+  "version": "4.0.28",
   "description": "抖音袜子发布工具 - Tauri + Vue 3 版本",
   "author": "Dyin",
   "license": "MIT",
@@ -11,16 +11,18 @@
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "tauri dev -- --release",
     "tauri:build": "tauri build",
     "package:release": "powershell -ExecutionPolicy Bypass -File ./package-release.ps1"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
-    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
+    "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.9.0",
     "axios": "^1.6.7",
     "element-plus": "^2.6.1",
     "pinia": "^2.1.7",

@@ -1,0 +1,97 @@
+{
+  "image_naming": {
+    "supported_formats": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".bmp",
+      ".webp"
+    ],
+    "name_filters": [],
+    "ignore_case": true
+  },
+  "ui_settings": {
+    "enable_image_hover": true,
+    "hover_image_size": 400,
+    "hover_delay": 300,
+    "theme_mode": "light",
+    "enable_animations": true
+  },
+  "processing": {
+    "auto_detect_id_folders": true,
+    "batch_processing_mode": false,
+    "max_concurrent_tasks": 3
+  },
+  "pricing_config": {
+    "target_gross_margin": 30
+  },
+  "cost_items": [
+    {
+      "cost_type": "fixed",
+      "description": "固定运费",
+      "id": "2",
+      "name": "运费",
+      "value": 3
+    },
+    {
+      "cost_type": "fixed",
+      "description": "包装材料成本",
+      "id": "3",
+      "name": "包装费",
+      "value": 0.5
+    },
+    {
+      "cost_type": "percentage",
+      "description": "平台抽成百分比",
+      "id": "4",
+      "name": "平台佣金",
+      "value": 5
+    }
+  ],
+  "model_configs": [
+    {
+      "id": "ds-free-api",
+      "name": "DeepSeek V4 Pro（ds-free-api）",
+      "provider": "ds-free-api",
+      "api_key": "",
+      "api_base": "http://127.0.0.1:8000/v1",
+      "model_name": "deepseek-v4-pro",
+      "enabled": false
+    }
+  ],
+  "automation_config": {
+    "shipping_template": "中通-满6件包邮",
+    "shipping_templates": [
+      "中通包邮",
+      "中通-满6件包邮"
+    ],
+    "material_compositions": [
+      {
+        "material": "棉",
+        "percentage": 75
+      },
+      {
+        "material": "氨纶",
+        "percentage": 25
+      }
+    ],
+    "material_options": [
+      "棉",
+      "氨纶",
+      "锦纶",
+      "聚酯纤维",
+      "涤纶",
+      "粘纤",
+      "莫代尔",
+      "腈纶",
+      "羊毛",
+      "兔毛",
+      "桑蚕丝",
+      "再生纤维素纤维"
+    ],
+    "wash_label_tag_image_path": null,
+    "qualification_certificate_path": null,
+    "runtime_category_keyword": null,
+    "runtime_matrix_keywords": null
+  }
+}

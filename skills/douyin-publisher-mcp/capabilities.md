@@ -25,7 +25,7 @@ This file is the detailed index for the `douyin-publisher-mcp` skill. It should 
 | `prepare-product-for-upload` | Review one product, generate title and prices, and inspect readiness before any mutation |
 | `fix-upload-blockers` | Turn validation failures into concrete repair steps |
 | `review-sku-quantities` | Review pair counts before pricing |
-| `upload-product-safely` | Validate first, then upload if ready |
+| `upload-product-safely` | Validate first, then run safe upload preflight if ready |
 | `monitor-upload-task` | Track one upload task until terminal state |
 | `capture-multiple-products` | Launch and monitor many capture tasks |
 
@@ -73,6 +73,25 @@ This file is the detailed index for the `douyin-publisher-mcp` skill. It should 
 - `update_settings`
 - `reset_settings`
 
+### Operations Loop
+
+- `ops_ai_policy`
+- `ops_health_check`
+- `ops_read_shop_metrics_cdp`
+- `ops_read_strategy_signals_cdp`
+- `ops_sync_shop_metrics`
+- `ops_sync_strategy_signals`
+- `ops_product_issue_actions`
+- `ops_update_product_issue_action`
+- `ops_sync_product_record_mappings`
+- `ops_product_record_mappings`
+- `ops_evaluate_product`
+- `ops_stock_plan`
+- `ops_product_candidates`
+- `ops_apply_candidate_pricing`
+- `ops_daily_plan`
+- `ops_daily_review`
+
 ### Upload
 
 - `validate_product_for_upload`
@@ -105,6 +124,10 @@ Use these only when upload automation fails, page state must be inspected, or th
 
 ## Important Behavior Notes
 
+- The operations loop is Codex-only for decision support. It must not call OpenAI, Ollama, DeepSeek, Claude, or any third-party model provider from the local app.
+- `ops_sync_strategy_signals` persists product diagnosis snapshots and creates local `open` product issue actions; it is read-only toward FXG and writes only to the local SQLite operations ledger.
+- `ops_update_product_issue_action` records local action status, notes, and evidence only. It does not click FXG one-click optimization, publish, payment, or ad-spend controls.
+- `ops_sync_product_record_mappings` conservatively maps browser-observed shop product IDs/titles to local Records. `unmatched` means the material fix is not executable yet.
 - `get_product_detail` should usually keep `loadImages=false` unless image payloads are required.
 - `prepare_product_draft` is the safest high-level read path for title plus pricing suggestions.
 - `apply_preparation_draft` persists generated title and/or prices.
@@ -113,7 +136,8 @@ Use these only when upload automation fails, page state must be inspected, or th
 - `calculate_smart_prices`, `prepare_product_draft`, and `apply_preparation_draft` accept `quantityOverrides`.
 - Use `quantityOverrides` with `skuPath` whenever pair counts were corrected from image review or model judgment.
 - `start_upload` supports either `recordId` or `allProducts=true`, never both.
-- `start_validated_upload` should be preferred over `start_upload` for one product because it validates readiness first.
+- `start_upload` and `start_validated_upload` default to safe preflight (`stopBeforeSubmit=true`); this maps to Sidecar `stop_before_submit=true`.
+- `start_validated_upload` should be preferred over `start_upload` for one product because it validates readiness first. Final publish requires both `stopBeforeSubmit=false` and `confirmFinalPublish=true` after explicit user confirmation.
 - `list_upload_tasks` is the best first read when another agent may already be uploading.
 - `cancel_upload` and `cancel_capture` are available and should be surfaced when a user asks to stop work.
 

@@ -1,10 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  Connection,
+  Cpu,
+  Setting,
+  Box,
+  Document,
+  InfoFilled,
+  CircleCheck,
+  Warning,
+  Lightning,
+  Mouse,
+  Link,
+  CopyDocument,
+  Promotion,
+} from "@element-plus/icons-vue";
+import { getVersion } from "@tauri-apps/api/app";
 import { api, tauriCommands } from "@/services/api";
+import { checkForUpdate } from "@/services/updater";
 import type {
   AutomationConfig,
+  CaptureMode,
+  CapturePreferences,
   CostItem,
   MaterialComposition,
   ModelConfig,
@@ -49,6 +68,30 @@ const activeTab = ref<SettingsTab>(
 
 // 加载状态
 const loading = ref(false);
+
+// 是否有未保存的更改
+const hasUnsavedChanges = ref(false);
+// 初次 loadSettings 完成前，所有 watch 都不应标记为 dirty
+const settingsLoaded = ref(false);
+
+function markDirty() {
+  if (settingsLoaded.value) {
+    hasUnsavedChanges.value = true;
+  }
+}
+
+// 设置加载失败标记。加载失败时面板显示的是本文件里的硬编码默认值，
+// 一旦保存就会把后端真实的成本项 / 运费模板 / 材质成分 / 洗唛吊牌图 / 发布模式 /
+// 采集偏好整体覆盖，所以必须禁用保存并把失败原因暴露给用户。
+const loadFailed = ref(false);
+// 原始错误信息，直接展示给用户作为排查入口，不做吞掉或美化
+const loadErrorMessage = ref("");
+
+function markLoadFailed(detail: string) {
+  loadFailed.value = true;
+  loadErrorMessage.value = detail;
+  ElMessage.error(`设置加载失败：${detail}。请确认后端已启动，修复后点击「重试加载」，在此之前请勿保存`);
+}
 
 
 // ========== 价格设置 ==========
@@ -211,7 +254,14 @@ const materialCompositions = ref<MaterialComposition[]>([]);
 const washLabelTagImagePath = ref("");
 const washLabelTagImageLoading = ref(false);
 const publishMode = ref("dom");
-const captureMode = ref("dom");
+// 采集偏好：分平台独立配置。1688 和 淘宝/天猫 是两个独立平台，采集协议互不交叉。
+//   - dom（默认）：读浏览器渲染数据（1688 走 window.context；淘宝/天猫 走 mtop SDK）
+//   - protocol（预览版）：CDP 网络拦截抓接口响应，目前数据提取仍回退到 DOM，
+//     主要价值是会把协议层网络快照保存到工件目录，方便后续抓包分析。
+const capturePreferences = ref<CapturePreferences>({
+  alibaba_1688_mode: "dom",
+  taobao_tmall_mode: "dom",
+});
 const newMaterialName = ref("");
 const newMaterialPercentage = ref(0);
 
@@ -232,12 +282,24 @@ const materialPercentageTotal = computed(() =>
   materialCompositions.value.reduce((sum, item) => sum + Number(item.percentage || 0), 0)
 );
 const materialSettingsInvalid = computed(() => {
-  const allowed = new Set(materialOptions.value);
-  const hasInvalidMaterial = materialCompositions.value.some(
-    (item) => !item.material || !allowed.has(item.material)
-  );
-  return materialPercentageTotal.value !== 100 || hasInvalidMaterial;
+  // 材质允许自定义输入：平台会不断新增面料，写死白名单会把新材质挡在外面。
+  // 这里只保证「非空」与「含量合计 100%」，是否为平台标准项交由 isCustomMaterial 提示。
+  const hasEmptyMaterial = materialCompositions.value.some((item) => !item.material);
+  return materialPercentageTotal.value !== 100 || hasEmptyMaterial;
 });
+
+/** 该材质是否为平台选项之外的自定义项（仅用于提示，不阻断保存） */
+function isCustomMaterial(name: string): boolean {
+  const value = String(name || "").trim();
+  if (!value) return false;
+  return !materialOptions.value.includes(value);
+}
+
+const customMaterialNames = computed(() =>
+  materialCompositions.value
+    .map((item) => String(item.material || "").trim())
+    .filter((name) => name && isCustomMaterial(name))
+);
 const washLabelTagImagePreviewUrl = computed(() => {
   const p = washLabelTagImagePath.value.trim();
   if (!p) return "";
@@ -248,11 +310,7 @@ function addMaterialComposition() {
   const material = newMaterialName.value.trim();
   const percentage = Number(newMaterialPercentage.value);
   if (!material) {
-    ElMessage.warning("请选择平台材质");
-    return;
-  }
-  if (!materialOptions.value.includes(material)) {
-    ElMessage.warning("材质不在平台可选列表内");
+    ElMessage.warning("请选择或输入材质");
     return;
   }
   if (materialCompositions.value.some((item) => item.material === material)) {
@@ -379,55 +437,35 @@ async function removeShippingTemplate(index: number) {
 
 // ========== 模型API设置 ==========
 
-const DS_FREE_API_BASE_URL = "http://127.0.0.1:8000/v1";
-const DS_FREE_API_MODEL = "deepseek-v4-pro";
-const OPENAI_BASE_URL = "https://api.openai.com/v1";
-const OPENAI_DEFAULT_MODEL = "gpt-3.5-turbo";
-const OLLAMA_BASE_URL = "http://localhost:11434";
-const OLLAMA_DEFAULT_MODEL = "qwen2.5:7b";
-const KNOWN_MODEL_BASE_URLS = new Set([DS_FREE_API_BASE_URL, OPENAI_BASE_URL, OLLAMA_BASE_URL]);
-const KNOWN_MODEL_NAMES = new Set([DS_FREE_API_MODEL, OPENAI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL]);
-const LEGACY_DEEPSEEK_MODEL_NAMES = new Set([
-  "deepseek-chat",
-  "deepseek-coder",
-  "deepseek-r1",
-  "deepseek-reasoner",
-  "deepseek-search",
-  "deepseek-r1-search",
-]);
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+const DEEPSEEK_DEFAULT_MODEL = "deepseek-chat";
+// 小米 MiMo 开放平台（OpenAI 兼容，实证确认端点）。密钥从 platform.xiaomimimo.com 控制台创建
+const XIAOMI_BASE_URL = "https://api.xiaomimimo.com/v1";
+const XIAOMI_DEFAULT_MODEL = "mimo-v2.5-pro";
+const KNOWN_MODEL_BASE_URLS = new Set([DEEPSEEK_BASE_URL, XIAOMI_BASE_URL]);
+const KNOWN_MODEL_NAMES = new Set([DEEPSEEK_DEFAULT_MODEL, XIAOMI_DEFAULT_MODEL]);
+const ALLOWED_PROVIDERS = new Set(["deepseek", "xiaomi"]);
 
-function createDsFreeApiModelConfig(): ModelConfig {
+function createDeepSeekModelConfig(): ModelConfig {
   return {
-    id: "ds-free-api",
-    name: "DeepSeek V4 Pro（ds-free-api）",
-    provider: "ds-free-api",
+    id: "deepseek",
+    name: "DeepSeek",
+    provider: "deepseek",
     api_key: "",
-    api_base: DS_FREE_API_BASE_URL,
-    model_name: DS_FREE_API_MODEL,
+    api_base: DEEPSEEK_BASE_URL,
+    model_name: DEEPSEEK_DEFAULT_MODEL,
     enabled: false,
   };
 }
 
-function createOpenAiModelConfig(): ModelConfig {
+function createXiaomiModelConfig(): ModelConfig {
   return {
-    id: "1",
-    name: "OpenAI GPT",
-    provider: "openai",
+    id: "xiaomi",
+    name: "小米大模型",
+    provider: "xiaomi",
     api_key: "",
-    api_base: OPENAI_BASE_URL,
-    model_name: OPENAI_DEFAULT_MODEL,
-    enabled: false,
-  };
-}
-
-function createOllamaModelConfig(): ModelConfig {
-  return {
-    id: "2",
-    name: "本地 Ollama",
-    provider: "ollama",
-    api_key: "",
-    api_base: OLLAMA_BASE_URL,
-    model_name: OLLAMA_DEFAULT_MODEL,
+    api_base: XIAOMI_BASE_URL,
+    model_name: XIAOMI_DEFAULT_MODEL,
     enabled: false,
   };
 }
@@ -436,46 +474,29 @@ function createNewModelConfig(): ModelConfig {
   return {
     id: "",
     name: "",
-    provider: "ds-free-api",
+    provider: "deepseek",
     api_key: "",
-    api_base: DS_FREE_API_BASE_URL,
-    model_name: DS_FREE_API_MODEL,
+    api_base: DEEPSEEK_BASE_URL,
+    model_name: DEEPSEEK_DEFAULT_MODEL,
     enabled: true,
   };
 }
 
-function isLegacyDeepSeekConfig(config: ModelConfig): boolean {
-  const modelName = String(config.model_name || "").trim();
-  return config.provider === "deepseek" || LEGACY_DEEPSEEK_MODEL_NAMES.has(modelName);
-}
-
 function normalizeModelConfigs(source?: ModelConfig[] | null): ModelConfig[] {
   const list = Array.isArray(source) ? source : [];
-  const normalized = list.map((config) => {
-    const next = { ...config };
-
-    if (isLegacyDeepSeekConfig(next)) {
-      next.provider = "ds-free-api";
-      next.api_base = DS_FREE_API_BASE_URL;
-      next.model_name = DS_FREE_API_MODEL;
-      if (!next.name.trim() || next.name.toLowerCase().includes("deepseek")) {
-        next.name = "DeepSeek V4 Pro（ds-free-api）";
-      }
-    }
-
-    return next;
-  });
-
-  const hasDsFreeApi = normalized.some(
-    (config) => config.provider === "ds-free-api" || config.model_name === DS_FREE_API_MODEL
+  // 仅保留发布优化允许的厂商；缺省补齐 DeepSeek / 小米 两个空配置供填写
+  const normalized = list.filter((c) =>
+    ALLOWED_PROVIDERS.has(String(c.provider || "").toLowerCase())
   );
-
-  return hasDsFreeApi ? normalized : [createDsFreeApiModelConfig(), ...normalized];
+  const has = (p: string) =>
+    normalized.some((c) => String(c.provider || "").toLowerCase() === p);
+  const result = [...normalized];
+  if (!has("deepseek")) result.unshift(createDeepSeekModelConfig());
+  if (!has("xiaomi")) result.push(createXiaomiModelConfig());
+  return result;
 }
 
-const modelConfigs = ref<ModelConfig[]>(
-  normalizeModelConfigs([createOpenAiModelConfig(), createOllamaModelConfig()])
-);
+const modelConfigs = ref<ModelConfig[]>(normalizeModelConfigs([]));
 
 // 新增模型配置
 const newModelConfig = ref<ModelConfig>(createNewModelConfig());
@@ -487,28 +508,15 @@ function applyModelProviderDefaults(config: ModelConfig): void {
     !config.model_name.trim() || KNOWN_MODEL_NAMES.has(config.model_name.trim());
 
   switch (config.provider) {
-    case "ds-free-api":
-      if (!config.name.trim() || config.name === "OpenAI GPT" || config.name === "本地 Ollama") {
-        config.name = "DeepSeek V4 Pro（ds-free-api）";
-      }
-      config.api_base = DS_FREE_API_BASE_URL;
-      config.model_name = DS_FREE_API_MODEL;
+    case "deepseek":
+      if (shouldReplaceBaseUrl) config.api_base = DEEPSEEK_BASE_URL;
+      if (shouldReplaceModel) config.model_name = DEEPSEEK_DEFAULT_MODEL;
+      if (!config.name.trim() || config.name === "小米大模型") config.name = "DeepSeek";
       break;
-    case "openai":
-      if (shouldReplaceBaseUrl) {
-        config.api_base = OPENAI_BASE_URL;
-      }
-      if (shouldReplaceModel) {
-        config.model_name = OPENAI_DEFAULT_MODEL;
-      }
-      break;
-    case "ollama":
-      if (shouldReplaceBaseUrl) {
-        config.api_base = OLLAMA_BASE_URL;
-      }
-      if (shouldReplaceModel) {
-        config.model_name = OLLAMA_DEFAULT_MODEL;
-      }
+    case "xiaomi":
+      if (shouldReplaceBaseUrl) config.api_base = XIAOMI_BASE_URL;
+      if (shouldReplaceModel) config.model_name = XIAOMI_DEFAULT_MODEL;
+      if (!config.name.trim() || config.name === "DeepSeek") config.name = "小米大模型";
       break;
     default:
       break;
@@ -550,13 +558,101 @@ async function removeModelConfig(index: number) {
   }
 }
 
-// 测试模型连接
+// 服务商 → 后端能识别的 provider 名映射。后端 /api/ai/test 支持 deepseek / xiaomi。
+const TESTABLE_PROVIDER_MAP: Record<string, string> = {
+  deepseek: "deepseek",
+  xiaomi: "xiaomi",
+};
+
+const testingModelId = ref<string>("");
+const fetchingModelsId = ref<string>("");
+const modelOptions = ref<Record<string, string[]>>({});
+
+// 通过官方 GET /models 动态获取模型列表（避免手输错误、自动跟进最新模型）
+async function fetchModels(config: ModelConfig) {
+  const apiKey = String(config.api_key || "").trim();
+  const apiBase = String(config.api_base || "").trim();
+  if (!apiKey) {
+    ElMessage.warning("请先填写访问密钥后再获取模型");
+    return;
+  }
+  if (!apiBase) {
+    ElMessage.warning("请先填写服务地址后再获取模型");
+    return;
+  }
+  fetchingModelsId.value = config.id;
+  try {
+    const resp = await api.listAiModels({
+      provider: config.provider,
+      api_key: apiKey,
+      api_base: apiBase,
+    });
+    const models = resp?.data?.models || [];
+    if (models.length) {
+      modelOptions.value = { ...modelOptions.value, [config.id]: models };
+      if (!config.model_name || !models.includes(config.model_name)) {
+        config.model_name = models[0];
+      }
+      ElMessage.success(`获取到 ${models.length} 个模型`);
+    } else {
+      ElMessage.warning("未获取到模型列表");
+    }
+  } catch (error: any) {
+    const detail = error?.response?.data?.msg || error?.message || String(error);
+    ElMessage.error(`获取模型失败：${detail}`);
+  } finally {
+    fetchingModelsId.value = "";
+  }
+}
+
 async function testModelConnection(config: ModelConfig) {
-  ElMessage.info(`正在测试 ${config.name} 连接...`);
-  // TODO: 实现实际的连接测试
-  setTimeout(() => {
-    ElMessage.success(`${config.name} 连接成功`);
-  }, 1000);
+  const providerKey = String(config.provider || "").trim();
+  const backendProvider = TESTABLE_PROVIDER_MAP[providerKey];
+
+  if (!backendProvider) {
+    ElMessage.warning(
+      `「${providerKey || "未指定服务商"}」暂不支持一键测试，请先保存后手动验证一次`
+    );
+    return;
+  }
+
+  const apiKey = String(config.api_key || "").trim();
+  if (!apiKey) {
+    ElMessage.warning("请先填写访问密钥后再测试连接");
+    return;
+  }
+  const apiBase = String(config.api_base || "").trim();
+  if (!apiBase) {
+    ElMessage.warning("请先填写服务地址（base_url）后再测试连接");
+    return;
+  }
+
+  testingModelId.value = config.id;
+  try {
+    const payload = {
+      [backendProvider]: {
+        enabled: true,
+        api_key: apiKey,
+        model: String(config.model_name || "").trim(),
+        api_base: apiBase,
+      },
+    };
+    const response = await api.testAiConfig(payload);
+    const result = response?.data?.[backendProvider];
+
+    if (result?.success) {
+      ElMessage.success(`${config.name} 连接成功`);
+    } else {
+      const reason = result?.error || response?.msg || "未知原因";
+      ElMessage.error(`${config.name} 连接失败：${reason}`);
+    }
+  } catch (error: any) {
+    console.error("测试模型连接失败:", error);
+    const detail = error?.response?.data?.msg || error?.message || String(error);
+    ElMessage.error(`${config.name} 连接失败：${detail}`);
+  } finally {
+    testingModelId.value = "";
+  }
 }
 
 const defaultAppInfo: AppInfo = {
@@ -587,6 +683,19 @@ const defaultAppInfo: AppInfo = {
 
 const appInfo = ref<AppInfo>({ ...defaultAppInfo });
 
+// 应用版本（来自 tauri.conf.json，与自动更新比对的是同一个权威版本号）
+const appVersion = ref<string>("");
+const checkingUpdate = ref<boolean>(false);
+
+async function handleCheckUpdate() {
+  checkingUpdate.value = true;
+  try {
+    await checkForUpdate();
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
 function escapeForPowerShell(path: string) {
   return path.replace(/'/g, "''");
 }
@@ -596,7 +705,6 @@ function escapeForJson(path: string) {
 }
 
 const backendUrl = computed(() => appInfo.value.backend_url || "http://127.0.0.1:5001");
-const mcpServerDir = computed(() => appInfo.value.mcp_server_dir || "未检测到");
 const mcpServerPath = computed(() => appInfo.value.mcp_server_entry || "未检测到");
 const mcpHttpEndpoint = computed(
   () => appInfo.value.mcp_http_endpoint || "http://127.0.0.1:3300/mcp"
@@ -786,20 +894,51 @@ async function loadSettings() {
         materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
         washLabelTagImagePath.value = String(ac.wash_label_tag_image_path || "").trim();
         publishMode.value = String(ac.publish_mode || "dom").trim();
-        captureMode.value = String(ac.capture_mode || "dom").trim();
+
+        // 加载采集偏好（分平台独立）
+        // 兼容旧的单一字段 capture_mode：如果新字段缺失就用旧字段作为两个平台的初始值
+        const legacyCaptureMode = String(ac.capture_mode || "dom").trim();
+        const prefs = ac.capture_preferences;
+        const normalizeMode = (v: unknown): CaptureMode => (v === "protocol" ? "protocol" : "dom");
+        capturePreferences.value = {
+          alibaba_1688_mode: normalizeMode(prefs?.alibaba_1688_mode ?? legacyCaptureMode),
+          taobao_tmall_mode: normalizeMode(prefs?.taobao_tmall_mode ?? legacyCaptureMode),
+        };
         console.log("[Settings] 加载自动化配置:", {
           templates: shippingTemplates.value,
           selected: selectedShippingTemplate.value,
           materialOptions: materialOptions.value,
           materials: materialCompositions.value,
           washLabelTagImagePath: washLabelTagImagePath.value,
+          capturePreferences: capturePreferences.value,
         });
       }
+
+      // 只有真正拿到后端设置才允许保存
+      loadFailed.value = false;
+      loadErrorMessage.value = "";
+    } else {
+      // 后端返回 success:false 或缺少 settings：界面上留下的是本文件里的硬编码默认值，
+      // 此时保存会把后端真实的 cost_items / shipping_templates / material_compositions /
+      // wash_label_tag_image_path / publish_mode / capture_preferences 整体覆盖掉。
+      const detail =
+        (response as { msg?: string; message?: string }).msg ||
+        (response as { msg?: string; message?: string }).message ||
+        "后端未返回设置数据";
+      console.error("加载设置失败:", response);
+      markLoadFailed(detail);
     }
   } catch (error) {
     console.error("加载设置失败:", error);
+    markLoadFailed(error instanceof Error ? error.message : String(error));
   } finally {
     loading.value = false;
+    // 先让本次 loadSettings 赋值触发的 watch 回调（默认 'pre' flush，下一 tick 才执行）
+    // 在 settingsLoaded 仍为 false 时跑完。否则这些"加载赋值"会在下一 tick 被 markDirty
+    // 误判为用户改动，导致设置页一加载就显示"有未保存的更改"。
+    await nextTick();
+    settingsLoaded.value = true;
+    hasUnsavedChanges.value = false;
   }
 }
 
@@ -821,13 +960,17 @@ async function handleSave() {
         material_compositions: normalizeMaterialCompositions(materialCompositions.value),
         wash_label_tag_image_path: washLabelTagImagePath.value.trim() || null,
         publish_mode: publishMode.value,
-        capture_mode: captureMode.value,
+        // 分平台采集偏好：1688 和 淘宝/天猫 独立保存
+        capture_preferences: {
+          alibaba_1688_mode: capturePreferences.value.alibaba_1688_mode,
+          taobao_tmall_mode: capturePreferences.value.taobao_tmall_mode,
+        },
       },
     };
 
     if (materialSettingsInvalid.value) {
       activeTab.value = "automation";
-      ElMessage.warning("材质必须来自平台选项且含量总和等于100%");
+      ElMessage.warning("材质名称不能为空，且含量总和必须等于100%");
       loading.value = false;
       return;
     }
@@ -838,6 +981,7 @@ async function handleSave() {
 
     if (response.success) {
       ElMessage.success("设置保存成功");
+      hasUnsavedChanges.value = false;
     } else {
       ElMessage.error(response.msg || "保存失败");
     }
@@ -864,10 +1008,35 @@ function resetOnboarding() {
   ElMessage.success('引导状态已重置，下次启动时将显示新手引导');
 }
 
+// 监听用户改动，统一标记 dirty
+watch(
+  [
+    pricingConfig,
+    costItems,
+    modelConfigs,
+    shippingTemplates,
+    () => selectedShippingTemplate.value,
+    materialCompositions,
+    () => washLabelTagImagePath.value,
+    () => publishMode.value,
+    () => capturePreferences.value.alibaba_1688_mode,
+    () => capturePreferences.value.taobao_tmall_mode,
+  ],
+  () => {
+    markDirty();
+  },
+  { deep: true }
+);
+
 // 初始化设置页面
-onMounted(() => {
+onMounted(async () => {
   loadAppInfo();
   loadSettings();
+  try {
+    appVersion.value = await getVersion();
+  } catch {
+    appVersion.value = "";
+  }
 });
 </script>
 
@@ -1066,8 +1235,8 @@ onMounted(() => {
           </div>
         </el-tab-pane>
 
-        <!-- 模型API设置标签页 -->
-        <el-tab-pane label="🤖 模型API" name="model">
+        <!-- 智能模型 -->
+        <el-tab-pane label="🤖 智能模型" name="model">
           <div class="settings-section">
             <h3 class="section-title">🔗 已配置的模型</h3>
             
@@ -1088,9 +1257,10 @@ onMounted(() => {
                     <el-switch v-model="config.enabled" size="small" />
                     <el-button
                       size="small"
+                      :loading="testingModelId === config.id"
                       @click="testModelConnection(config)"
                     >
-                      测试
+                      {{ testingModelId === config.id ? '测试中' : '测试' }}
                     </el-button>
                     <el-button
                       type="danger"
@@ -1110,38 +1280,55 @@ onMounted(() => {
                       size="small"
                       @change="handleModelProviderChange(config)"
                     >
-                      <el-option label="ds-free-api (DeepSeek V4 Pro)" value="ds-free-api" />
-                      <el-option label="OpenAI" value="openai" />
-                      <el-option label="Ollama (本地)" value="ollama" />
-                      <el-option label="Azure OpenAI" value="azure" />
-                      <el-option label="自定义" value="custom" />
+                      <el-option label="DeepSeek" value="deepseek" />
+                      <el-option label="小米大模型" value="xiaomi" />
                     </el-select>
                   </div>
                   <div class="detail-row">
-                    <label>API地址</label>
+                    <label>服务地址</label>
                     <el-input
                       v-model="config.api_base"
-                      placeholder="API Base URL"
+                      placeholder="服务地址，如 https://api.openai.com/v1"
                       size="small"
                     />
                   </div>
                   <div class="detail-row">
-                    <label>API Key</label>
+                    <label>访问密钥</label>
                     <el-input
                       v-model="config.api_key"
                       type="password"
-                      placeholder="ds-free-api 填 userToken.value；本地模型可留空"
+                      placeholder="填入服务商提供的访问密钥；本地模型可留空"
                       size="small"
                       show-password
                     />
                   </div>
                   <div class="detail-row">
                     <label>模型名称</label>
-                    <el-input
-                      v-model="config.model_name"
-                      placeholder="如: deepseek-v4-pro, gpt-3.5-turbo, qwen2.5:7b"
-                      size="small"
-                    />
+                    <div style="display:flex; gap:8px; flex:1; align-items:center;">
+                      <el-select
+                        v-model="config.model_name"
+                        size="small"
+                        filterable
+                        allow-create
+                        default-first-option
+                        placeholder="点右侧『获取模型』，或手动输入"
+                        style="flex:1;"
+                      >
+                        <el-option
+                          v-for="m in (modelOptions[config.id] || [])"
+                          :key="m"
+                          :label="m"
+                          :value="m"
+                        />
+                      </el-select>
+                      <el-button
+                        size="small"
+                        :loading="fetchingModelsId === config.id"
+                        @click="fetchModels(config)"
+                      >
+                        {{ fetchingModelsId === config.id ? '获取中' : '获取模型' }}
+                      </el-button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1153,21 +1340,18 @@ onMounted(() => {
               <div class="add-model-form">
                 <el-input
                   v-model="newModelConfig.name"
-                  placeholder="配置名称"
+                  placeholder="给这个配置起个名字（如：我的 DeepSeek）"
                 />
                 <el-select
                   v-model="newModelConfig.provider"
                   @change="handleModelProviderChange(newModelConfig)"
                 >
-                  <el-option label="ds-free-api (DeepSeek V4 Pro)" value="ds-free-api" />
-                  <el-option label="OpenAI" value="openai" />
-                  <el-option label="Ollama (本地)" value="ollama" />
-                  <el-option label="Azure OpenAI" value="azure" />
-                  <el-option label="自定义" value="custom" />
+                  <el-option label="DeepSeek" value="deepseek" />
+                  <el-option label="小米大模型" value="xiaomi" />
                 </el-select>
                 <el-input
                   v-model="newModelConfig.api_base"
-                  placeholder="API地址"
+                  placeholder="服务地址"
                 />
                 <el-input
                   v-model="newModelConfig.model_name"
@@ -1194,20 +1378,112 @@ onMounted(() => {
         <!-- 自动化设置标签页 -->
         <el-tab-pane label="🤖 自动化设置" name="automation">
           <div class="settings-section">
-            <h3 class="section-title">📤 发布方式</h3>
-            <el-radio-group v-model="publishMode">
-              <el-radio value="dom">🖱️ DOM 流水线 — 模拟操作页面发布（稳定，较慢）</el-radio>
-              <el-radio value="protocol">⚡ 纯协议 — API 直接调用 addWithSchema（最快，约18秒/品）</el-radio>
-              <el-radio value="official">🔗 官方 API — 抖店开放平台接口（最稳定，需配置密钥）</el-radio>
-            </el-radio-group>
+            <h3 class="section-title">
+              <el-icon class="section-icon"><Promotion /></el-icon>
+              发布方式
+            </h3>
+            <div class="mode-card-group">
+              <label
+                class="mode-card"
+                :class="{ active: publishMode === 'dom' }"
+              >
+                <input type="radio" v-model="publishMode" value="dom" />
+                <el-icon class="mode-icon"><Mouse /></el-icon>
+                <div class="mode-text">
+                  <div class="mode-name">浏览器自动发布</div>
+                  <div class="mode-desc">像人工一样在浏览器里逐步填表，稳定但稍慢</div>
+                </div>
+                <el-tag size="small" type="info" effect="plain">推荐新手</el-tag>
+              </label>
+              <label
+                class="mode-card"
+                :class="{ active: publishMode === 'protocol' }"
+              >
+                <input type="radio" v-model="publishMode" value="protocol" />
+                <el-icon class="mode-icon"><Lightning /></el-icon>
+                <div class="mode-text">
+                  <div class="mode-name">极速发布</div>
+                  <div class="mode-desc">跳过界面操作直接提交，单个商品约 18 秒</div>
+                </div>
+                <el-tag size="small" type="success" effect="plain">最快</el-tag>
+              </label>
+              <label
+                class="mode-card"
+                :class="{ active: publishMode === 'official' }"
+              >
+                <input type="radio" v-model="publishMode" value="official" />
+                <el-icon class="mode-icon"><Link /></el-icon>
+                <div class="mode-text">
+                  <div class="mode-name">抖店官方授权</div>
+                  <div class="mode-desc">使用抖店开放平台官方接口，最稳定，需先申请授权</div>
+                </div>
+                <el-tag size="small" type="warning" effect="plain">需授权</el-tag>
+              </label>
+            </div>
           </div>
 
           <div class="settings-section">
-            <h3 class="section-title">🔍 采集方式</h3>
-            <el-radio-group v-model="captureMode">
-              <el-radio value="dom">🖱️ DOM 采集 — 模拟浏览器访问商品页（兼容性好）</el-radio>
-              <el-radio value="protocol">⚡ 协议采集 — 直接读取页面JS数据/mtop API（更快）</el-radio>
-            </el-radio-group>
+            <h3 class="section-title">
+              <el-icon class="section-icon"><Connection /></el-icon>
+              采集方式
+            </h3>
+            <div class="capture-strategy-intro">
+              1688 与 淘宝/天猫 是两个独立平台，采集协议互不交叉，需分别选择。
+              主页粘贴链接时会按平台自动应用对应配置，无需手动切换。
+            </div>
+            <div class="capture-pref-list">
+              <!-- 1688 -->
+              <div class="capture-pref-row">
+                <div class="capture-pref-platform">
+                  <el-icon class="strategy-icon"><Lightning /></el-icon>
+                  <div>
+                    <div class="strategy-name">1688 商品链接</div>
+                    <div class="strategy-host">detail.1688.com / offer.1688.com</div>
+                  </div>
+                </div>
+                <el-radio-group v-model="capturePreferences.alibaba_1688_mode" size="small">
+                  <el-radio-button value="dom">DOM 采集</el-radio-button>
+                  <el-radio-button value="protocol">协议采集</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <!-- 淘宝 / 天猫 -->
+              <div class="capture-pref-row">
+                <div class="capture-pref-platform">
+                  <el-icon class="strategy-icon"><Connection /></el-icon>
+                  <div>
+                    <div class="strategy-name">淘宝 / 天猫商品链接</div>
+                    <div class="strategy-host">item.taobao.com / detail.tmall.com</div>
+                  </div>
+                </div>
+                <el-radio-group v-model="capturePreferences.taobao_tmall_mode" size="small">
+                  <el-radio-button value="dom">DOM 采集</el-radio-button>
+                  <el-radio-button value="protocol">协议采集</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <!-- 店铺批量：无可配置项，保留说明 -->
+              <div class="capture-pref-row capture-pref-row-static">
+                <div class="capture-pref-platform">
+                  <el-icon class="strategy-icon"><Mouse /></el-icon>
+                  <div>
+                    <div class="strategy-name">淘宝 / 天猫店铺链接</div>
+                    <div class="strategy-host">shop*.taobao.com / *.m.tmall.com</div>
+                  </div>
+                </div>
+                <div class="capture-pref-static-tag">
+                  <el-tag size="small" type="info" effect="plain">浏览器批量翻页</el-tag>
+                  <span class="strategy-desc">店铺采集只有单一路径，无需选择</span>
+                </div>
+              </div>
+            </div>
+            <div class="capture-strategy-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>
+                DOM 采集 = 读浏览器渲染数据，最稳定；
+                协议采集 = 拦截网络请求（预览版，目前数据提取仍会走 DOM 路径，但会把协议层网络快照保存到工件目录便于抓包分析）。
+              </span>
+            </div>
           </div>
 
           <div class="settings-section">
@@ -1243,7 +1519,7 @@ onMounted(() => {
                     v-if="template !== selectedShippingTemplate"
                     type="primary"
                     size="small"
-                    text
+                    class="template-use-btn"
                     @click="selectedShippingTemplate = template"
                   >
                     使用
@@ -1284,8 +1560,11 @@ onMounted(() => {
                 >
                   <el-select
                     v-model="item.material"
-                    placeholder="选择平台材质"
+                    placeholder="选择或输入材质"
                     filterable
+                    allow-create
+                    default-first-option
+                    :reserve-keyword="false"
                     class="material-name-input"
                   >
                     <el-option
@@ -1318,8 +1597,11 @@ onMounted(() => {
               <div class="add-material-form">
                 <el-select
                   v-model="newMaterialName"
-                  placeholder="选择平台材质"
+                  placeholder="选择或输入材质"
                   filterable
+                  allow-create
+                  default-first-option
+                  :reserve-keyword="false"
                   class="material-name-input"
                 >
                   <el-option
@@ -1342,11 +1624,35 @@ onMounted(() => {
                   添加材质
                 </el-button>
               </div>
-              <div class="material-total" :class="{ warning: materialSettingsInvalid }">
-                当前含量总和：{{ materialPercentageTotal }}%
+              <div class="material-total-row">
+                <div class="material-total-label">
+                  <span>含量总和</span>
+                  <span
+                    class="material-total-value"
+                    :class="{ warning: materialPercentageTotal !== 100 }"
+                  >
+                    {{ materialPercentageTotal }}%
+                  </span>
+                  <span class="material-total-target">/ 100%</span>
+                </div>
+                <el-progress
+                  :percentage="Math.min(materialPercentageTotal, 100)"
+                  :status="materialPercentageTotal === 100 ? 'success' : (materialPercentageTotal > 100 ? 'exception' : undefined)"
+                  :stroke-width="8"
+                  :show-text="false"
+                  class="material-progress"
+                />
               </div>
               <div v-if="materialSettingsInvalid" class="material-warning-text">
-                材质必须来自平台选项，且含量总和必须等于100%
+                <el-icon><Warning /></el-icon>
+                <span>材质名称不能为空，且含量总和必须等于 100%</span>
+              </div>
+              <div v-else-if="customMaterialNames.length" class="material-custom-text">
+                <el-icon><Warning /></el-icon>
+                <span>
+                  自定义材质：{{ customMaterialNames.join("、") }}
+                  —— 不在已知平台选项内，发布时若平台下拉搜不到该材质会报错，请确认名称与平台一致
+                </span>
               </div>
             </div>
 
@@ -1409,70 +1715,139 @@ onMounted(() => {
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="🧩 MCP / Skills" name="mcp">
-          <div class="settings-section">
-            <h3 class="section-title">🚀 部署前提</h3>
-            <div class="deploy-guide-card">
-              <ul class="deploy-guide-list">
-                <li>先启动本工具，让本地后端可用，默认地址是 <code>{{ backendUrl }}</code></li>
-                <li>Runtime mode: <code>{{ runtimeModeLabel }}</code></li>
-                <li>Preferred MCP launch mode: <code>{{ preferredMcpModeLabel }}</code></li>
-                <li>MCP directory: <code>{{ mcpServerDir }}</code></li>
-                <li>MCP entry: <code>{{ mcpServerPath }}</code></li>
-                <li>Skill 目录位于 <code>{{ skillPath }}</code></li>
-                <li>如果客户端支持远程 MCP，优先使用 <code>streamable_http</code>；否则使用本地 <code>stdio</code></li>
-              </ul>
-              <p class="guide-note">{{ mcpLaunchHint }}</p>
-              <p v-if="mcpExecutablePath" class="guide-note">Detected MCP executable: <code>{{ mcpExecutablePath }}</code></p>
-              <p v-if="mcpAvailabilityHint" class="guide-note">{{ mcpAvailabilityHint }}</p>
+        <el-tab-pane label="🧩 高级集成" name="mcp">
+          <!-- 高级功能前置说明 -->
+          <div class="mcp-intro-card">
+            <el-icon class="intro-icon"><InfoFilled /></el-icon>
+            <div class="intro-text">
+              <div class="intro-title">这是给高级用户的功能，普通用户可以跳过本页</div>
+              <div class="intro-desc">
+                本页用于把本工具接入 Claude Desktop、Cursor 等 AI 客户端，让 AI 直接帮你采集、整理、发布商品。
+                如果你只是想日常使用本工具完成发布，<strong>不需要做任何配置</strong>。
+              </div>
             </div>
           </div>
 
+          <!-- 运行环境概览 -->
+          <div class="settings-section">
+            <h3 class="section-title">
+              <el-icon class="section-icon"><InfoFilled /></el-icon>
+              运行环境概览
+            </h3>
+            <div class="mcp-env-grid">
+              <div class="mcp-env-item">
+                <div class="env-label">本地后端地址</div>
+                <div class="env-value"><code>{{ backendUrl }}</code></div>
+              </div>
+              <div class="mcp-env-item">
+                <div class="env-label">运行模式</div>
+                <div class="env-value">
+                  <el-tag size="small" :type="appInfo.runtime_mode === 'packaged' ? 'success' : 'info'">
+                    {{ runtimeModeLabel }}
+                  </el-tag>
+                </div>
+              </div>
+              <div class="mcp-env-item">
+                <div class="env-label">推荐启动方式</div>
+                <div class="env-value">
+                  <el-tag size="small" type="primary">{{ preferredMcpModeLabel }}</el-tag>
+                </div>
+              </div>
+              <div class="mcp-env-item">
+                <div class="env-label">MCP 入口</div>
+                <div class="env-value">
+                  <el-icon v-if="appInfo.mcp_server_entry_exists" class="env-state ok"><CircleCheck /></el-icon>
+                  <el-icon v-else class="env-state miss"><Warning /></el-icon>
+                  <code>{{ mcpServerPath }}</code>
+                </div>
+              </div>
+              <div class="mcp-env-item">
+                <div class="env-label">Skill 目录</div>
+                <div class="env-value">
+                  <el-icon v-if="appInfo.skill_dir_exists" class="env-state ok"><CircleCheck /></el-icon>
+                  <el-icon v-else class="env-state miss"><Warning /></el-icon>
+                  <code>{{ skillPath }}</code>
+                </div>
+              </div>
+              <div class="mcp-env-item" v-if="mcpExecutablePath">
+                <div class="env-label">独立 MCP EXE</div>
+                <div class="env-value">
+                  <el-icon class="env-state ok"><CircleCheck /></el-icon>
+                  <code>{{ mcpExecutablePath }}</code>
+                </div>
+              </div>
+            </div>
+            <div class="mcp-hint">
+              <el-icon><InfoFilled /></el-icon>
+              <span>{{ mcpLaunchHint }}</span>
+            </div>
+            <div v-if="mcpAvailabilityHint" class="mcp-hint warning">
+              <el-icon><Warning /></el-icon>
+              <span>{{ mcpAvailabilityHint }}</span>
+            </div>
+          </div>
+
+          <!-- 本地 stdio 启动 -->
           <div class="settings-section">
             <div class="section-header">
-              <h3 class="section-title">🖥️ 本地 stdio 启动</h3>
-              <el-button size="small" @click="copyGuideText(mcpStdioCommand, 'stdio 命令')">
+              <h3 class="section-title">
+                <el-icon class="section-icon"><Cpu /></el-icon>
+                本地 stdio 启动
+              </h3>
+              <el-button size="small" :icon="CopyDocument" @click="copyGuideText(mcpStdioCommand, 'stdio 命令')">
                 复制命令
               </el-button>
             </div>
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpStdioCommand }}</pre>
-              <p class="guide-note">Use stdio for direct MCP client integration.</p>
+              <p class="guide-note">适合通过 stdio 直接接入支持 MCP 的客户端，例如 Claude Desktop、Cursor。</p>
             </div>
           </div>
 
+          <!-- Streamable HTTP 启动 -->
           <div class="settings-section">
             <div class="section-header">
-              <h3 class="section-title">🌐 Streamable HTTP 启动</h3>
-              <el-button size="small" @click="copyGuideText(mcpHttpCommand, 'HTTP 命令')">
+              <h3 class="section-title">
+                <el-icon class="section-icon"><Connection /></el-icon>
+                Streamable HTTP 启动
+              </h3>
+              <el-button size="small" :icon="CopyDocument" @click="copyGuideText(mcpHttpCommand, 'HTTP 命令')">
                 复制命令
               </el-button>
             </div>
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpHttpCommand }}</pre>
               <p class="guide-note">HTTP 端点：<code>{{ mcpHttpEndpoint }}</code></p>
-              <p class="guide-note">HTTP mode is mainly for local debugging. If an MCP EXE is available, prefer stdio(EXE) to avoid a Node dependency.</p>
+              <p class="guide-note">HTTP 模式主要用于本地调试。如果已有独立 MCP EXE，优先使用 stdio(EXE) 以避免依赖 Node。</p>
             </div>
           </div>
 
+          <!-- 客户端 MCP 配置示例 -->
           <div class="settings-section">
             <div class="section-header">
-              <h3 class="section-title">⚙️ 客户端 MCP 配置示例</h3>
-              <el-button size="small" @click="copyGuideText(mcpClientConfig, 'MCP 配置')">
+              <h3 class="section-title">
+                <el-icon class="section-icon"><Setting /></el-icon>
+                客户端 MCP 配置示例
+              </h3>
+              <el-button size="small" :icon="CopyDocument" @click="copyGuideText(mcpClientConfig, 'MCP 配置')">
                 复制配置
               </el-button>
             </div>
             <div class="deploy-guide-card">
               <pre class="guide-code">{{ mcpClientConfig }}</pre>
-              <p class="guide-note">This config is generated from the current machine's runtime paths instead of a hardcoded development path.</p>
-              <p class="guide-note">将上面的 JSON 合并到支持 MCP 的客户端配置里。</p>
+              <p class="guide-note">该配置基于当前机器的运行时路径自动生成，而非硬编码的开发路径。</p>
+              <p class="guide-note">将上面的 JSON 合并到支持 MCP 的客户端配置里即可生效。</p>
             </div>
           </div>
 
+          <!-- Skills 安装说明 -->
           <div class="settings-section">
             <div class="section-header">
-              <h3 class="section-title">🧠 Skills 安装说明</h3>
-              <el-button size="small" @click="copyGuideText(skillPath, 'Skill 路径')">
+              <h3 class="section-title">
+                <el-icon class="section-icon"><Box /></el-icon>
+                Skills 安装说明
+              </h3>
+              <el-button size="small" :icon="CopyDocument" @click="copyGuideText(skillPath, 'Skill 路径')">
                 复制路径
               </el-button>
             </div>
@@ -1483,24 +1858,89 @@ onMounted(() => {
                 <li>如果客户端不支持 Skills，也可以只接入 MCP，能力仍然可用</li>
                 <li>建议先调用 <code>health_check</code>，再执行采集、导入、定价或上传</li>
               </ul>
-              <p v-if="!appInfo.skill_dir_exists" class="guide-note">Skill directory was not found in the current runtime. For installer builds, package the Skill files as resources.</p>
+              <p v-if="!appInfo.skill_dir_exists" class="guide-note">当前运行环境中未找到 Skill 目录。如果是安装包构建，请把 Skill 文件作为资源一并打包。</p>
             </div>
           </div>
 
+          <!-- 仓库内说明文件 -->
           <div class="settings-section">
-            <h3 class="section-title">📘 仓库内说明文件</h3>
+            <h3 class="section-title">
+              <el-icon class="section-icon"><Document /></el-icon>
+              仓库内说明文件
+            </h3>
             <div class="deploy-guide-card">
               <p class="guide-note">MCP 详细说明：<code>{{ mcpReadmePath }}</code></p>
               <p class="guide-note">Skill 入口目录：<code>{{ skillPath }}</code></p>
             </div>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="ℹ️ 关于" name="about">
+          <div class="settings-section">
+            <h3 class="section-title">
+              <el-icon class="section-icon"><InfoFilled /></el-icon>
+              关于与更新
+            </h3>
+            <div class="mcp-env-grid">
+              <div class="mcp-env-item">
+                <div class="env-label">当前版本</div>
+                <div class="env-value">
+                  <el-tag size="small" type="success">v{{ appVersion || "—" }}</el-tag>
+                </div>
+              </div>
+              <div class="mcp-env-item">
+                <div class="env-label">软件更新</div>
+                <div class="env-value">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="checkingUpdate"
+                    @click="handleCheckUpdate"
+                  >
+                    {{ checkingUpdate ? "检查中" : "检查更新" }}
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            <div class="mcp-hint">
+              <el-icon><InfoFilled /></el-icon>
+              <span>点击「检查更新」会从官方发布源获取最新版本；有新版时可一键下载并自动安装、重启。更新为整包下载（含后端，体积较大），更新前请先确保没有正在进行的采集 / 发布任务。</span>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </div>
     <div class="settings-footer">
-      <el-button type="primary" :loading="loading" @click="handleSave">
-        保存设置
-      </el-button>
+      <div class="footer-status">
+        <template v-if="loadFailed">
+          <el-icon class="status-icon failed"><Warning /></el-icon>
+          <span class="status-text failed">设置加载失败，已禁用保存（当前显示的是默认值，保存会覆盖后端真实配置）</span>
+          <span v-if="loadErrorMessage" class="status-error-detail" :title="loadErrorMessage">
+            {{ loadErrorMessage }}
+          </span>
+          <el-button size="small" :loading="loading" @click="loadSettings">重试加载</el-button>
+        </template>
+        <template v-else-if="hasUnsavedChanges">
+          <el-icon class="status-icon dirty"><Warning /></el-icon>
+          <span class="status-text dirty">有未保存的更改</span>
+        </template>
+        <template v-else>
+          <el-icon class="status-icon clean"><CircleCheck /></el-icon>
+          <span class="status-text clean">所有更改已保存</span>
+        </template>
+      </div>
+      <div class="footer-actions">
+        <el-button
+          type="primary"
+          size="large"
+          :loading="loading"
+          :disabled="loadFailed || (!hasUnsavedChanges && !loading)"
+          @click="handleSave"
+        >
+          <el-icon><Promotion /></el-icon>
+          <span style="margin-left: 6px">保存设置</span>
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -1521,15 +1961,42 @@ onMounted(() => {
 .settings-content {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 0 20px 0 10px;
+  // 滚动下放到 .el-tabs__content：让 tab 标签栏完全脱离滚动区域
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+
+  // Tab 头：在滚动区域之外，自然固定在顶部，不会有滚动条穿过
   :deep(.el-tabs__header) {
-    margin-bottom: 20px;
+    flex-shrink: 0;
+    margin: 0 0 16px 0;
+    padding: 0 20px 0 10px;
+    background: var(--card-background-solid);
+    border-bottom: 1px solid rgba(92, 124, 250, 0.1);
   }
-  
+
+  // Tab 内容区：真正的滚动容器，滚动条只出现在这里
+  :deep(.el-tabs__content) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    // 底部留出 32px 呼吸空间，避免滚到底时最后一行紧贴 footer 看起来被截
+    padding: 0 20px 32px 10px;
+  }
+
+  :deep(.el-tab-pane) {
+    height: auto;
+  }
+
   :deep(.el-tabs__item) {
     font-size: 15px;
     padding: 0 24px;
@@ -2143,6 +2610,11 @@ onMounted(() => {
   color: #fff !important;
 }
 
+.template-use-btn {
+  // 强制保证文字始终白色，避免被全局 el-button text 默认色或主题色覆盖
+  color: #fff !important;
+}
+
 .add-template-form {
   display: flex;
   gap: 12px;
@@ -2302,7 +2774,7 @@ onMounted(() => {
 
 .help-tip {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -2342,8 +2814,471 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
+// ========== Sticky 底部保存栏 ==========
 .settings-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  margin: 16px -20px -20px;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(92, 124, 250, 0.12);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.footer-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+
+  .status-icon {
+    font-size: 16px;
+
+    &.dirty {
+      color: var(--warning-light);
+    }
+
+    &.clean {
+      color: var(--success-color);
+    }
+
+    &.failed {
+      color: var(--danger-color);
+    }
+  }
+
+  .status-text {
+    &.dirty {
+      color: var(--warning-light);
+      font-weight: 500;
+    }
+
+    &.clean {
+      color: var(--text-secondary);
+    }
+
+    &.failed {
+      color: var(--danger-color);
+      font-weight: 500;
+    }
+  }
+
+  .status-error-detail {
+    max-width: 340px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+.footer-actions {
   display: flex;
   gap: 12px;
+}
+
+// ========== Section 标题带图标 ==========
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .section-icon {
+    color: var(--primary-color);
+    font-size: 18px;
+  }
+}
+
+// ========== 发布/采集方式 - 卡片单选 ==========
+.mode-card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1.5px solid rgba(92, 124, 250, 0.15);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+  position: relative;
+
+  // 隐藏原生 radio 但保留可访问性
+  input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  &:hover {
+    border-color: var(--primary-color);
+    background: rgba(92, 124, 250, 0.03);
+  }
+
+  &.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, rgba(92, 124, 250, 0.08), rgba(116, 143, 252, 0.04));
+    box-shadow: 0 2px 12px rgba(92, 124, 250, 0.12);
+
+    .mode-icon {
+      color: var(--primary-color);
+      transform: scale(1.05);
+    }
+
+    .mode-name {
+      color: var(--primary-color);
+    }
+  }
+
+  &.disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background: rgba(0, 0, 0, 0.02);
+
+    &:hover {
+      border-color: rgba(92, 124, 250, 0.15);
+      background: rgba(0, 0, 0, 0.02);
+      box-shadow: none;
+    }
+
+    .mode-icon {
+      color: var(--text-placeholder);
+      transform: none;
+    }
+
+    .mode-name {
+      color: var(--text-secondary);
+    }
+  }
+
+  .mode-icon {
+    font-size: 24px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    transition: all var(--transition-fast) ease;
+  }
+
+  .mode-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    .mode-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .mode-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+  }
+}
+
+// ========== 材质含量进度 ==========
+.material-total-row {
+  margin-top: 12px;
+}
+
+.material-total-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+
+  .material-total-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--success-color);
+
+    &.warning {
+      color: var(--danger-color);
+    }
+  }
+
+  .material-total-target {
+    font-size: 12px;
+    color: var(--text-placeholder);
+  }
+}
+
+.material-progress {
+  width: 100%;
+}
+
+.material-custom-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(230, 162, 60, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--el-color-warning, #e6a23c);
+  line-height: 1.5;
+
+  .el-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+}
+
+.material-warning-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 138, 128, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--danger-color);
+
+  .el-icon {
+    font-size: 14px;
+  }
+}
+
+// ========== MCP Tab - 环境概览网格 ==========
+.mcp-env-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mcp-env-item {
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid rgba(92, 124, 250, 0.12);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .env-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .env-value {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+
+    code {
+      flex: 1;
+      background: rgba(92, 124, 250, 0.06);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 12px;
+      color: var(--primary-color);
+    }
+
+    .env-state {
+      flex-shrink: 0;
+      font-size: 14px;
+
+      &.ok {
+        color: var(--success-color);
+      }
+
+      &.miss {
+        color: var(--danger-color);
+      }
+    }
+  }
+}
+
+.mcp-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(92, 124, 250, 0.05);
+  border-left: 3px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-top: 8px;
+
+  .el-icon {
+    color: var(--primary-color);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  &.warning {
+    background: rgba(255, 138, 128, 0.06);
+    border-left-color: var(--danger-color);
+
+    .el-icon {
+      color: var(--danger-color);
+    }
+  }
+}
+
+// ========== 设置面板自身的滚动布局调整 ==========
+.settings-panel {
+  position: relative;
+}
+
+// ========== 采集策略 / 采集偏好（每平台独立可配置） ==========
+.capture-strategy-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.capture-pref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capture-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid rgba(92, 124, 250, 0.12);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast) ease;
+
+  &:hover {
+    border-color: rgba(92, 124, 250, 0.25);
+  }
+
+  &.capture-pref-row-static {
+    background: rgba(92, 124, 250, 0.02);
+  }
+}
+
+.capture-pref-platform {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+
+  .strategy-icon {
+    flex-shrink: 0;
+    font-size: 20px;
+    color: var(--primary-color);
+  }
+
+  .strategy-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .strategy-host {
+    font-size: 11px;
+    color: var(--text-placeholder);
+    font-family: "SF Mono", Consolas, monospace;
+    margin-top: 2px;
+  }
+}
+
+.capture-pref-static-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  text-align: right;
+
+  .strategy-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+.capture-strategy-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(92, 124, 250, 0.04);
+  border-left: 3px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  .el-icon {
+    color: var(--primary-color);
+    flex-shrink: 0;
+  }
+}
+
+// ========== 高级集成 Tab 顶部说明卡 ==========
+.mcp-intro-card {
+  display: flex;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.08), rgba(255, 193, 7, 0.02));
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-radius: var(--radius-md);
+
+  .intro-icon {
+    font-size: 22px;
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .intro-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    line-height: 1.6;
+  }
+
+  .intro-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .intro-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+
+    strong {
+      color: var(--text-primary);
+    }
+  }
 }
 </style>

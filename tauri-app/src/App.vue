@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+import zhCn from "element-plus/dist/locale/zh-cn.mjs";
 import { useProductStore } from "@/stores/productStore";
 import OnboardingGuide from "@/components/OnboardingGuide.vue";
+import { checkForUpdate } from "@/services/updater";
 
 const productStore = useProductStore();
 const isDragging = ref(false);
 const onboardingRef = ref<InstanceType<typeof OnboardingGuide> | null>(null);
 const unlisteners: Array<() => void> = [];
-const PRODUCT_SYNC_INTERVAL_MS = 5000;
+const PRODUCT_SYNC_INTERVAL_MS = 30000;
 let productSyncTimer: number | null = null;
+// 启动后延迟再查更新：让后端拉起和首屏加载先完成，避免开机瞬间抢带宽/弹窗
+const UPDATE_CHECK_DELAY_MS = 8000;
+let updateCheckTimer: number | null = null;
 
 let lastDropSignature = "";
 let lastDropTimestamp = 0;
@@ -111,6 +116,11 @@ onMounted(async () => {
   productSyncTimer = window.setInterval(() => {
     triggerBackgroundRefresh();
   }, PRODUCT_SYNC_INTERVAL_MS);
+
+  // 静默检查：没有新版本时完全无提示，检查失败也不打扰；只有发现新版才弹确认框
+  updateCheckTimer = window.setTimeout(() => {
+    void checkForUpdate({ silent: true });
+  }, UPDATE_CHECK_DELAY_MS);
 });
 
 onUnmounted(() => {
@@ -118,19 +128,24 @@ onUnmounted(() => {
     window.clearInterval(productSyncTimer);
     productSyncTimer = null;
   }
+  if (updateCheckTimer !== null) {
+    window.clearTimeout(updateCheckTimer);
+    updateCheckTimer = null;
+  }
   unlisteners.forEach((unlisten) => unlisten());
 });
 </script>
 
 <template>
-  <div class="app-container">
+  <el-config-provider :locale="zhCn" size="default">
+    <div class="app-container">
     <transition name="fade">
       <div
         v-if="productStore.backendStatus === 'offline'"
         class="backend-warning"
       >
-        <span>后端服务未运行，部分功能不可用</span>
-        <button @click="productStore.initialize()">重试连接</button>
+        <span>工具正在启动中，部分功能暂时不可用</span>
+        <button @click="productStore.initialize()">重新连接</button>
       </div>
     </transition>
 
@@ -147,7 +162,8 @@ onUnmounted(() => {
     </transition>
 
     <OnboardingGuide ref="onboardingRef" />
-  </div>
+    </div>
+  </el-config-provider>
 </template>
 
 <style lang="scss">

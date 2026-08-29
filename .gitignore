@@ -31,7 +31,8 @@ tauri-app/python-sidecar/__pycache__/
 tauri-app/python-sidecar/build/
 tauri-app/python-sidecar/app_tauri_dev.py
 tauri-app/python-sidecar/automation_assets/
-tauri-app/src-tauri/sidecar/python-backend.exe
+# sidecar 是 build_sidecar.py 的构建产物目录（含运行时 data/），不进仓库
+tauri-app/src-tauri/sidecar/
 
 .runtime/
 runtime/
@@ -55,3 +56,17 @@ app3.0版本/
 *.exe
 *.pkg
 tauri-app/runtime/
+
+# 敏感运行时数据（含登录态 cookie，绝不能进 public 仓库）
+upload-browser-profile/
+logs/
+config/app_config.db
+
+# 更新签名私钥（约定放在仓库外 %USERPROFILE%\.tauri-keys\，此处为防御性兜底）
+.tauri-keys/
+*.key
+!*.key.pub
+password.txt
+
+# 编辑备份
+*.bak

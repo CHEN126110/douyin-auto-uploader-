@@ -18,6 +18,33 @@ except ImportError:
     def timer_record(*args, **kwargs):
         pass  # 如果导入失败，使用空函数
 
+
+class _ProbeUnavailable:
+    """哨兵：页面 JS 探测不可用，调用方需回退到逐个元素探测。"""
+
+    def __repr__(self):
+        return '<probe-unavailable>'
+
+
+_PROBE_UNAVAILABLE = _ProbeUnavailable()
+
+# 一次往返批量判定多个 XPath 中哪个命中可见元素，返回其下标（无命中返回 -1）。
+_VISIBLE_XPATH_PROBE_JS = r'''
+const xpaths = arguments[0] || [];
+for (let i = 0; i < xpaths.length; i++) {
+    try {
+        const found = document.evaluate(xpaths[i], document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let j = 0; j < found.snapshotLength; j++) {
+            const node = found.snapshotItem(j);
+            if (node && node.nodeType === 1 && (node.offsetParent || node.getClientRects().length > 0)) return i;
+        }
+    } catch (err) {
+        continue;
+    }
+}
+return -1;
+'''
+
 class EnhancedCategorySelector:
     """增强的类目选择器"""
     
@@ -104,6 +131,11 @@ class EnhancedCategorySelector:
                     timer_record('类目选择', f'{category_name}(更多推荐x2)', 0, _time_module.time() - func_start, True)
                     return True
 
+                if self._recommendations_exhausted() and not self._is_manual_select_visible():
+                    logger.error(f"[FAIL] 推荐类目已全部展示，但未出现 {category_name} 或手动选择入口")
+                    timer_record('类目选择', f'{category_name}(推荐耗尽)', 0, _time_module.time() - func_start, False)
+                    return False
+
                 # ========== 最后方案: 手动选择 ==========
                 logger.info("[INFO] 尝试手动选择...")
                 if not self._handle_recommendations():
@@ -172,6 +204,21 @@ class EnhancedCategorySelector:
         
         # 最终检查
         return self._is_manual_select_visible()
+
+    def _recommendations_exhausted(self) -> bool:
+        """平台已明确没有更多推荐项时，不再重复等待。"""
+        selectors = [
+            'xpath://*[contains(normalize-space(.),"已展示全部推荐结果")]',
+            'xpath://*[contains(normalize-space(.),"若需选择其他类目")]',
+        ]
+        for selector in selectors:
+            try:
+                element = self.tab.ele(selector, timeout=0.2)
+                if element and element.states.is_displayed:
+                    return True
+            except Exception:
+                continue
+        return False
 
     def _click_more_recommend(self, times: int = 1):
         """
@@ -686,13 +733,16 @@ class EnhancedCategorySelector:
         ]
         
         for method_name, click_func in click_methods:
+            # 每种点击方式之前先确认还没跳转：上一种方式可能已经生效，
+            # 只是当时的判据没来得及确认，此时再点一次是多余且有副作用的。
+            if self._is_on_second_page():
+                logger.info("已进入第二页，无需再次点击下一步")
+                return True
             try:
                 logger.info(f"[尝试] {method_name}...")
                 click_func()
-                time.sleep(0.5)
-                
-                # 处理可能出现的弹窗
-                
+                time.sleep(0.12)
+                self._handle_post_click_popup()
                 # 验证是否真正跳转到第二页
                 if self._wait_for_second_page(max_wait=5.0):
                     logger.info(f"[OK] {method_name}成功，第二页已加载")
@@ -707,10 +757,13 @@ class EnhancedCategorySelector:
                 continue
         
         # 最后一次尝试：强制JS执行点击
+        if self._is_on_second_page():
+            logger.info("已进入第二页，无需强制点击")
+            return True
         try:
             logger.info("[尝试] 强制JS执行点击...")
             self.tab.run_js('document.querySelector("button[class*=nextStep]")?.click()')
-            time.sleep(0.5)
+            time.sleep(0.12)
             self._handle_post_click_popup()
             if self._wait_for_second_page(max_wait=5.0):
                 logger.info("[OK] 强制JS点击成功")
@@ -752,49 +805,108 @@ class EnhancedCategorySelector:
         """
         logger.info("等待第二页加载...")
         
-        # 第二页的特征元素选择器
-        second_page_selectors = [
-            # 基础信息区域
-            'xpath://div[@id="goodsEditScrollContainer-基础信息"]',
-            'xpath://div[contains(@class,"formBlockNewUI")]',
-            # 主图3:4 区域
-            'xpath://span[text()="主图3:4"]',
-            'xpath://span[contains(text(),"主图3:4")]',
-            # 主图视频区域
-            'xpath://span[text()="主图视频"]',
-            # 商品类目显示区域（第二页有修改按钮）
-            'xpath://div[contains(@class,"formBlockNewUI")]//span[text()="修改"]',
-            # 类目属性区域
-            'xpath://div[contains(text(),"类目属性")]',
-        ]
+        second_page_selectors = self.SECOND_PAGE_SELECTORS
         
         start_time = time.time()
-        check_interval = 0.3  # 检查间隔
-        
+        check_interval = 0.12
+        stable_hits = 0
+
         while time.time() - start_time < max_wait:
-            for selector in second_page_selectors:
-                try:
-                    element = self.tab.ele(selector, timeout=0.2)
-                    if element and element.states.is_displayed:
-                        logger.info(f"[OK] 检测到第二页元素: {selector[:50]}...")
-                        time.sleep(0.5)  # 额外等待页面稳定
-                        return True
-                except:
-                    continue
+            matched_selector = self._probe_visible_xpath(second_page_selectors)
+            if matched_selector is _PROBE_UNAVAILABLE:
+                # JS 不可用时回退逐个探测
+                matched_selector = None
+                for selector in second_page_selectors:
+                    try:
+                        element = self.tab.ele(selector, timeout=0.2)
+                        if element and element.states.is_displayed:
+                            matched_selector = selector
+                            break
+                    except:
+                        continue
+            if matched_selector:
+                stable_hits += 1
+                if stable_hits >= 2:
+                    logger.info(f"[OK] 检测到第二页元素: {matched_selector[:50]}...")
+                    return True
+            else:
+                stable_hits = 0
+
+            self._handle_post_click_popup()
             time.sleep(check_interval)
         
         logger.warning(f"[WARN] 等待第二页超时 ({max_wait}s)，继续执行...")
         return False
     
+    # 第二页（商品详情编辑页）的特征元素，_wait_for_second_page 与
+    # _is_on_second_page 共用，避免两处定义各自漂移。
+    SECOND_PAGE_SELECTORS = [
+        'xpath://div[@id="goodsEditScrollContainer-基础信息"]',
+        'xpath://div[contains(@class,"formBlockNewUI")]',
+        'xpath://span[text()="主图3:4"]',
+        'xpath://span[contains(text(),"主图3:4")]',
+        'xpath://span[text()="主图视频"]',
+        'xpath://div[contains(@class,"formBlockNewUI")]//span[text()="修改"]',
+        'xpath://div[contains(text(),"类目属性")]',
+    ]
+
+    def _is_on_second_page(self) -> bool:
+        """一次性判断当前是否已在第二页（不做等待）。"""
+        probed = self._probe_visible_xpath(self.SECOND_PAGE_SELECTORS)
+        if probed is _PROBE_UNAVAILABLE:
+            for selector in self.SECOND_PAGE_SELECTORS:
+                try:
+                    element = self.tab.ele(selector, timeout=0.1)
+                    if element and element.states.is_displayed:
+                        return True
+                except Exception:
+                    continue
+            return False
+        return probed is not None
+
+    def _probe_visible_xpath(self, selectors):
+        """用一次 JS 批量判定哪个 XPath 命中可见元素。
+
+        返回命中的选择器字符串；全部落空返回 None；
+        JS 不可用返回 _PROBE_UNAVAILABLE，调用方回退逐个探测。
+
+        DrissionPage 的 ele() 在未命中时会阻塞满 timeout 才返回，
+        「7 个选择器 × 0.2s」意味着一轮落空要 1.4s，而 _wait_for_second_page
+        要求连续两轮命中才算跳转成功、总预算只有 5s——
+        很容易在点击其实已经成功时误判失败，进而重复点击「下一步」。
+        """
+        xpaths = []
+        for selector in selectors:
+            text = str(selector)
+            xpaths.append(text[6:] if text.startswith('xpath:') else text)
+        try:
+            index = self.tab.run_js(_VISIBLE_XPATH_PROBE_JS, xpaths)
+        except Exception:
+            return _PROBE_UNAVAILABLE
+        if isinstance(index, bool) or not isinstance(index, (int, float)):
+            return _PROBE_UNAVAILABLE
+        index = int(index)
+        if index < 0:
+            return None
+        if 0 <= index < len(selectors):
+            return selectors[index]
+        return None
+
     def _handle_post_click_popup(self):
         """处理点击下一步后可能出现的弹窗"""
+        popup_selectors = [
+            'xpath://*[text()="我知道了"]',
+            'xpath://button[contains(text(),"我知道了")]',
+            'xpath://span[text()="我知道了"]/..',
+        ]
+        # 该弹窗绝大多数情况下并不存在，而本函数被 _wait_for_second_page 的
+        # 每一轮轮询调用；先用一次 JS 判定存在性，避免每次固定空烧 3×0.5s。
+        probed = self._probe_visible_xpath(popup_selectors)
+        if probed is None:
+            return
+        candidates = popup_selectors if probed is _PROBE_UNAVAILABLE else [probed]
         try:
-            popup_selectors = [
-                'xpath://*[text()="我知道了"]',
-                'xpath://button[contains(text(),"我知道了")]',
-                'xpath://span[text()="我知道了"]/..',
-            ]
-            for popup_selector in popup_selectors:
+            for popup_selector in candidates:
                 try:
                     popup = self.tab.ele(popup_selector, timeout=0.5)
                     if popup and popup.states.is_displayed:
@@ -820,5 +932,3 @@ def smart_select_category(tab, category_code: str) -> bool:
     """
     selector = EnhancedCategorySelector(tab)
     return selector.select_category(category_code)
-
-

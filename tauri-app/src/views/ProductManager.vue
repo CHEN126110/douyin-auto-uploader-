@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, ElLoading } from "element-plus";
 import { useProductStore } from "@/stores/productStore";
 import { CATEGORY_OPTIONS } from "@/types";
-import type { SKU, TitleSuggestion, PricingResult, PricingStatistics } from "@/types";
+import type { SKU, PricingResult, PricingStatistics } from "@/types";
 import { api } from "@/services/api";
 import SkuList from "@/components/SkuList.vue";
 import CaptureSection from "@/components/CaptureSection.vue";
@@ -42,18 +42,20 @@ const isUploadMonitoring = computed(() => Boolean(activeUploadTaskId.value));
 let uploadMonitorTimer: number | null = null;
 let uploadDiscoveryTimer: number | null = null;
 let uploadMonitorStartedAt = 0;
+// 连续获取上传状态失败的次数（仅统计传输层异常，不代表上传本身失败）
+let uploadPollFailureCount = 0;
 let uploadLoading: ReturnType<typeof ElLoading.service> | null = null;
 let lastExternalUploadNoticeId: string | null = null;
 
 const uploadStatusText = ref("");
-const uploadCurrentStep = ref("");
 const uploadProgress = ref(0);
 const uploadSteps = ref<Array<{ name: string; status: string; elapsed_ms: number; summary: string }>>([]);
-const uploadPath = ref("");  // "offline" | "react" — v4 流水线路径
 
 const UPLOAD_POLL_INTERVAL_MS = 800;
-const UPLOAD_DISCOVERY_INTERVAL_MS = 5000;
+const UPLOAD_DISCOVERY_INTERVAL_MS = 15000;
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+// 连续多少次拿不到上传状态才判定为「无法获取状态」并停止轮询
+const UPLOAD_POLL_MAX_FAILURES = 5;
 
 // 监听当前产品变化
 watch(
@@ -168,18 +170,6 @@ function collectDuplicateSkuGroups(skus: SKU[]) {
   return Array.from(buckets.values()).filter((item) => item.count > 1);
 }
 
-async function showDuplicateSkuDialog(actionText: string, groups: Array<{ display: string; count: number }>) {
-  const details = groups.map((group) => `- ${group.display} x${group.count}`).join("\n");
-  await ElMessageBox.alert(
-    `这些规格名字重复了，先改一下再${actionText}：\n${details}`,
-    "请先处理重复规格",
-    { type: "warning" }
-  );
-}
-
-// 右键菜单操作
-void showDuplicateSkuDialog;
-
 const duplicateSkuGroups = computed(() => collectDuplicateSkuGroups(productStore.currentSkus));
 
 const duplicateSkuPaths = computed(() => {
@@ -258,17 +248,6 @@ async function handleSave() {
   } else {
     ElMessage.error("保存失败");
   }
-}
-
-// 标题建议列表（保留功能，暂未启用）
-const titleSuggestions = ref<TitleSuggestion[]>([]);
-const showTitleDialog = ref(false);
-
-// 选择标题
-function selectTitle(title: string) {
-  formData.value.title = title;
-  showTitleDialog.value = false;
-                  ElMessage.success("已选择标题");
 }
 
 // 简单填充价格
@@ -381,7 +360,7 @@ async function handleSmartFill() {
       (error as any)?.response?.data?.error ||
       (error as any)?.response?.data?.message ||
       (error as any)?.message ||
-      "智能填充失败，请检查后端服务";
+      "自动填充失败，请稍后重试";
     ElMessage.error(backendError);
   } finally {
     smartFillLoading.value = false;
@@ -424,9 +403,8 @@ function stopUploadMonitoring(closeLoading = true) {
   activeUploadTaskId.value = null;
   activeUploadTaskOrigin.value = null;
   uploadMonitorStartedAt = 0;
+  uploadPollFailureCount = 0;
   uploadSteps.value = [];
-  uploadCurrentStep.value = "";
-  uploadPath.value = "";
 
   if (closeLoading) {
     closeUploadLoading();
@@ -471,7 +449,24 @@ async function pollUploadTask() {
     return;
   }
 
-  const statusResp = await productStore.getUploadStatus(activeUploadTaskId.value);
+  let statusResp: any;
+  try {
+    statusResp = await productStore.getUploadStatus(activeUploadTaskId.value);
+  } catch (error) {
+    // 传输层异常（超时 / 连接被拒）只说明「拿不到状态」，后台上传线程仍在继续，
+    // 不能当成上传失败。连续失败达到阈值才停止轮询并如实提示。
+    console.error("获取上传状态失败:", error);
+    uploadPollFailureCount += 1;
+    if (uploadPollFailureCount < UPLOAD_POLL_MAX_FAILURES) {
+      return;
+    }
+    stopUploadMonitoring();
+    ElMessage.error("无法获取上传状态，任务可能仍在后台运行，请勿重复发起");
+    return;
+  }
+
+  uploadPollFailureCount = 0;
+
   const data = (statusResp as any)?.data;
   const progress = data?.progress ?? 0;
   const msg = data?.message || "上传进行中...";
@@ -479,7 +474,6 @@ async function pollUploadTask() {
 
   uploadProgress.value = progress;
   uploadStatusText.value = msg;
-  uploadCurrentStep.value = data?.current_step || "";
   if (data?.steps && Array.isArray(data.steps)) {
     uploadSteps.value = data.steps;
   }
@@ -488,7 +482,7 @@ async function pollUploadTask() {
 
   if (uploadMonitorStartedAt > 0 && Date.now() - uploadMonitorStartedAt > UPLOAD_TIMEOUT_MS) {
     stopUploadMonitoring();
-    ElMessage.error("上传超时（15分钟），请查看后端日志");
+    ElMessage.error("上传超过 15 分钟仍未完成，请稍后重试或重新发起");
     return;
   }
 
@@ -501,6 +495,7 @@ function startUploadMonitoring(taskId: string, origin: "local" | "external", cre
   activeUploadTaskId.value = taskId;
   activeUploadTaskOrigin.value = origin;
   uploadMonitorStartedAt = createdAt ? Date.parse(createdAt) || Date.now() : Date.now();
+  uploadPollFailureCount = 0;
 
   if (uploadMonitorTimer !== null) {
     window.clearInterval(uploadMonitorTimer);
@@ -550,7 +545,7 @@ async function syncExternalUploadTask(options: { silent?: boolean } = {}) {
 
       if (!options.silent && lastExternalUploadNoticeId !== activeTask.task_id) {
         lastExternalUploadNoticeId = activeTask.task_id;
-        ElMessage.info("检测到外部上传任务，已同步前端状态");
+        ElMessage.info("检测到正在进行的上传任务，已自动接上进度");
       }
       return true;
     }
@@ -572,96 +567,15 @@ function triggerExternalUploadSync() {
   void syncExternalUploadTask({ silent: true });
 }
 
-async function handleStartUpload() {
-  if (isUploadMonitoring.value) {
-    ElMessage.warning("当前已有上传任务在进行中");
-    return;
-  }
-
-  const recordId = productStore.currentProductId;
-  if (!recordId) {
-    ElMessage.error("请先选择一个产品再开始上传");
-    return;
-  }
-
-  const duplicateGroups = collectDuplicateSkuGroups(productStore.currentSkus);
-  if (duplicateGroups.length > 0) {
-    await showDuplicateSkuAlert("上传", duplicateGroups);
-    return;
-  }
-
-  const loading = ElLoading.service({
-    text: "正在启动上传...",
-    background: "rgba(0, 0, 0, 0.35)",
-  });
-
-  try {
-    const response = await productStore.startUpload(recordId);
-    if (!response.success) {
-      loading.close();
-      ElMessage.error(response.msg || "启动上传失败");
-      return;
-    }
-
-    const taskId = (response as any)?.data?.task_id as string | undefined;
-    if (!taskId) {
-      loading.close();
-      ElMessage.error("启动上传失败：未返回 task_id");
-      return;
-    }
-
-    // 轮询任务状态（打包版无控制台输出，必须靠状态接口定位卡点）
-    const startAt = Date.now();
-    const timer = window.setInterval(async () => {
-      const statusResp = await productStore.getUploadStatus(taskId);
-      const data = (statusResp as any)?.data;
-      const progress = data?.progress ?? 0;
-      const msg = data?.message || "上传进行中...";
-      const status = data?.status;
-      loading.setText(`上传中：${progress}% - ${msg}`);
-
-      // 超时保护：15分钟自动停止轮询
-      if (Date.now() - startAt > 15 * 60 * 1000) {
-        window.clearInterval(timer);
-        loading.close();
-        ElMessage.error("上传超时（15分钟），请查看后端日志");
-        return;
-      }
-
-      if (status === "success") {
-        window.clearInterval(timer);
-        loading.close();
-        ElMessageBox.alert("上传完成", "提示", { type: "success" });
-      } else if (status === "failed") {
-        window.clearInterval(timer);
-        loading.close();
-        ElMessageBox.alert(data?.error || "上传失败（未知原因）", "上传失败", {
-          type: "error",
-        });
-      } else if (status === "cancelled") {
-        window.clearInterval(timer);
-        loading.close();
-        ElMessage.warning("上传已取消");
-      }
-    }, 800);
-  } catch (error) {
-    loading.close();
-    ElMessage.error("上传失败");
-  }
-}
-
-// 取消勾选
-void handleStartUpload;
-
 async function handleStartUploadUnified() {
   if (isUploadMonitoring.value) {
-    ElMessage.warning("Upload task is already running");
+    ElMessage.warning("已有上传任务在进行中，请等完成后再开始");
     return;
   }
 
   const recordId = productStore.currentProductId;
   if (!recordId) {
-    ElMessage.error("Select a product before starting upload");
+    ElMessage.error("请先在列表中选中一个产品再开始上传");
     return;
   }
 
@@ -671,27 +585,27 @@ async function handleStartUploadUnified() {
     return;
   }
 
-  ensureUploadLoading("Starting upload...");
+  ensureUploadLoading("正在启动上传…");
 
   try {
     const response = await productStore.startUpload(recordId);
     if (!response.success) {
       closeUploadLoading();
-      ElMessage.error(response.msg || "Failed to start upload");
+      ElMessage.error(response.msg || "上传启动失败，请稍后重试");
       return;
     }
 
     const taskId = (response as any)?.data?.task_id as string | undefined;
     if (!taskId) {
       closeUploadLoading();
-      ElMessage.error("Failed to start upload: missing task_id");
+      ElMessage.error("上传启动失败：未获取到任务编号，请重试");
       return;
     }
 
     startUploadMonitoring(taskId, "local");
   } catch (error) {
     closeUploadLoading();
-    ElMessage.error("Upload failed");
+    ElMessage.error("上传失败，请稍后重试");
   }
 }
 
@@ -881,7 +795,6 @@ onUnmounted(() => {
             <div class="status-spinner"></div>
             <span class="status-text">{{ uploadStatusText }}</span>
             <span class="status-pct">{{ uploadProgress }}%</span>
-            <span v-if="uploadPath" class="status-path">路径: {{ uploadPath }}</span>
           </div>
           <div class="status-progress-bar">
             <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
@@ -1044,31 +957,6 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 标题选择弹窗 -->
-    <el-dialog
-      v-model="showTitleDialog"
-      title="选择标题"
-      width="600px"
-      class="title-suggestion-dialog"
-    >
-      <div class="title-suggestions">
-        <div
-          v-for="(suggestion, index) in titleSuggestions"
-          :key="index"
-          class="suggestion-item"
-          @click="selectTitle(suggestion.title)"
-        >
-          <div class="suggestion-title">{{ suggestion.title }}</div>
-          <div class="suggestion-info">
-            <span>置信度: {{ (suggestion.confidence * 100).toFixed(0) }}%</span>
-            <span>字数: {{ suggestion.character_count }}</span>
-          </div>
-          <div class="suggestion-tags">
-            <span v-for="tag in suggestion.tags" :key="tag" class="tag">{{ tag }}</span>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -1344,14 +1232,6 @@ onUnmounted(() => {
     color: #909399;
   }
 
-  .status-path {
-    font-size: 11px;
-    color: #5c7cfa;
-    background: rgba(92, 124, 250, 0.1);
-    padding: 1px 6px;
-    border-radius: 4px;
-  }
-
   .status-progress-bar {
     height: 4px;
     background: #e4e7ed;
@@ -1425,68 +1305,6 @@ onUnmounted(() => {
 </style>
 
 <style lang="scss">
-// 标题建议弹窗
-.title-suggestion-dialog {
-  .el-dialog__body {
-    padding: 16px 20px;
-  }
-}
-
-.title-suggestions {
-  max-height: 400px;
-  overflow-y: auto;
-
-  .suggestion-item {
-    padding: 16px;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-
-    &:hover {
-      background: rgba(92, 124, 250, 0.08);
-      border-color: #5c7cfa;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(92, 124, 250, 0.15);
-    }
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  .suggestion-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 8px;
-    line-height: 1.5;
-  }
-
-  .suggestion-info {
-    display: flex;
-    gap: 16px;
-    font-size: 12px;
-    color: #6c757d;
-    margin-bottom: 8px;
-  }
-
-  .suggestion-tags {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-
-    .tag {
-      padding: 2px 8px;
-      background: rgba(92, 124, 250, 0.1);
-      color: #5c7cfa;
-      border-radius: 4px;
-      font-size: 11px;
-    }
-  }
-}
-
 // 智能填充结果弹窗
 .pricing-results-dialog {
   :deep(.el-dialog) {

@@ -5,6 +5,7 @@
 从终端日志看到：
 
 ### 问题1：页面滚动失败
+
 ```
 WARNING:app:⚠️ 页面滚动异常: 
 不支持参数<SessionElement div id='container' class='imageTextInfo--SCgWFinK' style='height: auto;'>的类型
@@ -13,6 +14,7 @@ WARNING:app:⚠️ 页面滚动异常:
 **原因：** `scrollIntoView` 函数不支持 `SessionElement` 对象作为参数
 
 ### 问题2：SKU找到了但提取失败
+
 ```
 WARNING:app:✅ 找到SKU包装器，尝试提取内部元素...
 WARNING:app:⚠️ SKU包装器内没有找到skuItem元素
@@ -20,11 +22,13 @@ INFO:app:🔍 包装器HTML片段: <div class="skuWrapper--iKSsnB_s"><div class=
 ```
 
 **原因：** 
+
 - SKU包装器找到了
 - HTML片段显示SKU元素确实存在
 - 但 `sku_wrapper.s_eles()` 方法没有找到内部元素
 
 ### 问题3：详情图元素未找到
+
 ```
 WARNING:app:⚠️ 未找到详情图元素
 ERROR:app:🔍 连img元素都没找到！
@@ -37,12 +41,14 @@ ERROR:app:🔍 连img元素都没找到！
 ### 1. 修复页面滚动（使用纯JavaScript）
 
 **之前（错误）：**
+
 ```python
 detail_area = page.s_ele('#container')
 page.run_js('arguments[0].scrollIntoView(...)', detail_area)  # ❌ 不支持SessionElement
 ```
 
 **现在（正确）：**
+
 ```python
 page.run_js('''
     var detailArea = document.getElementById('container') || document.querySelector('.imageTextInfo--SCgWFinK');
@@ -55,6 +61,7 @@ page.run_js('''
 ### 2. 修复SKU选择器（使用精确路径）
 
 **之前：**
+
 ```python
 sku_items = page.s_eles('.skuItem--Z2AJB9Ew')  # 可能找到页面其他地方的
 if not sku_items:
@@ -63,6 +70,7 @@ if not sku_items:
 ```
 
 **现在：**
+
 ```python
 # 优先使用精确路径
 sku_items = page.s_eles('#skuOptionsArea .skuItem--Z2AJB9Ew')  # ✅ 精确路径
@@ -80,6 +88,7 @@ if not sku_items:
 ### 3. 修复详情图选择器（优先使用容器路径）
 
 **之前：**
+
 ```python
 selectors = [
     ('.descV8-singleImage img', 'descV8格式'),  # 可能匹配到其他地方的
@@ -88,6 +97,7 @@ selectors = [
 ```
 
 **现在：**
+
 ```python
 selectors = [
     ('#container .descV8-singleImage img', '容器内descV8格式'),  # ✅ 精确路径
@@ -105,6 +115,7 @@ if not detail_imgs:
 ### 4. 增强SKU图片提取（跳过占位图）
 
 **现在：**
+
 ```python
 # 优先使用data-src（懒加载），否则使用src
 raw_sku_url = img_elem.attr('data-src') or img_elem.attr('src')
@@ -119,22 +130,26 @@ else:
 
 ## 📊 关键改进对比
 
-| 项目 | 之前 | 现在 |
-|-----|------|------|
-| 页面滚动 | 传SessionElement对象 ❌ | 纯JavaScript ✅ |
-| SKU选择器 | `.skuItem--Z2AJB9Ew` | `#skuOptionsArea .skuItem--Z2AJB9Ew` ✅ |
-| 详情图选择器 | `.descV8-singleImage img` | `#container .descV8-singleImage img` ✅ |
-| JavaScript验证 | 无 | 有 ✅ |
-| SKU占位图过滤 | 无 | 有 ✅ |
+
+| 项目           | 之前                        | 现在                                     |
+| ------------ | ------------------------- | -------------------------------------- |
+| 页面滚动         | 传SessionElement对象 ❌       | 纯JavaScript ✅                          |
+| SKU选择器       | `.skuItem--Z2AJB9Ew`      | `#skuOptionsArea .skuItem--Z2AJB9Ew` ✅ |
+| 详情图选择器       | `.descV8-singleImage img` | `#container .descV8-singleImage img` ✅ |
+| JavaScript验证 | 无                         | 有 ✅                                    |
+| SKU占位图过滤     | 无                         | 有 ✅                                    |
+
 
 ## 🧪 测试步骤
 
 ### 1. 重启Flask
+
 ```bash
 python app.py
 ```
 
 ### 2. 使用链接样本.md中的商品
+
 ```
 https://detail.tmall.com/item.htm?id=984958183864&...
 ```
@@ -142,6 +157,7 @@ https://detail.tmall.com/item.htm?id=984958183864&...
 ### 3. 观察日志
 
 **应该看到：**
+
 ```
 📍 滚动到详情区域
 📜 滚动第 1/8 次
@@ -171,6 +187,7 @@ https://detail.tmall.com/item.htm?id=984958183864&...
 ### SKU还是0
 
 查看日志中是否有：
+
 ```
 🔍 JavaScript查找结果: X 个SKU项
 ```
@@ -181,6 +198,7 @@ https://detail.tmall.com/item.htm?id=984958183864&...
 ### 详情图还是0
 
 查看日志中是否有：
+
 ```
 🔍 JavaScript查找结果: X 张图片
 ```
@@ -203,6 +221,7 @@ https://detail.tmall.com/item.htm?id=984958183864&...
 **更新时间：** 2025-11-13  
 **版本：** v2.4 Final  
 **修复内容：** 
+
 - ✅ 修复页面滚动（纯JavaScript）
 - ✅ 修复SKU选择器（精确路径）
 - ✅ 修复详情图选择器（容器路径）

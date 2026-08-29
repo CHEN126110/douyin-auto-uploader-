@@ -15,6 +15,7 @@ except Exception as _ex:
     except:
         pass
 from typing import Optional
+from dataclasses import asdict
 import time as system_time
 import os
 import sys
@@ -165,7 +166,7 @@ if getattr(sys, 'frozen', False) and _EARLY_SIDECAR_MODE not in ('1', 'true', 'y
     except Exception:
         pass
 _bootstrap_log('import flask start')
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 _bootstrap_log('import flask done')
 
@@ -195,17 +196,68 @@ from src.orm import Record
 _bootstrap_log('import orm done')
 _bootstrap_log('import utils start')
 from src.utils import *
-from src.utils import _wait_until, _normalize_debug_address, _verify_debug_browser, attach_existing_debug_browser, discover_debuggable_browsers, _find_ai_material_tool_panel, _is_upload_busy, _xpath_literal
+from src.utils import _wait_until, _ensure_section_ready, _normalize_debug_address, _verify_debug_browser, attach_existing_debug_browser, discover_debuggable_browsers, _find_ai_material_tool_panel, _is_upload_busy, _xpath_literal, fetch_cdp_page_targets, is_logged_in_fxg_target_url, select_logged_in_fxg_debug_browser
 _bootstrap_log('import utils done')
 _bootstrap_log('import config start')
-from src.config import settings_manager
+from src.config import settings_manager, LLM_PROVIDER_PRESETS, ALLOWED_PUBLISH_AI_PROVIDERS, MATERIAL_NAME_MAX_LENGTH
+from src.llm_client import LLMClient, LLMError
 _bootstrap_log('import config done')
+_bootstrap_log('import ops_engine start')
+from src.ops_engine import (
+    AI_POLICY,
+    DAILY_NET_PROFIT_TARGET,
+    OperatingCostInput,
+    ProductCandidateInput,
+    ProductEvaluationInput,
+    StockPlanInput,
+    apply_candidate_pricing_to_skus,
+    build_conversion_asset_pack,
+    build_conversion_experiment_plan,
+    build_daily_plan,
+    build_daily_review,
+    build_detail_conversion_audit,
+    build_detail_improvement_suggestions,
+    build_main_video_upload_stop_gate,
+    build_material_gap_plan,
+    build_no_brand_remediation_plan,
+    build_no_brand_title_audit,
+    build_ops_execution_queue,
+    build_first_order_decision_matrix,
+    build_net_profit_verification_matrix,
+    build_portfolio_path_to_500,
+    build_post_save_conversion_monitor,
+    build_profit_ladder_to_500,
+    build_publish_preflight_evidence,
+    build_publish_preflight_safety,
+    build_save_edit_human_gate,
+    build_profit_ramp_plan,
+    build_product_record_mappings,
+    build_product_candidate_list,
+    build_search_conversion_work_package,
+    build_sourcing_profit_gate,
+    build_strategy_action_reconcile_plan,
+    build_supplier_quote_intake,
+    build_supplier_quote_plan,
+    build_stock_plan,
+    calculate_operating_profit,
+    enforce_no_external_ai_settings,
+    evaluate_product,
+    extract_sku_goods_costs,
+    get_ops_ledger,
+    merge_observed_shop_metrics,
+)
+_bootstrap_log('import ops_engine done')
 _bootstrap_log('import professional_title_generator start')
-from src.professional_title_generator import get_professional_generator, ProductInfo as ProfessionalProductInfo
+from src.professional_title_generator import (
+    get_professional_generator,
+    ProductInfo as ProfessionalProductInfo,
+    sanitize_no_brand_title_text,
+)
 _bootstrap_log('import professional_title_generator done')
 _bootstrap_log('import enhanced_category_selector start')
 from src.enhanced_category_selector import smart_select_category
 _bootstrap_log('import enhanced_category_selector done')
+from capture_url_utils import capture_url_host, is_taobao_short_link, normalize_capture_url
 _bootstrap_log('import protocol_capture optional start')
 try:
     from protocol_capture import ProtocolCaptureEngine
@@ -289,7 +341,6 @@ def get_runtime_data_path(file_name, legacy_fallback=None):
 
 _AUTOMATION_ASSETS_DIR_NAME = 'automation_assets'
 _WASH_LABEL_TAG_IMAGE_BASENAME = 'wash_label_tag_image'
-_QUALIFICATION_CERTIFICATE_BASENAME = 'qualification_certificate'
 _ALLOWED_AUTOMATION_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
 
 
@@ -327,14 +378,6 @@ def _resolve_managed_automation_image_path(source_path, base_name, label):
         raise ValueError(f'仅支持 jpg、jpeg、png、bmp、webp 格式的{label}')
     file_name = f'{base_name}{extension}'
     return os.path.join(_get_automation_assets_dir(), file_name)
-
-
-def _delete_managed_qualification_certificate_files():
-    _delete_managed_automation_image_files(_QUALIFICATION_CERTIFICATE_BASENAME)
-
-
-def _resolve_managed_qualification_certificate_path(source_path):
-    return _resolve_managed_automation_image_path(source_path, _QUALIFICATION_CERTIFICATE_BASENAME, '合格证图片')
 
 
 def _delete_managed_wash_label_tag_image_files():
@@ -726,6 +769,1946 @@ def health():
     })
 
 
+def _ops_request_data():
+    return request.get_json(silent=True) or {}
+
+
+def _ops_float(data, key, default=0):
+    try:
+        value = data.get(key, default) if isinstance(data, dict) else default
+        if value in ('', None):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _ops_int(data, key, default=0):
+    try:
+        value = data.get(key, default) if isinstance(data, dict) else default
+        if value in ('', None):
+            return int(default)
+        return int(float(value))
+    except Exception:
+        return int(default)
+
+
+def _ops_pricing_defaults():
+    defaults = {
+        'shipping_cost': 0.0,
+        'packaging_cost': 0.0,
+        'platform_commission_rate': 0.0,
+    }
+    try:
+        settings = settings_manager.get_settings()
+        for item in (settings.cost_items or []):
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get('name') or '')
+            cost_type = str(item.get('cost_type') or '')
+            try:
+                value = float(item.get('value') or 0)
+            except Exception:
+                value = 0.0
+            if cost_type == 'fixed' and '运费' in name:
+                defaults['shipping_cost'] = value
+            elif cost_type == 'fixed' and '包装' in name:
+                defaults['packaging_cost'] = value
+            elif cost_type == 'percentage' and ('佣金' in name or '平台' in name):
+                defaults['platform_commission_rate'] = value / 100 if value > 1 else value
+    except Exception:
+        pass
+    return defaults
+
+
+def _ops_record_context(record_id):
+    if not record_id:
+        return None, [], None
+    try:
+        record = Record.get_by_id(record_id)
+    except Exception:
+        return None, [], None
+    try:
+        sku_list = json.loads(record.content or '[]')
+        if not isinstance(sku_list, list):
+            sku_list = []
+    except Exception:
+        sku_list = []
+    return record, sku_list, {
+        'record_id': record.id,
+        'name': record.name,
+        'title': record.title,
+        'status': record.status,
+        'repo': record.repo,
+        'clazz': record.clazz,
+        'sku_count': len(sku_list),
+        'source_url': record.source_url,
+    }
+
+
+def _ops_first_sku_price(sku_list):
+    for sku in sku_list:
+        if not isinstance(sku, dict):
+            continue
+        try:
+            price = float(sku.get('price') or 0)
+        except Exception:
+            price = 0
+        if price > 0:
+            return price
+    return 0.0
+
+
+def _ops_sku_prices(sku_list):
+    return extract_sku_goods_costs(sku_list or [])
+
+
+def _ops_current_sku_prices(sku_list):
+    prices = []
+    for sku in sku_list or []:
+        if not isinstance(sku, dict):
+            continue
+        price = _ops_float(sku, 'price', 0)
+        if price > 0:
+            prices.append(price)
+    return prices
+
+
+def _ops_build_local_product_candidates(data):
+    limit = max(min(_ops_int(data, 'limit', 20), 100), 1)
+    defaults = _ops_pricing_defaults()
+    shipping_cost = _ops_float(data, 'shipping_cost', defaults['shipping_cost'])
+    packaging_cost = _ops_float(data, 'packaging_cost', defaults['packaging_cost'])
+    platform_commission_rate = _ops_float(data, 'platform_commission_rate', defaults['platform_commission_rate'])
+    target_net_margin = _ops_float(data, 'target_net_margin', _ops_float(data, 'targetNetMargin', 0.30))
+    expected_daily_orders = _ops_int(data, 'expected_daily_orders', _ops_int(data, 'expectedDailyOrders', 0))
+    promotion_cost = _ops_float(data, 'promotion_cost', _ops_float(data, 'promotionCost', 0))
+    records = (
+        Record.select()
+        .order_by(Record.id.desc())
+        .limit(limit)
+    )
+    candidate_inputs = []
+    record_contexts = []
+    for record in records:
+        try:
+            sku_list = json.loads(record.content or '[]')
+            if not isinstance(sku_list, list):
+                sku_list = []
+        except Exception:
+            sku_list = []
+        record_contexts.append({
+            'record_id': record.id,
+            'name': record.name,
+            'title': record.title,
+            'status': record.status,
+            'repo': record.repo,
+            'clazz': record.clazz,
+            'sku_count': len(sku_list),
+            'source_url': record.source_url,
+        })
+        candidate_inputs.append(ProductCandidateInput(
+            record_id=record.id,
+            title=str(record.title or record.name or ''),
+            sku_prices=_ops_sku_prices(sku_list),
+            current_sku_prices=_ops_current_sku_prices(sku_list),
+            shipping_cost=shipping_cost,
+            packaging_cost=packaging_cost,
+            platform_commission_rate=platform_commission_rate,
+            promotion_cost=promotion_cost,
+            target_net_margin=target_net_margin,
+            expected_daily_orders=expected_daily_orders,
+        ))
+    return {
+        'candidates': build_product_candidate_list(candidate_inputs),
+        'records': record_contexts,
+        'cost_defaults': {
+            'shipping_cost': shipping_cost,
+            'packaging_cost': packaging_cost,
+            'platform_commission_rate': platform_commission_rate,
+            'promotion_cost': promotion_cost,
+            'target_net_margin': target_net_margin,
+        },
+    }
+
+
+def _ops_local_record_mapping_rows():
+    rows = []
+    for record in Record.select().order_by(Record.id.asc()):
+        rows.append({
+            'record_id': int(record.id),
+            'title': record.title or '',
+            'name': record.name or '',
+            'path': record.path or '',
+            'source_url': getattr(record, 'source_url', '') or '',
+        })
+    return rows
+
+
+def _ops_current_browser_snapshot():
+    try:
+        tab, _meta = _get_current_browser_tab(create_if_missing=False)
+    except Exception as exc:
+        return {
+            'status': 'not_ready',
+            'error': str(exc),
+            'has_browser': bool(gui.page),
+        }
+    if not tab:
+        return {
+            'status': 'not_ready',
+            'error': 'Browser is not running.',
+            'has_browser': False,
+        }
+    try:
+        snapshot = _snapshot_browser_context(tab, limit=8, include_html=False)
+        url = str(snapshot.get('url') or '')
+        title = str(snapshot.get('title') or '')
+        page_ready = bool(url and title and 'login' not in url.lower())
+        return {
+            'status': 'ready' if page_ready else 'needs_login_or_navigation',
+            'has_browser': True,
+            'url': url,
+            'title': title,
+            'snapshot': snapshot,
+        }
+    except Exception as exc:
+        return {
+            'status': 'not_ready',
+            'error': str(exc),
+            'has_browser': True,
+        }
+
+
+def _find_reusable_logged_in_fxg_browser(verify=False):
+    browsers = discover_debuggable_browsers(verify=verify)
+    targets_by_address = {}
+    for browser in browsers:
+        address = _normalize_debug_address(browser.get('debug_address') or '')
+        if not address:
+            continue
+        targets_by_address[address] = fetch_cdp_page_targets(address)
+    selected = select_logged_in_fxg_debug_browser(browsers, targets_by_address)
+    return {
+        'status': 'ready' if selected else 'not_found',
+        'selected_browser': selected,
+        'browser_count': len(browsers),
+        'target_counts': {
+            address: len(targets)
+            for address, targets in targets_by_address.items()
+        },
+    }
+
+
+def _ops_reusable_fxg_browser_snapshot():
+    try:
+        return _find_reusable_logged_in_fxg_browser(verify=True)
+    except Exception as exc:
+        return {
+            'status': 'error',
+            'error': str(exc),
+        }
+
+
+def _ops_find_product_issue_action(action_id):
+    if not action_id:
+        return None
+    try:
+        for item in get_ops_ledger().list_product_issue_actions(limit=200):
+            if int(item.get('id') or 0) == int(action_id):
+                return item
+    except Exception:
+        return None
+    return None
+
+
+def _ops_product_from_action(data):
+    """解析请求里的 product；缺失时按 action_id 回查运营账本补齐。为空返回 None。"""
+    product = data.get('product') if isinstance(data.get('product'), dict) else {}
+    action_id = _ops_int(data, 'action_id', _ops_int(data, 'actionId', 0))
+    if not product and action_id:
+        actions = get_ops_ledger().list_product_issue_actions(limit=500)
+        for action in actions:
+            if int(action.get('id') or 0) == action_id:
+                product = {
+                    'action_id': action.get('id'),
+                    'product_id': action.get('product_id'),
+                    'title': action.get('title'),
+                    'recent_30d_sales': action.get('recent_30d_sales'),
+                }
+                break
+    if not product:
+        return None
+    return product
+
+
+def _ops_default_candidate_video_path(product_id):
+    value = str(product_id or '').strip()
+    if not value:
+        return ''
+    candidate = os.path.join(repo_root, 'output', 'ops-materials', value, 'candidate-main-video.mp4')
+    return candidate
+
+
+def _ops_publish_preflight_page_snapshot():
+    try:
+        tab, _meta = _get_current_browser_tab(create_if_missing=False)
+    except Exception as exc:
+        tab = None
+        first_error = str(exc)
+    else:
+        first_error = ''
+    if not tab:
+        tab = _attach_reusable_logged_in_fxg_browser(lambda _progress, _message: None)
+    if not tab:
+        return {
+            'status': 'not_ready',
+            'error': first_error or 'Browser is not running.',
+            'has_browser': bool(gui.page),
+        }
+
+    try:
+        snapshot = _snapshot_browser_context(tab, limit=20, include_html=False)
+    except Exception:
+        snapshot = {}
+
+    script = """
+    return (() => {
+      const normalize = (value, limit = 500) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+      const nodes = Array.from(document.querySelectorAll('label, div, span, section, [attr-field-id]')).filter(isVisible);
+      const brandTexts = nodes
+        .map((el) => normalize(el.innerText || el.getAttribute('aria-label') || '', 180))
+        .filter((text) => text.includes('品牌'))
+        .slice(0, 12);
+      const titleValues = Array.from(document.querySelectorAll('input, textarea'))
+        .filter(isVisible)
+        .map((el) => normalize(el.value || '', 120))
+        .filter(Boolean)
+        .slice(0, 20);
+      const labelNodes = nodes.filter((el) => normalize(el.innerText || el.getAttribute('aria-label') || '', 120).includes('使用品牌名'));
+      let titleUseBrandNameChecked = null;
+      if (labelNodes.length) {
+        titleUseBrandNameChecked = false;
+        for (const node of labelNodes) {
+          const label = node.closest('label') || node;
+          const checkbox = label.querySelector('input[type="checkbox"]') || node.querySelector('input[type="checkbox"]');
+          const ariaChecked = String(label.getAttribute('aria-checked') || node.getAttribute('aria-checked') || '').toLowerCase();
+          const className = String(label.className || node.className || '').toLowerCase();
+          if ((checkbox && checkbox.checked) || ariaChecked === 'true' || /checked/.test(className)) {
+            titleUseBrandNameChecked = true;
+            break;
+          }
+        }
+      }
+      return {
+        url: location.href,
+        title: document.title,
+        body_text: normalize(document.body ? document.body.innerText || '' : '', 4000),
+        brand_text: brandTexts.join(' | '),
+        brand_texts: brandTexts,
+        title_values: titleValues,
+        title_use_brand_name_visible: labelNodes.length > 0,
+        title_use_brand_name_checked: titleUseBrandNameChecked
+      };
+    })();
+    """
+    try:
+        page_evidence = tab.run_js(script) or {}
+    except Exception as exc:
+        page_evidence = {
+            'error': str(exc),
+        }
+    merged = {
+        **(snapshot or {}),
+        **(page_evidence if isinstance(page_evidence, dict) else {}),
+        'has_browser': True,
+    }
+    merged['status'] = 'ready' if merged.get('url') and 'login' not in str(merged.get('url')).lower() else 'needs_login_or_navigation'
+    return merged
+
+
+def _ops_resolve_publish_preflight_context(data):
+    action_id = _ops_int(data, 'action_id', _ops_int(data, 'actionId', 0))
+    record_id = _ops_int(data, 'record_id', _ops_int(data, 'recordId', 0))
+    issue_action = _ops_find_product_issue_action(action_id)
+    record, _sku_list, record_context = _ops_record_context(record_id)
+
+    expected_product_id = str(
+        data.get('expected_product_id')
+        or data.get('expectedProductId')
+        or data.get('product_id')
+        or data.get('productId')
+        or (issue_action or {}).get('product_id')
+        or ''
+    ).strip()
+    expected_title = str(
+        data.get('expected_title')
+        or data.get('expectedTitle')
+        or (record.title if record else '')
+        or (issue_action or {}).get('title')
+        or ''
+    ).strip()
+    candidate_video_path = str(
+        data.get('candidate_video_path')
+        or data.get('candidateVideoPath')
+        or _ops_default_candidate_video_path(expected_product_id)
+        or ''
+    ).strip()
+
+    page_snapshot = data.get('page_snapshot') if isinstance(data.get('page_snapshot'), dict) else None
+    if page_snapshot is None:
+        page_snapshot = _ops_publish_preflight_page_snapshot()
+
+    preflight = build_publish_preflight_safety(
+        page_snapshot=page_snapshot,
+        expected_product_id=expected_product_id,
+        expected_title=expected_title,
+        candidate_video_path=candidate_video_path,
+    )
+
+    return {
+        'action_id': action_id,
+        'record_id': record_id,
+        'record': record,
+        'record_context': record_context,
+        'issue_action': issue_action,
+        'expected_product_id': expected_product_id,
+        'expected_title': expected_title,
+        'candidate_video_path': candidate_video_path,
+        'page_snapshot': page_snapshot,
+        'preflight': preflight,
+    }
+
+
+def _ops_current_or_reusable_fxg_tab():
+    try:
+        tab, _meta = _get_current_browser_tab(create_if_missing=False)
+    except Exception:
+        tab = None
+    if tab:
+        return tab
+    return _attach_reusable_logged_in_fxg_browser(lambda _progress, _message: None)
+
+
+def _ops_main_video_field_snapshot(tab):
+    script = """
+    return (() => {
+      const normalize = (value, limit = 500) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+      const field = document.querySelector('[attr-field-id="主图视频"]');
+      const mediaNodes = field
+        ? Array.from(field.querySelectorAll('video, img, canvas, [class*="video"], [class*="Video"]')).filter(isVisible)
+        : [];
+      const html = field ? String(field.outerHTML || '') : '';
+      const hasSuccessCard = /styles_item-success|item-success|upload-item-success/.test(html);
+      const hasVideoAssetSign = /video-play-sign|tos-cn-v|video_id|vid=/.test(html);
+      const localUploadCount = field
+        ? Array.from(field.querySelectorAll('label, button, div'))
+            .filter(isVisible)
+            .filter((el) => normalize(el.innerText || el.getAttribute('aria-label') || '', 40).includes('本地上传'))
+            .length
+        : 0;
+      return {
+        exists: !!field,
+        text: field ? normalize(field.innerText || '', 1000) : '',
+        media_count: mediaNodes.length,
+        has_video_tag: field ? Array.from(field.querySelectorAll('video')).some(isVisible) : false,
+        has_success_card: hasSuccessCard,
+        has_video_asset_sign: hasVideoAssetSign,
+        file_input_count: field ? field.querySelectorAll('input[type="file"]').length : 0,
+        visible_local_upload_count: localUploadCount,
+        upload_busy: /上传中/.test(document.body ? document.body.innerText || '' : '')
+          || Array.from(document.querySelectorAll('.ecom-g-btn-loading-icon')).some(isVisible)
+      };
+    })();
+    """
+    try:
+        result = tab.run_js(script) or {}
+        return result if isinstance(result, dict) else {}
+    except Exception as exc:
+        return {'error': str(exc)}
+
+
+def _ops_wait_main_video_upload_settled(tab, before_snapshot=None, timeout=20.0, interval=0.2):
+    before_media_count = 0
+    if isinstance(before_snapshot, dict):
+        try:
+            before_media_count = int(before_snapshot.get('media_count') or 0)
+        except Exception:
+            before_media_count = 0
+
+    started_at = system_time.time()
+    seen_busy = False
+    idle_checks = 0
+    last_snapshot = {}
+    while system_time.time() - started_at < timeout:
+        last_snapshot = _ops_main_video_field_snapshot(tab)
+        busy = bool(last_snapshot.get('upload_busy'))
+        try:
+            busy = busy or bool(_is_upload_busy(tab))
+        except Exception:
+            pass
+        if busy:
+            seen_busy = True
+            idle_checks = 0
+        else:
+            idle_checks += 1
+            try:
+                media_count = int(last_snapshot.get('media_count') or 0)
+            except Exception:
+                media_count = 0
+            if idle_checks >= 3 and (seen_busy or media_count > before_media_count or system_time.time() - started_at >= 1.2):
+                return {
+                    'settled': True,
+                    'seen_busy': seen_busy,
+                    'duration_seconds': round(system_time.time() - started_at, 2),
+                    'before_media_count': before_media_count,
+                    'after_media_count': media_count,
+                    'field_snapshot': last_snapshot,
+                }
+        system_time.sleep(interval)
+
+    return {
+        'settled': False,
+        'seen_busy': seen_busy,
+        'duration_seconds': round(system_time.time() - started_at, 2),
+        'before_media_count': before_media_count,
+        'after_media_count': int(last_snapshot.get('media_count') or 0) if isinstance(last_snapshot, dict) else 0,
+        'field_snapshot': last_snapshot,
+    }
+
+
+@app.get('/api/ops/ai-policy')
+def ops_ai_policy():
+    return api_ok('外部 AI 已禁用', data={
+        'ai_policy': dict(AI_POLICY),
+        'model_configs': [],
+    })
+
+
+@app.get('/api/ops/health')
+def ops_health_check():
+    try:
+        browsers = discover_debuggable_browsers(verify=True)
+    except Exception as exc:
+        browsers = []
+        browser_discovery_error = str(exc)
+    else:
+        browser_discovery_error = None
+
+    return api_ok('运营闭环健康检查完成', data={
+        'target_net_profit': DAILY_NET_PROFIT_TARGET,
+        'backend': {
+            'status': 'ok',
+            'mode': 'sidecar' if is_sidecar_mode() else 'gui',
+            'port': get_sidecar_port() if is_sidecar_mode() else 5000,
+        },
+        'mcp': {
+            'server_name': 'douyin-publisher',
+            'backend_url': f'http://127.0.0.1:{get_sidecar_port() if is_sidecar_mode() else 5000}',
+            'status': 'available_when_mcp_server_is_running',
+        },
+        'cdp': {
+            'discoverable_browser_count': len(browsers),
+            'browsers': browsers,
+            'error': browser_discovery_error,
+        },
+        'browser': _ops_current_browser_snapshot(),
+        'reusable_fxg_browser': _ops_reusable_fxg_browser_snapshot(),
+        'ai_policy': dict(AI_POLICY),
+        'safety_gates': [
+            '登录与验证码由用户完成',
+            '付款与投放扣费不自动确认',
+            '最终发布确认保留人工安全闸',
+            '未读到真实后台数据时不生成虚假利润结论',
+        ],
+    })
+
+
+@app.post('/api/ops/publish-preflight-safety')
+def ops_publish_preflight_safety():
+    try:
+        data = _ops_request_data()
+        context = _ops_resolve_publish_preflight_context(data)
+        action_id = context['action_id']
+        preflight = context['preflight']
+
+        updated_action = None
+        events = []
+        if action_id:
+            existing_evidence = (
+                (context['issue_action'] or {}).get('evidence')
+                if isinstance(context['issue_action'], dict)
+                else None
+            )
+            existing_upload_evidence = bool(
+                isinstance(existing_evidence, dict)
+                and (
+                    existing_evidence.get('mutation_type') == 'main_video_upload_only'
+                    or isinstance(existing_evidence.get('upload_result'), dict)
+                )
+            )
+            note = (
+                '上传前安全预检通过：仅允许在人工安全闸下上传素材并截停在保存/发布前'
+                if preflight.get('ready_for_upload_preflight')
+                else '上传前安全预检未通过：' + '；'.join(item.get('message', '') for item in preflight.get('blockers', []))
+            )
+            if existing_upload_evidence:
+                note = str((context['issue_action'] or {}).get('action_note') or note)
+            updated_action = get_ops_ledger().update_product_issue_action(
+                action_id=action_id,
+                action_status='in_progress',
+                note=note,
+                evidence=build_publish_preflight_evidence(
+                    preflight,
+                    record=context['record_context'],
+                    issue_action=context['issue_action'],
+                    existing_evidence=existing_evidence,
+                ),
+            )
+            events = get_ops_ledger().list_product_issue_action_events(action_id=action_id, limit=5)
+
+        return api_ok('发布前安全预检完成', data={
+            'preflight': preflight,
+            'page_snapshot': context['page_snapshot'],
+            'record': context['record_context'],
+            'issue_action': context['issue_action'],
+            'updated_action': updated_action,
+            'events': events,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'发布前安全预检失败: {str(exc)}')
+
+
+@app.post('/api/ops/upload-main-video-preflight')
+def ops_upload_main_video_preflight():
+    try:
+        data = _ops_request_data()
+        context = _ops_resolve_publish_preflight_context(data)
+        action_id = context['action_id']
+        preflight = context['preflight']
+        initial_gate = build_main_video_upload_stop_gate(preflight)
+
+        updated_action = None
+        events = []
+        if not initial_gate.get('ready_to_attempt_upload'):
+            if action_id:
+                updated_action = get_ops_ledger().update_product_issue_action(
+                    action_id=action_id,
+                    action_status='in_progress',
+                    note='主图视频上传截停未执行：' + '；'.join(item.get('message', '') for item in initial_gate.get('blockers', [])),
+                    evidence={
+                        'preflight': preflight,
+                        'upload_gate': initial_gate,
+                        'record': context['record_context'],
+                        'issue_action': context['issue_action'],
+                        'shop_mutation': False,
+                        'no_upload': True,
+                        'no_save': True,
+                        'no_publish': True,
+                        'no_ad_or_payment': True,
+                    },
+                )
+                events = get_ops_ledger().list_product_issue_action_events(action_id=action_id, limit=5)
+            return api_error('主图视频上传截停安全闸未通过', data={
+                'preflight': preflight,
+                'upload_gate': initial_gate,
+                'page_snapshot': context['page_snapshot'],
+                'record': context['record_context'],
+                'issue_action': context['issue_action'],
+                'updated_action': updated_action,
+                'events': events,
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        tab = _ops_current_or_reusable_fxg_tab()
+        if not tab:
+            return api_error('主图视频上传截停失败：未找到可复用的已登录抖店浏览器', data={
+                'preflight': preflight,
+                'upload_gate': initial_gate,
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        candidate_video_path = str(preflight.get('candidate_video_path') or '').strip()
+        before_video_field = _ops_main_video_field_snapshot(tab)
+        try:
+            video_area = tab.ele('xpath://div[@attr-field-id="主图视频"]', timeout=3)
+            if not video_area:
+                raise Exception('未找到主图视频区域')
+            video_area.scroll.to_see()
+            video_area.scroll.to_center()
+        except Exception as exc:
+            return api_error(f'主图视频上传截停失败：{str(exc)}', data={
+                'preflight': preflight,
+                'upload_gate': initial_gate,
+                'before_video_field': before_video_field,
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        upload_error = ''
+        try:
+            upload_file(
+                tab,
+                [candidate_video_path],
+                '主图视频',
+                target_field_id='主图视频',
+                wait_for_finish=False,
+            )
+        except Exception as exc:
+            upload_error = str(exc)
+
+        settle_result = _ops_wait_main_video_upload_settled(tab, before_snapshot=before_video_field)
+        upload_result = {
+            'upload_triggered': not bool(upload_error),
+            'upload_error': upload_error,
+            'candidate_video_path': candidate_video_path,
+            'before_video_field': before_video_field,
+            'settle': settle_result,
+            'upload_confirmed': bool(
+                not upload_error
+                and (
+                    settle_result.get('seen_busy')
+                    or int(settle_result.get('after_media_count') or 0) > int(settle_result.get('before_media_count') or 0)
+                )
+            ),
+            'save_publish_performed': False,
+            'no_save': True,
+            'no_publish': True,
+            'no_ad_or_payment': True,
+        }
+        post_upload_snapshot = _ops_publish_preflight_page_snapshot()
+        upload_gate = build_main_video_upload_stop_gate(
+            preflight,
+            upload_attempted=True,
+            upload_result=upload_result,
+            post_upload_snapshot=post_upload_snapshot,
+        )
+
+        if action_id:
+            note = (
+                '主图视频已触发上传并在保存/发布前截停；未保存、未发布、未投放'
+                if upload_result.get('upload_triggered')
+                else f'主图视频上传触发失败并已截停：{upload_error}'
+            )
+            updated_action = get_ops_ledger().update_product_issue_action(
+                action_id=action_id,
+                action_status='in_progress',
+                note=note,
+                evidence={
+                    'preflight': preflight,
+                    'upload_gate': upload_gate,
+                    'upload_result': upload_result,
+                    'post_upload_snapshot': post_upload_snapshot,
+                    'record': context['record_context'],
+                    'issue_action': context['issue_action'],
+                    'shop_mutation': bool(upload_result.get('upload_triggered')),
+                    'mutation_type': 'main_video_upload_only' if upload_result.get('upload_triggered') else 'none',
+                    'no_save': True,
+                    'no_publish': True,
+                    'no_ad_or_payment': True,
+                },
+            )
+            events = get_ops_ledger().list_product_issue_action_events(action_id=action_id, limit=5)
+
+        if upload_error or upload_gate.get('blockers'):
+            return api_error('主图视频上传截停后校验未通过', data={
+                'preflight': preflight,
+                'upload_gate': upload_gate,
+                'upload_result': upload_result,
+                'post_upload_snapshot': post_upload_snapshot,
+                'record': context['record_context'],
+                'issue_action': context['issue_action'],
+                'updated_action': updated_action,
+                'events': events,
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        return api_ok('主图视频已触发上传并在保存/发布前截停', data={
+            'preflight': preflight,
+            'upload_gate': upload_gate,
+            'upload_result': upload_result,
+            'post_upload_snapshot': post_upload_snapshot,
+            'record': context['record_context'],
+            'issue_action': context['issue_action'],
+            'updated_action': updated_action,
+            'events': events,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'主图视频上传截停失败: {str(exc)}')
+
+
+@app.post('/api/ops/save-edit-human-gate')
+def ops_save_edit_human_gate():
+    try:
+        data = _ops_request_data()
+        context = _ops_resolve_publish_preflight_context(data)
+        action_id = context['action_id']
+        preflight = context['preflight']
+        issue_action = context['issue_action'] if isinstance(context['issue_action'], dict) else {}
+        upload_evidence = issue_action.get('evidence') if isinstance(issue_action.get('evidence'), dict) else {}
+
+        tab = _ops_current_or_reusable_fxg_tab()
+        if not tab:
+            return api_error('保存前人工安全闸检查失败：未找到可复用的已登录抖店浏览器', data={
+                'preflight': preflight,
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        main_video_field = _ops_main_video_field_snapshot(tab)
+        page_snapshot = _ops_publish_preflight_page_snapshot()
+        page_snapshot['main_video_field'] = main_video_field
+        gate = build_save_edit_human_gate(
+            preflight,
+            upload_evidence=upload_evidence,
+            page_snapshot=page_snapshot,
+        )
+
+        updated_action = None
+        events = []
+        if action_id:
+            note = (
+                '保存前人工安全闸已就绪：可请求用户确认保存当前编辑页；仍未自动保存、未发布、未投放'
+                if gate.get('ready_for_human_save_confirmation')
+                else '保存前人工安全闸未通过：' + '；'.join(item.get('message', '') for item in gate.get('blockers', []))
+            )
+            next_evidence = {
+                **upload_evidence,
+                'save_edit_human_gate': gate,
+                'latest_preflight': preflight,
+                'record': context['record_context'],
+                'issue_action': {
+                    key: value
+                    for key, value in issue_action.items()
+                    if key not in ('evidence', 'evidence_json')
+                },
+                'no_auto_save': True,
+                'no_publish': True,
+                'no_ad_or_payment': True,
+            }
+            updated_action = get_ops_ledger().update_product_issue_action(
+                action_id=action_id,
+                action_status='in_progress',
+                note=note,
+                evidence=next_evidence,
+            )
+            events = get_ops_ledger().list_product_issue_action_events(action_id=action_id, limit=5)
+
+        return api_ok('保存前人工安全闸检查完成', data={
+            'save_edit_human_gate': gate,
+            'preflight': preflight,
+            'page_snapshot': page_snapshot,
+            'record': context['record_context'],
+            'issue_action': context['issue_action'],
+            'updated_action': updated_action,
+            'events': events,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'保存前人工安全闸检查失败: {str(exc)}')
+
+
+@app.post('/api/ops/evaluate-product')
+def ops_evaluate_product():
+    try:
+        data = _ops_request_data()
+        record_id = _ops_int(data, 'record_id', _ops_int(data, 'recordId', 0))
+        record, sku_list, record_context = _ops_record_context(record_id)
+        defaults = _ops_pricing_defaults()
+        title = str(data.get('title') or (record.title if record else '') or (record.name if record else '') or '')
+        sale_price = _ops_float(data, 'sale_price', _ops_float(data, 'salePrice', _ops_first_sku_price(sku_list)))
+        goods_cost = _ops_float(data, 'goods_cost', _ops_float(data, 'goodsCost', 0))
+        evaluation = evaluate_product(ProductEvaluationInput(
+            record_id=record_id,
+            title=title,
+            sale_price=sale_price,
+            goods_cost=goods_cost,
+            shipping_cost=_ops_float(data, 'shipping_cost', defaults['shipping_cost']),
+            packaging_cost=_ops_float(data, 'packaging_cost', defaults['packaging_cost']),
+            platform_commission_rate=_ops_float(data, 'platform_commission_rate', defaults['platform_commission_rate']),
+            promotion_cost=_ops_float(data, 'promotion_cost', 0),
+            refund_loss=_ops_float(data, 'refund_loss', 0),
+            after_sale_loss=_ops_float(data, 'after_sale_loss', 0),
+            expected_daily_orders=_ops_int(data, 'expected_daily_orders', 0),
+        ))
+        saved = get_ops_ledger().save_product_evaluation(evaluation)
+        return api_ok('单品经营净利评估完成', data={
+            'evaluation': asdict(evaluation),
+            'saved_snapshot': saved,
+            'record': record_context,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'单品评估失败: {str(exc)}')
+
+
+@app.post('/api/ops/stock-plan')
+def ops_stock_plan():
+    try:
+        data = _ops_request_data()
+        record_id = _ops_int(data, 'record_id', _ops_int(data, 'recordId', 0))
+        _record, sku_list, record_context = _ops_record_context(record_id)
+        sku_count = _ops_int(data, 'sku_count', len(sku_list) or 1)
+        stock_plan = build_stock_plan(StockPlanInput(
+            record_id=record_id,
+            sku_count=sku_count,
+            expected_daily_orders=_ops_int(data, 'expected_daily_orders', 0),
+            replenishment_days=_ops_int(data, 'replenishment_days', 1),
+            can_restock_same_day=bool(data.get('can_restock_same_day', True)),
+            max_per_sku_without_sales_signal=_ops_int(data, 'max_per_sku_without_sales_signal', 2),
+        ))
+        saved = get_ops_ledger().save_stock_plan(stock_plan)
+        return api_ok('备货建议已生成', data={
+            'stock_plan': asdict(stock_plan),
+            'saved_snapshot': saved,
+            'record': record_context,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'备货建议生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/product-candidates')
+def ops_product_candidates():
+    try:
+        data = _ops_request_data()
+        candidate_data = _ops_build_local_product_candidates(data)
+        return api_ok('本地商品候选评估完成', data={
+            'candidates': candidate_data['candidates'],
+            'records': candidate_data['records'],
+            'cost_defaults': candidate_data['cost_defaults'],
+            'target_net_profit': DAILY_NET_PROFIT_TARGET,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'本地商品候选评估失败: {str(exc)}')
+
+
+@app.post('/api/ops/apply-candidate-pricing')
+def ops_apply_candidate_pricing():
+    try:
+        data = _ops_request_data()
+        record_id = _ops_int(data, 'record_id', _ops_int(data, 'recordId', 0))
+        dry_run = bool(data.get('dry_run', data.get('dryRun', True)))
+        if not record_id:
+            return api_error('record_id 不能为空')
+        record, sku_list, record_context = _ops_record_context(record_id)
+        if not record:
+            return api_error(f'商品不存在: {record_id}')
+
+        candidate_data = _ops_build_local_product_candidates({
+            **data,
+            'limit': max(_ops_int(data, 'limit', 20), 20),
+        })
+        candidate = None
+        for item in candidate_data['candidates']:
+            if int(item.get('record_id') or 0) == record_id:
+                candidate = item
+                break
+        if not candidate:
+            return api_error(f'未生成商品候选: {record_id}')
+
+        sale_price = _ops_float(data, 'sale_price', _ops_float(data, 'salePrice', candidate.get('recommended_sale_price', 0)))
+        pricing_result = apply_candidate_pricing_to_skus(sku_list, sale_price)
+        saved = False
+        if not dry_run:
+            record.content = json.dumps(pricing_result['skus'], ensure_ascii=False)
+            record.update_time = time.now()
+            record.save()
+            saved = True
+
+        refreshed_record, refreshed_skus, refreshed_context = _ops_record_context(record_id)
+        return api_ok('候选商品售价应用完成' if saved else '候选商品售价 dry-run 完成', data={
+            'dry_run': dry_run,
+            'saved': saved,
+            'record': refreshed_context or record_context,
+            'candidate': candidate,
+            'pricing': {
+                'sale_price': pricing_result['sale_price'],
+                'updated_count': pricing_result['updated_count'],
+                'changes': pricing_result['changes'],
+            },
+            'current_sku_prices': [
+                {
+                    'name': sku.get('name'),
+                    'price': sku.get('price'),
+                    'ops_goods_cost': sku.get('ops_goods_cost'),
+                }
+                for sku in (refreshed_skus if saved else pricing_result['skus'])
+                if isinstance(sku, dict)
+            ],
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'候选商品售价应用失败: {str(exc)}')
+
+
+@app.post('/api/ops/daily-plan')
+def ops_daily_plan():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else data
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+        diagnostic_signals = data.get('diagnostic_signals') or data.get('diagnosticSignals')
+        if isinstance(diagnostic_signals, dict):
+            metrics = {
+                **(metrics or {}),
+                'diagnostic_signals': diagnostic_signals,
+            }
+        plan = build_daily_plan(metrics)
+        return api_ok('每日运营计划已生成', data={
+            'daily_plan': plan,
+            'source': 'request' if data else 'latest_snapshot',
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'每日运营计划生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/search-conversion-work-package')
+def ops_search_conversion_work_package():
+    try:
+        data = _ops_request_data()
+        ledger = get_ops_ledger()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else None
+        if metrics is None:
+            latest = ledger.list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        actions = data.get('product_issue_actions') or data.get('productIssueActions')
+        if not isinstance(actions, list):
+            actions = ledger.list_product_issue_actions(limit=max(min(_ops_int(data, 'limit', 100), 500), 1))
+
+        package = build_search_conversion_work_package(
+            metrics=metrics,
+            product_issue_actions=actions,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+            action_id=_ops_int(data, 'action_id', _ops_int(data, 'actionId', 0)) or None,
+        )
+        return api_ok('搜索承接工作包已生成', data={
+            'search_conversion_work_package': package,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) else 'latest_snapshot',
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions') or data.get('productIssueActions'), list) else 'ledger',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'搜索承接工作包生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/daily-review')
+def ops_daily_review():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+        diagnostic_signals = data.get('diagnostic_signals') or data.get('diagnosticSignals')
+        if isinstance(diagnostic_signals, dict):
+            metrics = {
+                **(metrics or {}),
+                'diagnostic_signals': diagnostic_signals,
+            }
+        candidate_data = _ops_build_local_product_candidates(data)
+        review = build_daily_review(metrics, candidate_data['candidates'])
+        return api_ok('每日经营复盘已生成', data={
+            'review': review,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'candidates': candidate_data['candidates'],
+            'records': candidate_data['records'],
+            'cost_defaults': candidate_data['cost_defaults'],
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'每日经营复盘生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/detail-conversion-audit')
+def ops_detail_conversion_audit():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+        page_snapshot = data.get('page_snapshot') or data.get('pageSnapshot')
+        if not isinstance(page_snapshot, dict):
+            return api_error('page_snapshot 不能为空')
+        audit = build_detail_conversion_audit(metrics, page_snapshot)
+        product_title = str(data.get('product_title') or data.get('productTitle') or page_snapshot.get('product_title') or page_snapshot.get('productTitle') or '')
+        suggestions = build_detail_improvement_suggestions(product_title, audit) if product_title else None
+        return api_ok('详情承接审计完成', data={
+            'audit': audit,
+            'suggestions': suggestions,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'详情承接审计失败: {str(exc)}')
+
+
+@app.post('/api/ops/conversion-asset-pack')
+def ops_conversion_asset_pack():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        product = data.get('product') if isinstance(data.get('product'), dict) else {}
+        detail_audit = data.get('detail_audit') or data.get('detailAudit')
+        page_snapshot = data.get('page_snapshot') or data.get('pageSnapshot')
+        if not isinstance(detail_audit, dict) and isinstance(page_snapshot, dict):
+            detail_audit = build_detail_conversion_audit(metrics, page_snapshot)
+        if not isinstance(detail_audit, dict):
+            detail_audit = {}
+
+        suggestions = data.get('suggestions') if isinstance(data.get('suggestions'), dict) else None
+        if suggestions is None:
+            title = str(product.get('title') or product.get('product_title') or product.get('productTitle') or '')
+            suggestions = build_detail_improvement_suggestions(title, detail_audit) if title else None
+
+        pack = build_conversion_asset_pack(
+            product=product,
+            audit=detail_audit,
+            suggestions=suggestions,
+            metrics=metrics,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('无品牌转化素材包已生成', data={
+            'conversion_asset_pack': pack,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'detail_audit_source': 'request' if isinstance(data.get('detail_audit') or data.get('detailAudit'), dict) else ('page_snapshot' if isinstance(page_snapshot, dict) else 'empty'),
+            'safe_to_auto_upload': False,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'无品牌转化素材包生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/conversion-experiment-plan')
+def ops_conversion_experiment_plan():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        detail_audit = data.get('detail_audit') or data.get('detailAudit')
+        page_snapshot = data.get('page_snapshot') or data.get('pageSnapshot')
+        if not isinstance(detail_audit, dict) and isinstance(page_snapshot, dict):
+            detail_audit = build_detail_conversion_audit(metrics, page_snapshot)
+        if not isinstance(detail_audit, dict):
+            detail_audit = {}
+
+        profit_plan = data.get('profit_plan') or data.get('profitPlan')
+        if not isinstance(profit_plan, dict):
+            candidate_data = _ops_build_local_product_candidates(data)
+            profit_plan = build_profit_ramp_plan(metrics, candidate_data['candidates'])
+
+        plan = build_conversion_experiment_plan(metrics, detail_audit, profit_plan)
+        return api_ok('转化实验计划已生成', data={
+            'conversion_experiment_plan': plan,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'detail_audit_source': 'request' if isinstance(data.get('detail_audit') or data.get('detailAudit'), dict) else ('page_snapshot' if isinstance(page_snapshot, dict) else 'empty'),
+            'profit_plan_source': 'request' if isinstance(data.get('profit_plan') or data.get('profitPlan'), dict) else 'local_candidates',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'转化实验计划生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/profit-ramp-plan')
+def ops_profit_ramp_plan():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+        candidate_data = _ops_build_local_product_candidates(data)
+        plan = build_profit_ramp_plan(metrics, candidate_data['candidates'])
+        return api_ok('日净利目标拆解已生成', data={
+            'profit_ramp_plan': plan,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'candidate_count': len(candidate_data['candidates']),
+            'top_candidate': candidate_data['candidates'][0] if candidate_data['candidates'] else None,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'日净利目标拆解生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/profit-ladder-to-500')
+def ops_profit_ladder_to_500():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        if not metrics:
+            latest = get_ops_ledger().list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        product = data.get('product') if isinstance(data.get('product'), dict) else {}
+        cost_scenarios = data.get('cost_scenarios') or data.get('costScenarios')
+        if not isinstance(cost_scenarios, list) or not cost_scenarios:
+            cost_scenarios = [
+                {'scenario_id': 'floor_quote', 'label': '低成本报价', 'goods_cost': 1.5},
+                {'scenario_id': 'target_quote', 'label': '目标报价', 'goods_cost': 2.0},
+                {'scenario_id': 'mid_quote', 'label': '中位报价', 'goods_cost': 5.0},
+                {'scenario_id': 'high_quote', 'label': '高成本报价', 'goods_cost': 8.0},
+            ]
+
+        ladder = build_profit_ladder_to_500(
+            metrics=metrics,
+            product=product,
+            cost_scenarios=cost_scenarios,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('500元净利阶梯已生成', data={
+            'profit_ladder_to_500': ladder,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) and data.get('metrics') else 'latest_snapshot',
+            'scenario_count': len(cost_scenarios),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'500元净利阶梯生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/sync-shop-metrics')
+def ops_sync_shop_metrics():
+    try:
+        data = _ops_request_data()
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        browser_snapshot = data.get('browser') if isinstance(data.get('browser'), dict) else _ops_current_browser_snapshot()
+        audit_metrics = data.get('audit_metrics') if isinstance(data.get('audit_metrics'), list) else []
+        ledger = get_ops_ledger()
+        audit_rows = []
+
+        if browser_snapshot.get('url') or browser_snapshot.get('title'):
+            audit_rows.extend(ledger.save_browser_metric_audit([
+                {
+                    'metric_name': 'browser_page',
+                    'metric_value': browser_snapshot.get('title') or '',
+                    'page_url': browser_snapshot.get('url') or '',
+                    'status': browser_snapshot.get('status') or 'observed',
+                }
+            ]))
+        if audit_metrics:
+            audit_rows.extend(ledger.save_browser_metric_audit(audit_metrics))
+
+        if not metrics:
+            return api_ok('浏览器状态已记录，但没有读取到经营指标；未生成利润快照', data={
+                'synced': False,
+                'browser': browser_snapshot,
+                'audit_rows': audit_rows,
+                'message': '需要在已登录抖店经营页面提供或读取订单、退款、推广等指标后再入账',
+                'ai_policy': dict(AI_POLICY),
+            })
+
+        previous_snapshots = ledger.list_daily_snapshots(limit=10)
+        metrics = merge_observed_shop_metrics(metrics, previous_snapshots)
+        snapshot = ledger.save_daily_snapshot({
+            'snapshot_date': metrics.get('snapshot_date'),
+            'net_profit': metrics.get('net_profit', 0),
+            'net_profit_verified': bool(metrics.get('net_profit_verified', 'net_profit' in metrics)),
+            'gross_sales': metrics.get('gross_sales', 0),
+            'orders_count': metrics.get('orders_count', 0),
+            'product_exposure_count': metrics.get('product_exposure_count', 0),
+            'product_click_count': metrics.get('product_click_count', 0),
+            'search_exposure_count': metrics.get('search_exposure_count', 0),
+            'refund_amount': metrics.get('refund_amount', 0),
+            'after_sale_amount': metrics.get('after_sale_amount', 0),
+            'promotion_cost': metrics.get('promotion_cost', 0),
+            'experience_score': metrics.get('experience_score'),
+            'source': metrics.get('source') or data.get('source') or 'browser',
+            'status': metrics.get('status') or 'partial',
+            'notes': metrics.get('notes') or '',
+            'raw_payload': metrics.get('raw_payload') or data.get('raw_payload') or {},
+        })
+        plan = build_daily_plan(metrics)
+        return api_ok('经营指标同步完成', data={
+            'synced': True,
+            'snapshot': snapshot,
+            'daily_plan': plan,
+            'browser': browser_snapshot,
+            'audit_rows': audit_rows,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'经营指标同步失败: {str(exc)}')
+
+
+@app.post('/api/ops/sync-strategy-signals')
+def ops_sync_strategy_signals():
+    try:
+        data = _ops_request_data()
+        signals = data.get('signals')
+        if not isinstance(signals, dict):
+            signals = data.get('diagnostic_signals') or data.get('diagnosticSignals')
+        if not isinstance(signals, dict) or not signals:
+            return api_error('diagnostic_signals 不能为空')
+
+        signals = dict(signals)
+        if not signals.get('raw_payload') and data.get('raw_payload'):
+            signals['raw_payload'] = data.get('raw_payload')
+        if data.get('source') and not signals.get('source'):
+            signals['source'] = data.get('source')
+
+        ledger = get_ops_ledger()
+        audit_metrics = data.get('audit_metrics') if isinstance(data.get('audit_metrics'), list) else []
+        browser_snapshot = data.get('browser') if isinstance(data.get('browser'), dict) else {}
+        audit_rows = []
+        if browser_snapshot.get('url') or browser_snapshot.get('title'):
+            audit_rows.extend(ledger.save_browser_metric_audit([
+                {
+                    'metric_name': 'strategy_browser_page',
+                    'metric_value': browser_snapshot.get('title') or '',
+                    'page_url': browser_snapshot.get('url') or '',
+                    'status': browser_snapshot.get('status') or 'observed',
+                }
+            ]))
+        if audit_metrics:
+            audit_rows.extend(ledger.save_browser_metric_audit(audit_metrics))
+
+        saved = ledger.save_strategy_snapshot(signals)
+        latest = ledger.list_daily_snapshots(limit=1)
+        metrics = latest[0] if latest else {}
+        review_metrics = {
+            **(metrics or {}),
+            'diagnostic_signals': signals,
+        }
+        candidate_data = _ops_build_local_product_candidates(data)
+        review = build_daily_review(review_metrics, candidate_data['candidates'])
+        return api_ok('诊断信号同步完成', data={
+            'synced': True,
+            'saved_strategy_snapshot': saved['snapshot'],
+            'product_issue_actions': saved['product_issue_actions'],
+            'review': review,
+            'metrics_source': 'latest_snapshot' if metrics else 'empty_snapshot',
+            'audit_rows': audit_rows,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'诊断信号同步失败: {str(exc)}')
+
+
+@app.get('/api/ops/daily-snapshots')
+def ops_daily_snapshots():
+    try:
+        limit = _ops_int(request.args, 'limit', 20)
+        return api_ok('经营快照读取成功', data={
+            'snapshots': get_ops_ledger().list_daily_snapshots(limit=limit),
+            'target_net_profit': DAILY_NET_PROFIT_TARGET,
+        })
+    except Exception as exc:
+        return api_error(f'经营快照读取失败: {str(exc)}')
+
+
+@app.get('/api/ops/strategy-snapshots')
+def ops_strategy_snapshots():
+    try:
+        limit = _ops_int(request.args, 'limit', 20)
+        action_status = str(request.args.get('action_status') or request.args.get('actionStatus') or '').strip()
+        ledger = get_ops_ledger()
+        return api_ok('诊断快照读取成功', data={
+            'snapshots': ledger.list_strategy_snapshots(limit=limit),
+            'product_issue_actions': ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            ),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        return api_error(f'诊断快照读取失败: {str(exc)}')
+
+
+@app.get('/api/ops/product-issue-actions')
+def ops_product_issue_actions():
+    try:
+        limit = _ops_int(request.args, 'limit', 20)
+        action_status = str(request.args.get('action_status') or request.args.get('actionStatus') or '').strip()
+        action_id = _ops_int(request.args, 'action_id', _ops_int(request.args, 'actionId', 0))
+        ledger = get_ops_ledger()
+        return api_ok('商品问题待办读取成功', data={
+            'product_issue_actions': ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            ),
+            'events': ledger.list_product_issue_action_events(
+                action_id=action_id or None,
+                limit=limit,
+            ),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        return api_error(f'商品问题待办读取失败: {str(exc)}')
+
+
+@app.get('/api/ops/no-brand-title-audit')
+def ops_no_brand_title_audit():
+    try:
+        limit = _ops_int(request.args, 'limit', 200)
+        action_status = str(request.args.get('action_status') or request.args.get('actionStatus') or '').strip()
+        actions = get_ops_ledger().list_product_issue_actions(
+            limit=max(min(limit, 500), 1),
+            action_status=action_status or None,
+        )
+        return api_ok('无品牌标题审计完成', data={
+            'audit': build_no_brand_title_audit(actions),
+            'source_action_count': len(actions),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'无品牌标题审计失败: {str(exc)}')
+
+
+@app.post('/api/ops/no-brand-remediation-plan')
+def ops_no_brand_remediation_plan():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 200), 500), 1)
+        action_status = str(data.get('action_status') or data.get('actionStatus') or '').strip()
+        actions = data.get('product_issue_actions') if isinstance(data.get('product_issue_actions'), list) else None
+        if actions is None:
+            actions = get_ops_ledger().list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            )
+        plan = build_no_brand_remediation_plan(actions)
+        return api_ok('无品牌整改计划已生成', data={
+            'no_brand_remediation_plan': plan,
+            'source_action_count': len(actions),
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions'), list) else 'ledger',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'无品牌整改计划生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/reconcile-strategy-actions')
+def ops_reconcile_strategy_actions():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 500), 500), 1)
+        apply_updates = bool(data.get('apply', data.get('applyUpdates', False)))
+        latest_strategy_snapshot_id = _ops_int(
+            data,
+            'latest_strategy_snapshot_id',
+            _ops_int(data, 'latestStrategySnapshotId', 0),
+        )
+        ledger = get_ops_ledger()
+        actions = data.get('product_issue_actions') if isinstance(data.get('product_issue_actions'), list) else None
+        if actions is None:
+            actions = ledger.list_product_issue_actions(limit=limit)
+        plan = build_strategy_action_reconcile_plan(
+            product_issue_actions=actions,
+            latest_strategy_snapshot_id=latest_strategy_snapshot_id or None,
+        )
+
+        applied = []
+        if apply_updates:
+            for update in plan.get('local_ledger_updates') or []:
+                if not isinstance(update, dict):
+                    continue
+                action_id = _ops_int(update, 'action_id', 0)
+                action_status = str(update.get('recommended_status') or '').strip()
+                if not action_id or not action_status:
+                    continue
+                applied.append(ledger.update_product_issue_action(
+                    action_id=action_id,
+                    action_status=action_status,
+                    note=str(update.get('note') or ''),
+                    evidence=update.get('evidence') if isinstance(update.get('evidence'), dict) else {},
+                ))
+
+        return api_ok('诊断待办状态对齐完成', data={
+            'strategy_action_reconcile_plan': plan,
+            'applied': applied,
+            'applied_count': len(applied),
+            'dry_run': not apply_updates,
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions'), list) else 'ledger',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'诊断待办状态对齐失败: {str(exc)}')
+
+
+@app.post('/api/ops/product-issue-actions/<int:action_id>')
+def ops_update_product_issue_action(action_id):
+    try:
+        data = _ops_request_data()
+        action_status = data.get('action_status') or data.get('actionStatus') or data.get('status')
+        if not action_status:
+            return api_error('action_status 不能为空')
+        evidence = data.get('evidence') if isinstance(data.get('evidence'), dict) else {}
+        updated = get_ops_ledger().update_product_issue_action(
+            action_id=action_id,
+            action_status=str(action_status),
+            note=str(data.get('note') or data.get('action_note') or data.get('actionNote') or ''),
+            evidence=evidence,
+        )
+        events = get_ops_ledger().list_product_issue_action_events(action_id=action_id, limit=5)
+        return api_ok('商品问题待办状态已更新', data={
+            'updated_action': updated,
+            'events': events,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'商品问题待办状态更新失败: {str(exc)}')
+
+
+@app.post('/api/ops/sync-product-record-mappings')
+def ops_sync_product_record_mappings():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 50), 200), 1)
+        min_confidence = _ops_float(data, 'min_confidence', _ops_float(data, 'minConfidence', 0.72))
+        action_status = str(data.get('action_status') or data.get('actionStatus') or '').strip()
+        ledger = get_ops_ledger()
+        actions = data.get('product_issue_actions') if isinstance(data.get('product_issue_actions'), list) else None
+        if actions is None:
+            actions = ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            )
+        shop_products = []
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            shop_products.append({
+                'action_id': action.get('id') or action.get('action_id') or action.get('actionId'),
+                'product_id': action.get('product_id') or action.get('productId'),
+                'title': action.get('title') or '',
+            })
+        local_records = _ops_local_record_mapping_rows()
+        mappings = build_product_record_mappings(
+            shop_products=shop_products,
+            local_records=local_records,
+            min_confidence=min_confidence,
+        )
+        saved = ledger.save_product_record_mappings(mappings)
+        summary = {
+            'total': len(saved),
+            'matched': len([item for item in saved if item.get('match_status') == 'matched']),
+            'unmatched': len([item for item in saved if item.get('match_status') == 'unmatched']),
+            'local_record_count': len(local_records),
+        }
+        return api_ok('线上商品与本地 Record 映射已生成', data={
+            'summary': summary,
+            'mappings': saved,
+            'local_records': local_records,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'线上商品与本地 Record 映射失败: {str(exc)}')
+
+
+@app.get('/api/ops/product-record-mappings')
+def ops_product_record_mappings():
+    try:
+        limit = _ops_int(request.args, 'limit', 20)
+        match_status = str(request.args.get('match_status') or request.args.get('matchStatus') or '').strip()
+        return api_ok('线上商品与本地 Record 映射读取成功', data={
+            'mappings': get_ops_ledger().list_product_record_mappings(
+                limit=limit,
+                match_status=match_status or None,
+            ),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        return api_error(f'线上商品与本地 Record 映射读取失败: {str(exc)}')
+
+
+@app.post('/api/ops/material-gap-plan')
+def ops_material_gap_plan():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 100), 500), 1)
+        action_status = str(data.get('action_status') or data.get('actionStatus') or '').strip()
+        ledger = get_ops_ledger()
+
+        actions = data.get('product_issue_actions') if isinstance(data.get('product_issue_actions'), list) else None
+        if actions is None:
+            actions = ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            )
+
+        mappings = data.get('product_record_mappings') if isinstance(data.get('product_record_mappings'), list) else None
+        if mappings is None:
+            mappings = ledger.list_product_record_mappings(limit=limit)
+
+        no_brand_audit = data.get('no_brand_audit') or data.get('noBrandAudit')
+        if not isinstance(no_brand_audit, dict):
+            no_brand_audit = None
+
+        plan = build_material_gap_plan(actions, mappings, no_brand_audit=no_brand_audit)
+        return api_ok('素材缺口采集计划已生成', data={
+            'material_gap_plan': plan,
+            'source_action_count': len(actions),
+            'source_mapping_count': len(mappings),
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions'), list) else 'ledger',
+            'mappings_source': 'request' if isinstance(data.get('product_record_mappings'), list) else 'ledger',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'素材缺口采集计划生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/sourcing-profit-gate')
+def ops_sourcing_profit_gate():
+    try:
+        data = _ops_request_data()
+        product = _ops_product_from_action(data)
+        if not product:
+            return api_error('product 或 action_id 不能为空')
+
+        scenarios = data.get('scenarios') if isinstance(data.get('scenarios'), list) else []
+        gate = build_sourcing_profit_gate(
+            product=product,
+            scenarios=scenarios,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('采购利润闸已生成', data={
+            'sourcing_profit_gate': gate,
+            'scenario_count': len(scenarios),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'采购利润闸生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/supplier-quote-plan')
+def ops_supplier_quote_plan():
+    try:
+        data = _ops_request_data()
+        product = _ops_product_from_action(data)
+        if not product:
+            return api_error('product 或 action_id 不能为空')
+
+        sourcing_profit_gate = data.get('sourcing_profit_gate') or data.get('sourcingProfitGate')
+        if not isinstance(sourcing_profit_gate, dict):
+            scenarios = data.get('scenarios') if isinstance(data.get('scenarios'), list) else []
+            sourcing_profit_gate = build_sourcing_profit_gate(product=product, scenarios=scenarios)
+        supplier_candidates = data.get('supplier_candidates') or data.get('supplierCandidates')
+        if not isinstance(supplier_candidates, list):
+            supplier_candidates = []
+
+        plan = build_supplier_quote_plan(product, sourcing_profit_gate, supplier_candidates)
+        return api_ok('供应商询价计划已生成', data={
+            'supplier_quote_plan': plan,
+            'candidate_count': len(supplier_candidates),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'供应商询价计划生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/supplier-quote-intake')
+def ops_supplier_quote_intake():
+    try:
+        data = _ops_request_data()
+        product = _ops_product_from_action(data)
+        if not product:
+            return api_error('product 或 action_id 不能为空')
+
+        supplier_quote = data.get('supplier_quote') or data.get('supplierQuote')
+        if not isinstance(supplier_quote, dict):
+            return api_error('supplier_quote 不能为空')
+
+        sourcing_profit_gate = data.get('sourcing_profit_gate') or data.get('sourcingProfitGate')
+        if not isinstance(sourcing_profit_gate, dict):
+            scenarios = data.get('scenarios') if isinstance(data.get('scenarios'), list) else []
+            sourcing_profit_gate = build_sourcing_profit_gate(product=product, scenarios=scenarios)
+
+        intake = build_supplier_quote_intake(
+            product=product,
+            sourcing_profit_gate=sourcing_profit_gate,
+            supplier_quote=supplier_quote,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('供应商报价回传判定已生成', data={
+            'supplier_quote_intake': intake,
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'供应商报价回传判定失败: {str(exc)}')
+
+
+@app.post('/api/ops/execution-queue')
+def ops_execution_queue():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 100), 500), 1)
+        action_status = str(data.get('action_status') or data.get('actionStatus') or '').strip()
+        ledger = get_ops_ledger()
+
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else None
+        if metrics is None:
+            latest = ledger.list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        actions = data.get('product_issue_actions') if isinstance(data.get('product_issue_actions'), list) else None
+        if actions is None:
+            actions = ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            )
+
+        material_gap_plan = data.get('material_gap_plan') or data.get('materialGapPlan')
+        if not isinstance(material_gap_plan, dict):
+            mappings = data.get('product_record_mappings') if isinstance(data.get('product_record_mappings'), list) else None
+            if mappings is None:
+                mappings = ledger.list_product_record_mappings(limit=limit)
+            no_brand_audit = data.get('no_brand_audit') or data.get('noBrandAudit')
+            if not isinstance(no_brand_audit, dict):
+                no_brand_audit = None
+            material_gap_plan = build_material_gap_plan(actions, mappings, no_brand_audit=no_brand_audit)
+
+        supplier_quote_plan = (
+            data.get('supplier_quote_plan')
+            or data.get('supplierQuotePlan')
+            or data.get('supplier_quote_plans')
+            or data.get('supplierQuotePlans')
+        )
+        conversion_experiment_plan = data.get('conversion_experiment_plan') or data.get('conversionExperimentPlan')
+        if not isinstance(conversion_experiment_plan, dict):
+            conversion_experiment_plan = None
+
+        queue = build_ops_execution_queue(
+            metrics=metrics,
+            product_issue_actions=actions,
+            material_gap_plan=material_gap_plan,
+            supplier_quote_plan=supplier_quote_plan,
+            conversion_experiment_plan=conversion_experiment_plan,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('运营执行队列已生成', data={
+            'execution_queue': queue,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) else 'latest_snapshot',
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions'), list) else 'ledger',
+            'source_action_count': len(actions),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'运营执行队列生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/portfolio-path-to-500')
+def ops_portfolio_path_to_500():
+    try:
+        data = _ops_request_data()
+        limit = max(min(_ops_int(data, 'limit', 100), 500), 1)
+        action_status = str(data.get('action_status') or data.get('actionStatus') or '').strip()
+        ledger = get_ops_ledger()
+
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else None
+        if metrics is None:
+            latest = ledger.list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        actions = data.get('product_issue_actions') or data.get('productIssueActions')
+        if not isinstance(actions, list):
+            actions = ledger.list_product_issue_actions(
+                limit=limit,
+                action_status=action_status or None,
+            )
+
+        plan = build_portfolio_path_to_500(
+            metrics=metrics,
+            product_issue_actions=actions,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('500元组合路径已生成', data={
+            'portfolio_path_to_500': plan,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) else 'latest_snapshot',
+            'actions_source': 'request' if isinstance(data.get('product_issue_actions') or data.get('productIssueActions'), list) else 'ledger',
+            'source_action_count': len(actions),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'500元组合路径生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/first-order-decision-matrix')
+def ops_first_order_decision_matrix():
+    try:
+        data = _ops_request_data()
+        ledger = get_ops_ledger()
+
+        baseline_metrics = data.get('baseline_metrics') or data.get('baselineMetrics')
+        if not isinstance(baseline_metrics, dict):
+            latest = ledger.list_daily_snapshots(limit=1)
+            baseline_metrics = latest[0] if latest else {}
+
+        current_metrics = data.get('current_metrics') or data.get('currentMetrics') or data.get('metrics')
+        if not isinstance(current_metrics, dict):
+            current_metrics = baseline_metrics
+
+        action = data.get('action') if isinstance(data.get('action'), dict) else None
+        action_id = _ops_int(data, 'action_id', _ops_int(data, 'actionId', 0))
+        if action is None and action_id:
+            actions = ledger.list_product_issue_actions(limit=500)
+            for row in actions:
+                if int(row.get('id') or 0) == int(action_id):
+                    action = row
+                    break
+        if action is None:
+            action = {}
+
+        save_gate = data.get('save_gate') or data.get('saveGate')
+        if not isinstance(save_gate, dict):
+            evidence = action.get('evidence') if isinstance(action.get('evidence'), dict) else {}
+            save_gate = evidence.get('save_edit_human_gate') if isinstance(evidence.get('save_edit_human_gate'), dict) else {}
+
+        matrix = build_first_order_decision_matrix(
+            baseline_metrics=baseline_metrics,
+            current_metrics=current_metrics,
+            action=action,
+            save_gate=save_gate,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+            saved_confirmed=bool(data.get('saved_confirmed') if 'saved_confirmed' in data else data.get('savedConfirmed', False)),
+        )
+        return api_ok('首单决策矩阵已生成', data={
+            'first_order_decision_matrix': matrix,
+            'baseline_metrics_source': 'request' if isinstance(data.get('baseline_metrics') or data.get('baselineMetrics'), dict) else 'latest_snapshot',
+            'current_metrics_source': 'request' if isinstance(data.get('current_metrics') or data.get('currentMetrics') or data.get('metrics'), dict) else 'baseline_metrics',
+            'action_source': 'request' if isinstance(data.get('action'), dict) else ('ledger' if action_id else 'empty'),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'首单决策矩阵生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/net-profit-verification-matrix')
+def ops_net_profit_verification_matrix():
+    try:
+        data = _ops_request_data()
+        orders = data.get('orders') if isinstance(data.get('orders'), list) else []
+        matrix = build_net_profit_verification_matrix(
+            orders=orders,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+        )
+        return api_ok('经营净利核验矩阵已生成', data={
+            'net_profit_verification_matrix': matrix,
+            'orders_source': 'request' if isinstance(data.get('orders'), list) else 'empty',
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'经营净利核验矩阵生成失败: {str(exc)}')
+
+
+@app.post('/api/ops/post-save-conversion-monitor')
+def ops_post_save_conversion_monitor():
+    try:
+        data = _ops_request_data()
+        ledger = get_ops_ledger()
+
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else None
+        if metrics is None:
+            latest = ledger.list_daily_snapshots(limit=1)
+            metrics = latest[0] if latest else {}
+
+        action = data.get('action') if isinstance(data.get('action'), dict) else None
+        action_id = _ops_int(data, 'action_id', _ops_int(data, 'actionId', 0))
+        if action is None and action_id > 0:
+            actions = ledger.list_product_issue_actions(limit=500)
+            action = next(
+                (item for item in actions if int(item.get('id') or 0) == action_id),
+                {},
+            )
+        if action is None:
+            action = {}
+
+        save_gate = data.get('save_gate') or data.get('saveGate')
+        if not isinstance(save_gate, dict):
+            save_gate = {}
+        if not save_gate and isinstance(action, dict):
+            action_evidence = action.get('evidence')
+            if not isinstance(action_evidence, dict):
+                evidence_json = action.get('evidence_json')
+                if evidence_json:
+                    try:
+                        parsed_evidence = json.loads(str(evidence_json))
+                        action_evidence = parsed_evidence if isinstance(parsed_evidence, dict) else {}
+                    except Exception:
+                        action_evidence = {}
+            if isinstance(action_evidence, dict) and isinstance(action_evidence.get('save_edit_human_gate'), dict):
+                save_gate = dict(action_evidence.get('save_edit_human_gate') or {})
+
+        conversion_experiment_plan = data.get('conversion_experiment_plan') or data.get('conversionExperimentPlan')
+        if not isinstance(conversion_experiment_plan, dict):
+            conversion_experiment_plan = None
+
+        raw_saved_confirmed = data.get('saved_confirmed', data.get('savedConfirmed', False))
+        saved_confirmed = (
+            raw_saved_confirmed is True
+            or str(raw_saved_confirmed).strip().lower() in {'1', 'true', 'yes', 'y'}
+        )
+
+        monitor = build_post_save_conversion_monitor(
+            metrics=metrics,
+            action=action,
+            save_gate=save_gate,
+            conversion_experiment_plan=conversion_experiment_plan,
+            target_net_profit=_ops_float(data, 'target_net_profit', _ops_float(data, 'targetNetProfit', DAILY_NET_PROFIT_TARGET)),
+            saved_confirmed=saved_confirmed,
+        )
+        return api_ok('保存后转化复盘闸已生成', data={
+            'post_save_conversion_monitor': monitor,
+            'metrics_source': 'request' if isinstance(data.get('metrics'), dict) else 'latest_snapshot',
+            'action_source': 'request' if isinstance(data.get('action'), dict) else ('ledger' if action_id > 0 else 'empty'),
+            'ai_policy': dict(AI_POLICY),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return api_error(f'保存后转化复盘闸生成失败: {str(exc)}')
+
+
 @app.post('/internal/terminate')
 def terminate_backend():
     remote_addr = str(request.remote_addr or '').strip()
@@ -797,7 +2780,7 @@ def _debug_root_dir():
     if getattr(sys, 'frozen', False):
         base_dir = get_app_root()
     else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base_dir = repo_root
     target = os.path.join(base_dir, 'output', 'browser-debug')
     os.makedirs(target, exist_ok=True)
     return target
@@ -2276,43 +4259,10 @@ def delete_sku():
         return api_error(f'删除失败：{str(e)}')
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.get_json().get('username')
-        password = request.get_json().get('password')
-        remember = request.get_json().get('remember') == 'on'
-        if username == 'your_username' and password == 'your_password':
-            update_payload(username, remember)
-            return api_ok('登录成功！')
-        else:
-            return api_error('账号密码不正确！')
-    else:
-        # gui.window.label.hide()  # 移除这行代码
-        return render_template('login.html')
-
-
-@app.delete('/logout')
-def logout():
-    try:
-        update_payload(None, True)
-        return api_ok('注销成功！')
-    except:
-        pass
-    return api_error('注销失败！')
-
-
 @app.get('/')
 def index():
-    record_list = []
-    for record in Record.select().execute():
-        arr = record.name.split('_')
-        record_list.append({
-            'id': record.id,
-            'name': record.name if len(arr) < 4 else arr[3],
-            'update_time': record.update_time.strftime('%Y-%m-%d %H:%M')
-        })
-    return render_template('/view/operate/index.html', ctx=constants, record_list=record_list)
+    """根路径：仅返回 sidecar 存活标识"""
+    return api_ok('sidecar running')
 
 
 @app.get('/api/products')
@@ -2502,6 +4452,34 @@ def _wait_login_complete(page, report_progress):
     return False
 
 
+def _attach_reusable_logged_in_fxg_browser(report_progress):
+    try:
+        reusable = _find_reusable_logged_in_fxg_browser(verify=True)
+    except Exception as exc:
+        print(f'查找已登录抖店浏览器失败: {exc}')
+        return None
+
+    selected = reusable.get('selected_browser') or {}
+    debug_address = _normalize_debug_address(selected.get('debug_address') or '')
+    if not debug_address:
+        return None
+
+    matched_url = selected.get('matched_url') or ''
+    report_progress(13, f'复用已登录抖店浏览器 {debug_address}')
+    print(f'复用已登录抖店浏览器: {debug_address} {matched_url}')
+    try:
+        tab, _meta = _get_current_browser_tab(
+            create_if_missing=False,
+            mode='attach',
+            debug_address=debug_address,
+            existing_only=True,
+        )
+        return tab
+    except Exception as exc:
+        print(f'附着已登录抖店浏览器失败: {exc}')
+        return None
+
+
 def _load_upload_records(record_id=None):
     if record_id:
         record = Record.get_or_none(Record.id == record_id)
@@ -2545,26 +4523,43 @@ def _load_upload_runtime_config():
 def _ensure_publish_session(report_progress):
     opened_new_browser = False
 
-    if not gui.page:
-        report_progress(13, '正在打开浏览器并进入发布页面')
+    if gui.page:
         try:
-            gui.page = get_page(_PUBLISH_CREATE_URL)
-            opened_new_browser = True
-        except Exception as exc:
-            traceback.print_exc()
-            return None, f'浏览器启动失败：{exc}'
+            current_tab = gui.page.get_tab(gui.page.latest_tab)
+            current_url = str(current_tab.url or '')
+        except Exception:
+            current_url = ''
+        if not is_logged_in_fxg_target_url(current_url):
+            reusable_tab = _attach_reusable_logged_in_fxg_browser(report_progress)
+            if reusable_tab is not None:
+                opened_new_browser = False
+
+    if not gui.page:
+        reusable_tab = _attach_reusable_logged_in_fxg_browser(report_progress)
+        if reusable_tab is None:
+            report_progress(13, '正在打开浏览器并进入发布页面')
+            try:
+                gui.page = get_page(_PUBLISH_CREATE_URL)
+                opened_new_browser = True
+            except Exception as exc:
+                traceback.print_exc()
+                return None, f'浏览器启动失败：{exc}'
 
     try:
         main_tab = gui.page.get_tab(gui.page.latest_tab)
     except Exception:
-        report_progress(13, '正在重新打开浏览器并进入发布页面')
-        try:
-            gui.page = get_page(_PUBLISH_CREATE_URL)
-            opened_new_browser = True
-        except Exception as exc:
-            traceback.print_exc()
-            return None, f'浏览器恢复失败：{exc}'
-        main_tab = gui.page.get_tab(gui.page.latest_tab)
+        reusable_tab = _attach_reusable_logged_in_fxg_browser(report_progress)
+        if reusable_tab is not None:
+            main_tab = reusable_tab
+        else:
+            report_progress(13, '正在重新打开浏览器并进入发布页面')
+            try:
+                gui.page = get_page(_PUBLISH_CREATE_URL)
+                opened_new_browser = True
+            except Exception as exc:
+                traceback.print_exc()
+                return None, f'浏览器恢复失败：{exc}'
+            main_tab = gui.page.get_tab(gui.page.latest_tab)
 
     if not opened_new_browser:
         report_progress(13, '正在进入商品发布页面')
@@ -2672,8 +4667,71 @@ def _build_overlay_button_selector(scope_expr=None):
     return f'xpath:{base}[{predicate}]'
 
 
-def _find_first_visible_element(tab, selectors, timeout=0.15):
+_VISIBLE_SELECTOR_PROBE_JS = r'''
+const specs = arguments[0] || [];
+for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    let nodes = [];
+    try {
+        if (spec.t === 'x') {
+            const found = document.evaluate(spec.e, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            for (let j = 0; j < found.snapshotLength; j++) nodes.push(found.snapshotItem(j));
+        } else {
+            nodes = Array.prototype.slice.call(document.querySelectorAll(spec.e));
+        }
+    } catch (err) {
+        continue;
+    }
+    for (let k = 0; k < nodes.length; k++) {
+        const node = nodes[k];
+        if (!node || node.nodeType !== 1) continue;
+        if (node.offsetParent || node.getClientRects().length > 0) return i;
+    }
+}
+return -1;
+'''
+
+
+def _first_visible_selector_index(tab, selectors):
+    """用一次 JS 批量判定哪个选择器命中可见元素。
+
+    返回命中下标；全部落空返回 -1；JS 不可用返回 None（调用方回退原逐个探测）。
+
+    DrissionPage 的 ele/eles 在**未命中时会阻塞满 timeout** 才返回，
+    所以「准备 N 个候选选择器逐个试」的落空成本是 N × timeout，
+    常见组合就是 1~2.5 秒的纯空转。先用一次 JS 判定可把它压成一次往返。
+    """
+    specs = []
     for selector in selectors:
+        text = str(selector)
+        if text.startswith('xpath:'):
+            specs.append({'t': 'x', 'e': text[6:]})
+        elif text.startswith('css:'):
+            specs.append({'t': 'c', 'e': text[4:]})
+        else:
+            specs.append({'t': 'c', 'e': text})
+    if not specs:
+        return -1
+    try:
+        index = tab.run_js(_VISIBLE_SELECTOR_PROBE_JS, specs)
+    except Exception:
+        return None
+    if isinstance(index, bool) or not isinstance(index, (int, float)):
+        return None
+    return int(index)
+
+
+def _find_first_visible_element(tab, selectors, timeout=0.15):
+    ordered = list(selectors)
+    index = _first_visible_selector_index(tab, ordered)
+    if index is not None:
+        if index < 0:
+            return None
+        # 命中的选择器排到最前，其余保留作兜底（JS 可见性判据与
+        # DrissionPage states.is_displayed 极少数情况下可能不一致）
+        ordered = [ordered[index]] + [item for pos, item in enumerate(ordered) if pos != index]
+
+    for selector in ordered:
         try:
             elements = tab.eles(selector, timeout=timeout)
         except Exception:
@@ -2799,6 +4857,86 @@ def _get_title_input(main_tab, timeout=0.3):
     return None
 
 
+def _find_title_brand_name_checkbox(main_tab):
+    try:
+        title_field = main_tab.ele('xpath://div[@attr-field-id="商品标题"]', timeout=0.2)
+    except Exception:
+        title_field = None
+    if not title_field:
+        return None, None
+
+    label = None
+    label_selectors = [
+        'xpath:.//*[normalize-space(.)="使用品牌名"]/ancestor::label[1]',
+        'xpath:.//*[contains(normalize-space(.),"使用品牌名")]/ancestor::label[1]',
+    ]
+    for selector in label_selectors:
+        try:
+            item = title_field.ele(selector, timeout=0.08)
+        except Exception:
+            item = None
+        if item:
+            label = item
+            break
+
+    checkbox = None
+    search_scope = label or title_field
+    checkbox_selectors = [
+        'xpath:.//input[@type="checkbox"]',
+        'xpath:.//*[@role="checkbox"]',
+    ]
+    for selector in checkbox_selectors:
+        try:
+            item = search_scope.ele(selector, timeout=0.08)
+        except Exception:
+            item = None
+        if item:
+            checkbox = item
+            break
+    return checkbox, label
+
+
+def _checkbox_is_checked(element):
+    if not element:
+        return False
+    for attr_name in ('checked', 'aria-checked'):
+        try:
+            raw_value = element.attr(attr_name)
+        except Exception:
+            raw_value = None
+        if str(raw_value).strip().lower() in ('true', 'checked', '1'):
+            return True
+    try:
+        return bool(
+            element.run_js(
+                'return !!this.checked || this.getAttribute("aria-checked") === "true" || '
+                '!!(this.closest("label") && String(this.closest("label").className || "").includes("checked"));'
+            )
+        )
+    except Exception:
+        return False
+
+
+def _ensure_title_brand_name_disabled(main_tab):
+    checkbox, label = _find_title_brand_name_checkbox(main_tab)
+    if not checkbox:
+        return
+    if not _checkbox_is_checked(checkbox):
+        return
+
+    print('取消标题区“使用品牌名”')
+    target = label or checkbox
+    if not _click_element_safely(target):
+        raise Exception('标题区“使用品牌名”取消失败')
+
+    if not _wait_until(
+        lambda: not _checkbox_is_checked(_find_title_brand_name_checkbox(main_tab)[0]),
+        timeout=0.8,
+        interval=0.05,
+    ):
+        raise Exception('标题区“使用品牌名”仍处于勾选状态')
+
+
 _PUBLISH_STEP1_SELECTORS = [
     'xpath://button[.//span[text()="下一步"]]',
     'xpath://span[text()="下一步"]/..',
@@ -2808,6 +4946,9 @@ _PUBLISH_STEP1_SELECTORS = [
 
 _PUBLISH_STEP2_SELECTORS = [
     'xpath://div[@attr-field-id="价格与库存"]',
+    'xpath://div[@id="goodsEditScrollContainer-价格库存"]',
+    'xpath://div[@attr-field-id="售卖价"]',
+    'xpath://div[@attr-field-id="订单库存计数"]',
     'xpath://div[@attr-field-id="主图3:4"]',
     'xpath://div[@attr-field-id="主图视频"]',
     'xpath://div[@attr-field-id="商品类目"]//*[text()="修改"]',
@@ -2826,11 +4967,55 @@ def _is_any_selector_visible(main_tab, selectors, timeout=0.05):
     return _find_first_visible_element(main_tab, selectors, timeout=timeout) is not None
 
 
+_PUBLISH_STAGE_PROBE_JS = r'''
+const step2 = arguments[0] || [];
+const step1 = arguments[1] || [];
+const visible = function (node) {
+    return !!node && node.nodeType === 1 && (node.offsetParent || node.getClientRects().length > 0);
+};
+const anyVisible = function (xpaths) {
+    for (let i = 0; i < xpaths.length; i++) {
+        try {
+            const found = document.evaluate(xpaths[i], document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            for (let j = 0; j < found.snapshotLength; j++) {
+                if (visible(found.snapshotItem(j))) return true;
+            }
+        } catch (err) {
+            continue;
+        }
+    }
+    return false;
+};
+if (anyVisible(step2)) return 'step2';
+const titleField = document.querySelector('[attr-field-id="商品标题"]');
+let titleReady = false;
+if (titleField) {
+    titleReady = visible(titleField.querySelector('#pg-title-input') || titleField.querySelector('input') || titleField.querySelector('textarea'));
+}
+if (titleReady || anyVisible(step1)) return 'step1';
+return 'unknown';
+'''
+
+
 def _detect_publish_page_stage(main_tab):
     current_url = _get_current_tab_url(main_tab)
     if '/ffa/g/create' not in current_url:
         return 'outside'
 
+    # 一次 JS 判定整页阶段。原实现要逐个探测 13~18 条 XPath（约 0.6~0.9s），
+    # 而本函数是 _wait_until(interval=0.1) 的判据，会让轮询间隔彻底失效。
+    try:
+        stage = main_tab.run_js(
+            _PUBLISH_STAGE_PROBE_JS,
+            [item[6:] for item in _PUBLISH_STEP2_SELECTORS],
+            [item[6:] for item in _PUBLISH_STEP1_SELECTORS],
+        )
+    except Exception:
+        stage = None
+    if stage in ('step1', 'step2', 'unknown'):
+        return stage
+
+    # JS 不可用时回退到逐个探测
     if _is_any_selector_visible(main_tab, _PUBLISH_STEP2_SELECTORS, timeout=0.05):
         return 'step2'
 
@@ -2845,30 +5030,70 @@ def _detect_publish_page_stage(main_tab):
     return 'unknown'
 
 
+def _click_return_to_old_version(main_tab):
+    """检测新版 AI 生成引导页并点击"返回旧版"按钮。
+
+    2026-08 抖店新版发品页把"返回旧版"改成直接持有文本的
+    <div class="styles-module_lightButton__...">，React onClick 绑定在该 div 自身。
+    旧的 //span[text()="返回旧版"]/.. 选择器实测命中 0 个节点，导致 _open_publish_page
+    在入口就返回失败。这里按文本直接命中持有点击句柄的元素本身，保留旧结构兜底。
+    """
+    btn = _find_first_visible_element(
+        main_tab,
+        [
+            'xpath://div[normalize-space(text())="返回旧版"]',
+            'xpath://*[normalize-space(text())="返回旧版"]',
+            'xpath://button[.//span[text()="返回旧版"]]',
+            'xpath://span[text()="返回旧版"]/..',
+            'xpath://span[text()="返回旧版"]',
+        ],
+        timeout=0.5,
+    )
+    if not btn:
+        return False
+    print('检测到新版AI引导页，点击"返回旧版"')
+    return _click_element_safely(btn)
+
+
 def _open_publish_page(main_tab, report_progress):
     print('打开商品发布页面...')
     report_progress(22, '正在打开商品发布页面')
     _dismiss_pending_browser_alert(main_tab)
 
-    stage = _detect_publish_page_stage(main_tab)
+    def _settle_to_stage(targets, timeout):
+        """轮询到页面进入目标阶段；停在新版 AI 引导页时点一次「返回旧版」。
+
+        取代原先「固定 sleep(1.0) + 点返回旧版 + 固定 sleep(1.5)」的写法：
+        那些延时没有任何判据，页面快时纯浪费、页面慢时又不够。
+        """
+        deadline = system_time.perf_counter() + timeout
+        clicked_old = False
+        stage = _detect_publish_page_stage(main_tab)
+        while True:
+            if stage in targets:
+                return stage
+            if stage == 'unknown' and not clicked_old:
+                # AI 引导页在本函数的判据里就是 unknown
+                clicked_old = _click_return_to_old_version(main_tab)
+            if system_time.perf_counter() >= deadline:
+                return stage
+            system_time.sleep(0.1)
+            stage = _detect_publish_page_stage(main_tab)
+
+    # 会话可能刚导航到发布页，React 尚未 hydrate；先给一小段时间等它渲染，
+    # 避免因为「检测早了一步」判成 unknown 而白白再整页重载一次。
+    stage = _settle_to_stage(('step1', 'step2'), timeout=3.0)
     if stage not in ('step1', 'step2'):
         main_tab.get(_PUBLISH_CREATE_URL)
-        if not _wait_until(
-            lambda: _detect_publish_page_stage(main_tab) in ('step1', 'step2'),
-            timeout=10,
-            interval=0.1,
-        ):
+        stage = _settle_to_stage(('step1', 'step2'), timeout=10)
+        if stage not in ('step1', 'step2'):
             return False
 
-    stage = _detect_publish_page_stage(main_tab)
     if stage == 'step2':
         report_progress(22, '检测到停留在第二页面，正在返回第一页')
         main_tab.get(_PUBLISH_CREATE_URL)
-        if not _wait_until(
-            lambda: _detect_publish_page_stage(main_tab) == 'step1',
-            timeout=10,
-            interval=0.1,
-        ):
+        stage = _settle_to_stage(('step1',), timeout=10)
+        if stage != 'step1':
             return False
     elif stage != 'step1':
         return False
@@ -2894,11 +5119,15 @@ def _fill_title_for_record(main_tab, record):
     input_element = _get_title_input(main_tab, timeout=0.4)
     if not input_element:
         raise Exception('未找到商品标题输入框')
+    safe_title = sanitize_no_brand_title_text(record.title)
+    if not safe_title:
+        raise Exception('商品标题清理品牌后为空，不能继续发布')
+    _ensure_title_brand_name_disabled(main_tab)
     input_element.click()
     time.sleep(0.05)
-    input_element.input(record.title)
+    input_element.input(safe_title)
     if not _wait_until(
-        lambda: str(input_element.attr('value') or '').strip() == str(record.title or '').strip(),
+        lambda: str(input_element.attr('value') or '').strip() == safe_title,
         timeout=0.8,
         interval=0.05,
     ):
@@ -3090,7 +5319,8 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
         print('处理船袜类目属性...')
         main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
 
-        select_text(main_tab, '品牌', '无品牌')
+        if not ensure_no_brand(main_tab):
+            raise Exception('品牌未能设置为「无品牌」')
         if has_material_field:
             material_ok = set_material_composition(main_tab, configured_materials, material_field_name)
             timer_record('类目属性阶段', f'{material_field_name}配置写入', 0, system_time.perf_counter() - category_attr_timer_start, material_ok)
@@ -3116,7 +5346,8 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
                     interval=0.03,
                 )
 
-        select_text(main_tab, '品牌', '无品牌')
+        if not ensure_no_brand(main_tab):
+            raise Exception('品牌未能设置为「无品牌」')
         if has_audience_field:
             select_text(main_tab, '适用人群', '成人')
         if has_gender_field:
@@ -3138,7 +5369,8 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             print('页面无“面料材质/材质”字段，跳过材质配置')
         timer_record('类目属性阶段', f'{material_field_name or "材质"}配置写入', 0, system_time.perf_counter() - step_timer_start, material_ok)
         step_timer_start = system_time.perf_counter()
-        select_text(main_tab, '品牌', '无品牌')
+        if not ensure_no_brand(main_tab):
+            raise Exception('品牌未能设置为「无品牌」')
         if has_audience_field:
             select_text(main_tab, '适用人群', '成人')
         if has_gender_field:
@@ -3378,9 +5610,75 @@ def _upload_media_assets(main_tab, sub_pic_list, my_video, white_pic, detail_pic
     timer_record('媒体上传阶段', '总计', 0, system_time.perf_counter() - media_timer_start, True)
 
 
+def _find_price_stock_root(main_tab, timeout=0.2):
+    selectors = [
+        'xpath://div[@attr-field-id="价格与库存"]',
+        'xpath://div[@id="goodsEditScrollContainer-价格库存"]',
+        'xpath://div[@attr-field-id="售卖价"]/ancestor::div[@id="goodsEditScrollContainer-价格库存"][1]',
+        'xpath://div[@attr-field-id="订单库存计数"]/ancestor::div[@id="goodsEditScrollContainer-价格库存"][1]',
+    ]
+    return _find_first_visible_element(main_tab, selectors, timeout=timeout)
+
+
+def _scroll_to_price_stock_area(main_tab, timeout=2.0):
+    price_stock_root = _find_price_stock_root(main_tab, timeout=0.1)
+    if price_stock_root:
+        try:
+            price_stock_root.scroll.to_see()
+        except Exception:
+            try:
+                price_stock_root.scroll.to_center()
+            except Exception:
+                pass
+        return price_stock_root
+
+    legacy_title = None
+    try:
+        legacy_title = main_tab.ele('xpath://span[text()="价格与库存"]', timeout=0.1)
+    except Exception:
+        legacy_title = None
+    if legacy_title:
+        try:
+            legacy_title.scroll.to_see()
+        except Exception:
+            pass
+
+    if _wait_until(lambda: bool(_find_price_stock_root(main_tab, timeout=0.05)), timeout=timeout, interval=0.05):
+        return _find_price_stock_root(main_tab, timeout=0.1)
+    raise Exception('未找到价格库存区域')
+
+
+def _find_manual_sku_mode_button(main_tab):
+    selectors = [
+        'xpath://button[.//*[contains(normalize-space(.),"切换手动填写")] or contains(normalize-space(.),"切换手动填写")]',
+        'xpath://*[contains(normalize-space(.),"切换手动填写")]/ancestor::button[1]',
+    ]
+    return _find_first_visible_element(main_tab, selectors, timeout=0.1)
+
+
+def _ensure_manual_sku_entry_mode(main_tab):
+    if _sku_color_type_exists(main_tab):
+        return
+
+    _scroll_to_price_stock_area(main_tab)
+    switch_button = _find_manual_sku_mode_button(main_tab)
+    if switch_button:
+        print('切换规格设置 -> 手动填写')
+        if not _click_element_safely(switch_button):
+            raise Exception('SKU手动填写按钮点击失败')
+        _wait_until(
+            lambda: _sku_color_type_exists(main_tab) or bool(_find_add_spec_type_button(_find_goods_spec_field(main_tab))),
+            timeout=2.0,
+            interval=0.05,
+        )
+
+    if _find_manual_sku_mode_button(main_tab) and not _sku_color_type_exists(main_tab):
+        raise Exception('SKU手动填写模式未成功展开')
+
+
 def _configure_sku_entries(main_tab, sku_list, remark, record=None):
     _dismiss_interfering_overlays(main_tab, context='configure_sku_entries')
-    main_tab.ele('xpath://span[text()="价格与库存"]').scroll.to_see()
+    _scroll_to_price_stock_area(main_tab)
 
     print('选择发货时间 -> 48小时')
     ship_time = main_tab.ele('xpath://span[text()="48小时"]', timeout=1)
@@ -3388,6 +5686,7 @@ def _configure_sku_entries(main_tab, sku_list, remark, record=None):
         raise Exception('未找到发货时间选项：48小时')
     ship_time.click()
 
+    _ensure_manual_sku_entry_mode(main_tab)
     _ensure_color_sku_type(main_tab)
 
     # 勾选添加规格图片（SKU图片上传必需）
@@ -3440,10 +5739,12 @@ def _sku_color_type_exists(main_tab) -> bool:
 
 
 def _find_goods_spec_field(main_tab):
-    try:
-        return main_tab.ele('xpath://div[@attr-field-id="商品规格"]', timeout=1)
-    except Exception:
-        return None
+    selectors = [
+        'xpath://div[@attr-field-id="商品规格"]',
+        'xpath://div[@id="goodsEditScrollContainer-价格库存"]',
+        'xpath://div[@attr-field-id="售卖价"]/ancestor::div[@id="goodsEditScrollContainer-价格库存"][1]',
+    ]
+    return _find_first_visible_element(main_tab, selectors, timeout=0.2)
 
 
 def _find_add_spec_type_button(spec_field):
@@ -3576,9 +5877,12 @@ def _sku_size_has_uniform(main_tab) -> bool:
         except Exception:
             continue
     try:
+        price_stock_root = _find_price_stock_root(main_tab, timeout=0.05)
+        if not price_stock_root:
+            return False
         return bool(
-            main_tab.ele(
-                'xpath://div[@attr-field-id="价格与库存"]//td[contains(@class,"attr-column-field_spec_1")]//*[normalize-space(.)="均码"]',
+            price_stock_root.ele(
+                'xpath:.//td[contains(@class,"attr-column-field_spec_1")]//*[normalize-space(.)="均码"]',
                 timeout=0.05,
             )
         )
@@ -3708,10 +6012,37 @@ def _configure_sku_structure(main_tab):
     _dismiss_interfering_overlays(main_tab, context='configure_sku_structure')
 
 
+# 价格库存表整表扫描：一次 CDP 往返取回所有已渲染行的 key、规格文本与当前值，
+# 替代「逐行 × 多次属性读取」的 DrissionPage 调用，显著降低填写过程的卡顿。
+_PRICE_STOCK_ROW_SCAN_JS = r'''
+const rows = this.querySelectorAll('tr[class*="ecom-g-table-row"]');
+const out = [];
+for (let i = 0; i < rows.length; i++) {
+    const tr = rows[i];
+    if (!tr.offsetParent && tr.getClientRects().length === 0) continue;
+    const specs = tr.querySelectorAll('td[class*="attr-column-field_spec_"]');
+    const texts = [];
+    for (let j = 0; j < specs.length; j++) {
+        const text = (specs[j].innerText || specs[j].textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) texts.push(text);
+    }
+    const priceInput = tr.querySelector('td[class*="attr-column-field_price"] input');
+    const stockInput = tr.querySelector('td[class*="attr-column-field_stock_info"] input');
+    out.push({
+        key: tr.getAttribute('data-row-key') || '',
+        texts: texts,
+        price: priceInput ? (priceInput.value || '') : null,
+        stock: stockInput ? (stockInput.value || '') : null
+    });
+}
+return out;
+'''
+
+
 def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template_name):
     print('设置价格和库存...')
     _dismiss_interfering_overlays(main_tab, context='fill_price_and_stock')
-    price_stock_root = main_tab.ele('xpath://div[@attr-field-id="价格与库存"]')
+    price_stock_root = _find_price_stock_root(main_tab)
     if not price_stock_root:
         raise Exception('未找到价格与库存区域')
 
@@ -3748,6 +6079,16 @@ def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template
             variants.append(inline_name)
         return variants
 
+    def _identity_from_texts(spec_texts):
+        name_text = spec_texts[0] if spec_texts else ''
+        size_text = _strip_tail_parentheses(spec_texts[1]) if len(spec_texts) > 1 else ''
+        inline_name, inline_size = _split_sku_name(name_text)
+        if inline_size and not size_text:
+            size_text = inline_size
+        if inline_name:
+            name_text = inline_name
+        return _norm_text(name_text), _norm_text(size_text)
+
     def _row_identity(row):
         spec_texts = []
         try:
@@ -3761,14 +6102,7 @@ def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template
                 text = ''
             if text:
                 spec_texts.append(text)
-        name_text = spec_texts[0] if spec_texts else ''
-        size_text = _strip_tail_parentheses(spec_texts[1]) if len(spec_texts) > 1 else ''
-        inline_name, inline_size = _split_sku_name(name_text)
-        if inline_size and not size_text:
-            size_text = inline_size
-        if inline_name:
-            name_text = inline_name
-        return _norm_text(name_text), _norm_text(size_text)
+        return _identity_from_texts(spec_texts)
 
     def _row_matches(row_name, row_size, sku_name):
         expected_name, expected_size = _split_sku_name(sku_name)
@@ -3807,6 +6141,81 @@ def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template
         except Exception:
             return None
 
+    def _scan_rows(root):
+        """一次往返取回所有已渲染行的 key / 规格文本 / 当前值。
+
+        逐行走 DrissionPage 属性读取每行要 4~5 次 CDP 往返（可见性、规格单元格、
+        单元格文本、data-row-key），再叠加等待重渲染的轮询后可达数千次，
+        是填写过程卡顿的主因。这里用一次整表 JS 扫描替代；
+        JS 不可用时回退到逐行读取，保证功能不依赖该优化。
+
+        返回 (rows, blank_row_count)，rows 元素为
+        {'key','name','size','price','stock'}，name/size 已按既有规则规范化。
+        """
+        raw = None
+        try:
+            raw = root.run_js(_PRICE_STOCK_ROW_SCAN_JS)
+        except Exception:
+            raw = None
+
+        rows = []
+        blank = 0
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                texts = [_norm_text(text) for text in (item.get('texts') or [])]
+                texts = [text for text in texts if text]
+                name, size = _identity_from_texts(texts)
+                if not name and not size:
+                    blank += 1
+                    continue
+                rows.append({
+                    'key': _norm_text(item.get('key')) or f'{name}||{size}',
+                    'name': name,
+                    'size': size,
+                    'price': item.get('price'),
+                    'stock': item.get('stock'),
+                })
+            return rows, blank
+
+        for row in _visible_rows(root):
+            name, size = _row_identity(row)
+            if not name and not size:
+                blank += 1
+                continue
+            rows.append({
+                'key': _row_key(row, name, size),
+                'name': name,
+                'size': size,
+                'price': None,
+                'stock': None,
+                'element': row,
+            })
+        return rows, blank
+
+    def _find_row_by_identity(root, row_name, row_size):
+        """没有 data-row-key 时的慢路径：遍历可见行按规格文本定位。"""
+        for row in _visible_rows(root):
+            name, size = _row_identity(row)
+            if name == row_name and size == row_size:
+                return row
+        return None
+
+    def _refresh_row(root, row_key):
+        """按 data-row-key 重新解析行元素。
+
+        虚拟列表在 scroll.to_center() 后可能重新挂载行，旧句柄随之失效，
+        继续拿旧句柄取输入框只会得到 None。row_key 为回退值（name||size）时
+        无法精确定位，返回 None 交由调用方走下一轮重扫。
+        """
+        if not row_key or '||' in row_key:
+            return None
+        try:
+            return root.ele(f'xpath:.//tr[@data-row-key={_xpath_literal(row_key)}]', timeout=0.3)
+        except Exception:
+            return None
+
     def _holder():
         for selector in (
             'xpath:.//div[contains(@class,"ecom-g-table-tbody-virtual-holder")]',
@@ -3837,57 +6246,114 @@ def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template
         if holder:
             holder.run_js('this.scrollTop = arguments[0]; this.dispatchEvent(new Event("scroll", {bubbles:true}));', int(top))
 
+    def _row_keys_snapshot(root):
+        """当前已渲染行的 key 序列，用来判断虚拟列表是否真的换了一批行。
+
+        该函数在等待重渲染的轮询里被反复调用，必须走整表扫描的单次往返，
+        否则每次轮询都要按行发起数十次 CDP 调用。
+        """
+        rows, _ = _scan_rows(root)
+        return tuple(item['key'] for item in rows)
+
+    def _scroll_rows_to(holder, root, target_top, previous_keys):
+        """滚到指定位置，并等虚拟列表真正渲染出新的一批行。
+
+        rc-virtual-list 的 scrollTop 是同步赋值、行渲染是 React 异步的，
+        只等 scrollTop 数值到位会立刻通过（等于没等），随后读到的仍是上一屏的旧行，
+        表现为「滚到底还剩最后几个 SKU 没填」。因此这里额外等待行 key 集合发生变化。
+        """
+        _set_top(holder, target_top)
+        _wait_until(
+            lambda: abs((_metrics(holder).get('top') or 0) - target_top) <= 2,
+            timeout=0.5,
+            interval=0.02,
+        )
+        if not previous_keys:
+            return
+        _wait_until(
+            lambda: _row_keys_snapshot(root) not in ((), previous_keys),
+            timeout=1.5,
+            interval=0.05,
+        )
+
     holder = _holder()
-    scroll_top = 0
     if holder:
         _set_top(holder, 0)
         _wait_until(lambda: abs((_metrics(holder).get('top') or 0) - 0) <= 2, timeout=0.2, interval=0.02)
 
     processed_keys = set()
-    sku_index = 0
+    pending_indexes = list(range(len(sku_list)))
     guard = 0
-    while sku_index < len(sku_list):
+    rollback_count = 0
+    last_keys = None
+    while pending_indexes:
         guard += 1
         if guard > max(len(sku_list) * 8, 32):
             raise Exception('价格库存填写过程中出现异常循环，未能按顺序推进')
 
-        price_stock_root = main_tab.ele('xpath://div[@attr-field-id="价格与库存"]')
+        price_stock_root = _find_price_stock_root(main_tab)
+        if not price_stock_root:
+            raise Exception('未找到价格与库存区域')
         holder = _holder()
-        if holder:
-            _set_top(holder, scroll_top)
-            _wait_until(lambda: abs((_metrics(holder).get('top') or 0) - scroll_top) <= 2, timeout=0.2, interval=0.02)
 
-        rows = _visible_rows(price_stock_root)
-        if not rows:
+        scanned_rows, blank_rows = _scan_rows(price_stock_root)
+        if not scanned_rows and not blank_rows:
             raise Exception('未找到价格库存表格行')
+        last_keys = tuple(item['key'] for item in scanned_rows)
 
-        progressed = False
-        for tr in rows:
-            row_name, row_size = _row_identity(tr)
-            row_key = _row_key(tr, row_name, row_size)
+        for item in scanned_rows:
+            row_name, row_size = item['name'], item['size']
+            row_key = item['key']
             if row_key in processed_keys:
                 continue
-            if sku_index >= len(sku_list):
-                break
 
-            sku = sku_list[sku_index]
+            # 在所有尚未填写的 SKU 里找与当前行匹配的那一条。
+            # 不能只匹配「下一个」SKU：虚拟滚动换屏会跳行，页面行序也不保证与
+            # sku_list 顺序一致，按序匹配会让整屏行全部落空，最终卡死在滚动未推进。
+            matched_index = None
+            for candidate_index in pending_indexes:
+                candidate_name = str(sku_list[candidate_index].get('name', '')).strip()
+                if _row_matches(row_name, row_size, candidate_name):
+                    matched_index = candidate_index
+                    break
+            if matched_index is None:
+                continue
+
+            sku = sku_list[matched_index]
             sku_name = str(sku.get('name', '')).strip()
-            if not _row_matches(row_name, row_size, sku_name):
-                visible_preview = '、'.join(
-                    f'{_row_identity(row)[0]} / {_row_identity(row)[1]}'.strip(' /')
-                    for row in rows[:5]
-                )
-                raise Exception(f'价格库存顺序异常：第{sku_index + 1}个SKU {sku_name}，当前行[{row_name} / {row_size}]，可见行[{visible_preview}]')
-
             sku_price = _normalize_upload_numeric_text(sku.get('price'))
             sku_stock = _normalize_upload_numeric_text(record.repo)
-            print(f'填写SKU价格库存 -> {sku_index + 1}. {sku_name} | 价格:{sku_price} | 库存:{sku_stock}')
+
+            # 扫描时已带回当前值：命中目标值就无需重写（回滚重扫时可直接略过整屏）
+            if (
+                item.get('price') is not None
+                and _normalize_upload_numeric_text(item.get('price')) == sku_price
+                and _normalize_upload_numeric_text(item.get('stock')) == sku_stock
+            ):
+                processed_keys.add(row_key)
+                pending_indexes.remove(matched_index)
+                continue
+
+            # 只对确实要填的行做 DOM 定位，避免整屏行都走一遍元素查找
+            tr = item.get('element') or _refresh_row(price_stock_root, row_key)
+            if tr is None:
+                tr = _find_row_by_identity(price_stock_root, row_name, row_size)
+            if tr is None:
+                continue
             tr.scroll.to_center()
 
-            price_input = _input_in_row(tr, 'price')
-            stock_input = _input_in_row(tr, 'stock_info')
+            # to_center() 可能触发虚拟列表重挂载，使 tr 句柄失效，
+            # 先按 data-row-key 重新解析一次再取输入框。
+            row_element = _refresh_row(price_stock_root, row_key) or tr
+            price_input = _input_in_row(row_element, 'price')
+            stock_input = _input_in_row(row_element, 'stock_info')
             if not price_input or not stock_input:
-                raise Exception(f'未找到价格或库存输入框：{sku_name}')
+                # 多为重渲染导致的句柄失效，本轮跳过、交给下一轮以新句柄重扫；
+                # 若确实是结构缺失，最终会带着「页面当前可见行」一并报错，不会被静默吞掉。
+                continue
+
+            filled_no = len(sku_list) - len(pending_indexes) + 1
+            print(f'填写SKU价格库存 -> {filled_no}/{len(sku_list)}. {sku_name} | 价格:{sku_price} | 库存:{sku_stock}')
 
             price_input.input(sku_price, clear=True)
             stock_input.input(sku_stock, clear=True)
@@ -3909,28 +6375,61 @@ def _fill_price_stock_and_delivery(main_tab, record, sku_list, shipping_template
                 )
 
             processed_keys.add(row_key)
-            sku_index += 1
-            progressed = True
+            pending_indexes.remove(matched_index)
 
-        if sku_index >= len(sku_list):
+        if blank_rows:
+            print(f'跳过价格库存空白行：{blank_rows} 行')
+
+        if not pending_indexes:
             break
-        if not progressed and not holder:
-            remaining = '、'.join(str(item.get('name', '')).strip() for item in sku_list[sku_index:sku_index + 5])
-            raise Exception(f'价格库存可见行不足，剩余SKU未填写：{remaining}')
-        if holder:
-            data = _metrics(holder)
-            viewport_height = data.get('height') or 0
-            total_height = data.get('total') or 0
-            current_top = data.get('top') or 0
-            max_top = max(total_height - viewport_height, 0)
-            step = max(int(viewport_height * 0.72), 180) if viewport_height else 180
-            next_top = min(current_top + step, max_top)
-            if next_top <= current_top:
-                remaining = '、'.join(str(item.get('name', '')).strip() for item in sku_list[sku_index:sku_index + 5])
-                raise Exception(f'价格库存滚动未推进，剩余SKU未填写：{remaining}')
-            scroll_top = next_top
-            _set_top(holder, scroll_top)
-            _wait_until(lambda: (_metrics(holder).get('top') or 0) >= max(scroll_top - 2, 0), timeout=0.4, interval=0.02)
+
+        def _remaining_text():
+            return '、'.join(
+                str(sku_list[index].get('name', '')).strip() for index in pending_indexes[:5]
+            )
+
+        def _visible_rows_text():
+            names = []
+            for row in _visible_rows(price_stock_root):
+                row_name, row_size = _row_identity(row)
+                if not row_name and not row_size:
+                    continue
+                names.append(f'{row_name}+{row_size}' if row_size else row_name)
+            return '、'.join(names[:8]) or '(无)'
+
+        if not holder:
+            raise Exception(
+                f'价格库存可见行不足，剩余SKU未填写：{_remaining_text()}'
+                f'｜页面当前可见行：{_visible_rows_text()}'
+            )
+
+        # 一律以页面真实滚动位置为准推进：填写时的 tr.scroll.to_center() 会在背后
+        # 改变 scrollTop，若继续按本地维护的目标值回设，两者会来回拉扯，
+        # 表现为「填到一半后可见行被拉回开头，再也推进不了」。
+        data = _metrics(holder)
+        viewport_height = data.get('height') or 0
+        total_height = data.get('total') or 0
+        current_top = data.get('top') or 0
+        max_top = max(total_height - viewport_height, 0)
+        # 步长取半屏，留足重叠区域，减少虚拟滚动跳行
+        step = max(int(viewport_height * 0.50), 120) if viewport_height else 120
+        next_top = min(current_top + step, max_top)
+        if next_top <= current_top:
+            # 已滚到底但还有 SKU 未填写——可能被跳行遗漏了，
+            # 回滚到顶部重新完整扫描一遍（最多回滚 2 次防死循环）。
+            # 清空 processed_keys 让每一行重新参与匹配；pending_indexes 保证已填的 SKU 不会重复写。
+            if current_top > 0 and rollback_count < 2:
+                rollback_count += 1
+                print(f'价格库存滚动到底仍有 {len(pending_indexes)} 个SKU未填写，回滚重扫(第{rollback_count}次)')
+                processed_keys.clear()
+                _scroll_rows_to(holder, price_stock_root, 0, last_keys)
+                last_keys = None
+                continue
+            raise Exception(
+                f'价格库存滚动未推进，剩余SKU未填写：{_remaining_text()}'
+                f'｜页面当前可见行：{_visible_rows_text()}'
+            )
+        _scroll_rows_to(holder, price_stock_root, next_top, last_keys)
 
     main_tab.ele('xpath://span[text()="售后服务承诺"]').scroll.to_see()
     select_text(main_tab, '运费模板', shipping_template_name, '包邮')
@@ -3971,30 +6470,57 @@ def _submit_publish(main_tab, record):
     print('发布商品')
     _dismiss_interfering_overlays(main_tab, context='submit_publish')
     main_tab.ele('xpath://span[text()="发布商品"]/..').click()
-    modal_selector = 'xpath://div[@class="ecom-g-modal-title"][text()="发布提醒"]/../..'
+    # @class 全等匹配在组件追加 class 时会失效，这里放宽为 contains
+    modal_selector = (
+        'xpath://div[contains(@class,"ecom-g-modal-title") and normalize-space(text())="发布提醒"]/../..'
+    )
     success_selector = '商品提交成功，继续发布商品视频，分享到抖音'
-    _wait_until(
-        lambda: bool(main_tab.ele(modal_selector, timeout=0.05))
-        or bool(main_tab.ele(success_selector, timeout=0.05)),
-        timeout=1.2,
-        interval=0.05,
-    )
-    _dismiss_interfering_overlays(main_tab, context='after_publish_click')
 
-    try:
-        modal = main_tab.ele(modal_selector, timeout=0.15)
-        continue_btn = modal.ele('xpath:.//div[text()="不修改，继续发布"]/ancestor::button')
-        continue_btn.scroll.to_center()
-        continue_btn.click()
+    def _handle_publish_modal():
+        """处理「发布提醒」弹窗。
+
+        该弹窗可能迟于点击若干秒才出现，因此必须在整个等待窗口内持续尝试：
+        原实现只在前 1.2s 查一次，弹窗迟到就再也不会被点掉，
+        随后白等满 12s 判定失败——而失败路径不落库，重跑即造成重复铺货。
+        """
+        try:
+            modal = main_tab.ele(modal_selector, timeout=0.05)
+        except Exception:
+            return False
+        if not modal:
+            return False
+        try:
+            continue_btn = modal.ele(
+                'xpath:.//div[text()="不修改，继续发布"]/ancestor::button', timeout=0.1
+            )
+        except Exception:
+            continue_btn = None
+        if not continue_btn:
+            return False
+        try:
+            continue_btn.scroll.to_center()
+            continue_btn.click()
+        except Exception as exc:
+            print(f'处理发布提醒弹窗失败: {exc}')
+            return False
         print('已处理发布提醒弹窗')
-    except Exception as exc:
-        print(f'未出现弹窗或处理失败: {str(exc)}')
+        return True
 
-    publish_ok = _wait_until(
-        lambda: main_tab.ele(success_selector, timeout=0.1),
-        timeout=12,
-        interval=0.25,
-    )
+    publish_ok = False
+    deadline = system_time.perf_counter() + 13.0
+    while True:
+        try:
+            if main_tab.ele(success_selector, timeout=0.05):
+                publish_ok = True
+                break
+        except Exception:
+            pass
+        if _handle_publish_modal():
+            _dismiss_interfering_overlays(main_tab, context='after_publish_click')
+            continue
+        if system_time.perf_counter() >= deadline:
+            break
+        system_time.sleep(0.15)
 
     if publish_ok:
         print('发布成功！')
@@ -4003,7 +6529,11 @@ def _submit_publish(main_tab, record):
         record.save()
         return True
 
+    # 未读到成功文案不等于一定没提交（文案改版、页面跳转都会这样），
+    # 而失败路径不写 record.status，重跑会重复铺货——把现场信息打出来供人工确认。
     print('发布失败！')
+    print(f'  当前页面: {_get_current_tab_url(main_tab)}')
+    print('  若页面已离开发布页或商品已出现在商品列表，说明可能已提交成功，请先人工核对再重跑，避免重复铺货')
     return False
 
 
@@ -4049,10 +6579,19 @@ def _execute_upload_flow(record_id=None, progress_callback=None, stop_before_sub
             import sys as _sys
             _base = _sys._MEIPASS if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
             _sys.path.insert(0, os.path.join(_base, 'protocol-research'))
-            return _execute_protocol_flow(record_id=record_id, progress_callback=progress_callback, task_id=task_id)
+            return _execute_protocol_flow(
+                record_id=record_id,
+                progress_callback=progress_callback,
+                task_id=task_id,
+                stop_before_submit=stop_before_submit,
+            )
 
         # DOM模式：原有流程
         print('开始上传流程...')
+        main_tab, session_error = _ensure_publish_session(_report_progress)
+        if session_error:
+            return api_error(msg=session_error)
+        _report_progress(15, '上传浏览器会话已就绪')
 
         for record in record_list:
             # 检查取消标志
@@ -4064,6 +6603,11 @@ def _execute_upload_flow(record_id=None, progress_callback=None, stop_before_sub
                         t['message'] = '任务已被用户取消'
                         t['finished_at'] = datetime.now().isoformat()
                         return api_ok(msg='任务已取消')
+
+            # 类目展开状态是 src/utils.py 的模块级全局缓存，一旦置 True 就不再复位；
+            # 不在每条记录开始时重置，第 2 个商品起类目属性区不会展开，
+            # 品牌/适用人群/适用性别/筒高等字段全部定位不到。
+            reset_category_expanded_state()
 
             record_ok = False
             error_tip = ''
@@ -4276,14 +6820,34 @@ def _execute_upload_flow(record_id=None, progress_callback=None, stop_before_sub
 @app.post('/start')
 def start():
     request_data = request.get_json(silent=True) or {}
+    try:
+        stop_before_submit, _ = _resolve_upload_stop_before_submit(request_data)
+    except ValueError as e:
+        return api_error(msg=str(e))
+
     return _execute_upload_flow(
         record_id=request_data.get('record_id'),
-        stop_before_submit=_debug_bool(request_data.get('stop_before_submit')),
+        stop_before_submit=stop_before_submit,
     )
 
 
 _upload_tasks = {}
 _upload_tasks_lock = threading.Lock()
+
+
+def _resolve_upload_stop_before_submit(data):
+    payload = data or {}
+    raw_stop = payload.get('stop_before_submit', payload.get('stopBeforeSubmit', True))
+    stop_before_submit = _debug_bool(raw_stop, True)
+    confirm_final_publish = _debug_bool(
+        payload.get('confirm_final_publish', payload.get('confirmFinalPublish')),
+        False,
+    )
+
+    if not stop_before_submit and not confirm_final_publish:
+        raise ValueError('最终发布需要 confirm_final_publish=true；未确认时只能执行 stop_before_submit 预检')
+
+    return stop_before_submit, confirm_final_publish
 
 
 def _serialize_upload_task(task):
@@ -4294,24 +6858,169 @@ def _serialize_upload_task(task):
         'status': task.get('status'),
         'progress': task.get('progress', 0),
         'message': task.get('message', ''),
+        'current_step': task.get('current_step'),
+        'steps': task.get('steps') or [],
         'error': task.get('error'),
         'created_at': task.get('created_at'),
         'started_at': task.get('started_at'),
         'finished_at': task.get('finished_at'),
         'debug_report': task.get('debug_report'),
         'stop_before_submit': task.get('stop_before_submit', False),
+        'final_publish_confirmed': task.get('final_publish_confirmed', False),
         'cancelled': task.get('cancelled', False),
     }
 
 
-def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None):
+def _protocol_cdp_port_candidates():
+    ports = [9222, 9223]
+    ports.extend(range(_DEBUG_BROWSER_PORT_START, _DEBUG_BROWSER_PORT_END + 1))
+    ports.extend(range(_CAPTURE_BROWSER_PORT_START, _CAPTURE_BROWSER_PORT_END + 1))
+
+    seen = set()
+    ordered_ports = []
+    for port in ports:
+        if port in seen:
+            continue
+        seen.add(port)
+        ordered_ports.append(port)
+    return ordered_ports
+
+
+def _find_cdp_port_with_jinritemai():
+    """扫描所有可能的 CDP 端口，挑出**已经打开抖店 tab** 的那个。
+    避免协议发布错抢只打开了淘宝/天猫的采集浏览器。
+    返回: 命中的端口；找不到返回 None
+    """
+    from urllib.request import urlopen as _urlopen
+    for port in _protocol_cdp_port_candidates():
+        try:
+            targets = json.loads(_urlopen(f'http://127.0.0.1:{port}/json/list', timeout=0.4).read())
+        except Exception:
+            continue
+        for t in targets:
+            if 'jinritemai.com' in (t.get('url') or ''):
+                return port
+    return None
+
+
+def _ensure_protocol_browser():
+    """确保协议模式有可用的 Chrome 调试端口。
+    优先复用已经打开抖店 tab 的浏览器；找不到才用 get_page() 启动新浏览器。
+    返回: (cdp_port, browser_page)
+    """
+    # 1. 优先找已有抖店 tab 的端口（避开纯采集浏览器）
+    port = _find_cdp_port_with_jinritemai()
+    if port:
+        print(f'[协议] 复用已有抖店浏览器调试端口: {port}')
+        return port, None
+
+    # 2. 找不到才启新浏览器
+    print('[协议] 未检测到带抖店 tab 的 Chrome，通过 DOM 流程启动浏览器...')
+    try:
+        from src.utils import get_page
+        page = get_page('https://fxg.jinritemai.com')
+        system_time.sleep(2)
+        # 启动后再按"有抖店 tab"挑一次
+        port = _find_cdp_port_with_jinritemai() or _find_cdp_port()
+        if port:
+            print(f'[协议] 浏览器已启动，调试端口: {port}')
+            return port, page
+    except Exception as e:
+        print(f'[协议] get_page() 启动失败: {e}')
+        import traceback
+        traceback.print_exc()
+
+    return None, None
+
+
+def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None, stop_before_submit=False):
     """纯协议流水线 v4：CDP会话 + HTTP图片上传 + Schema获取 + 离线Body构造 + webpack提交"""
     import json as _json, sys as _sys
     if getattr(_sys, 'frozen', False):
         _base = _sys._MEIPASS
     else:
-        _base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _base = repo_root
     _sys.path.insert(0, os.path.join(_base, 'protocol-research-clean-20260505', 'scripts'))
+
+    # === 自动启动浏览器 + 等待登录 ===
+    _proto_port, _proto_page = _ensure_protocol_browser()
+    if not _proto_port:
+        return api_error(msg='无法启动Chrome浏览器。请确保Chrome已安装，然后重试')
+
+    # 等待用户登录（检查是否有有效的 jinritemai cookie）
+    def _report(pct, msg):
+        if progress_callback:
+            try: progress_callback(pct, msg)
+            except: pass
+
+    _report(5, '检测登录状态...')
+    from urllib.request import urlopen as _cdp_urlopen
+    _logged_in = False
+    for _wait_i in range(60):  # 最多等 2 分钟
+        try:
+            targets = json.loads(_cdp_urlopen(f'http://127.0.0.1:{_proto_port}/json/list', timeout=2).read())
+            # 修复：移除 '/ffa/g/' 路径限制。
+            # 原始逻辑要求 URL 必须含 /ffa/g/，导致用户在任意其他 fxg 子页面（如首页、设置页等）
+            # 时 page_target 永远为 None，即使已登录也一直报"请在浏览器中登录"。
+            # 只需满足：① 是 page 类型 tab ② URL 含 jinritemai.com ③ 非 devtools 页面
+            page_target = next((
+                t for t in targets
+                if t.get('type') == 'page'
+                and 'jinritemai.com' in (t.get('url') or '')
+                and not (t.get('url') or '').startswith('devtools://')
+            ), None)
+            if page_target:
+                import websocket as _ws_login
+                # 合并到单个 WebSocket 连接：同时获取 cookies 和当前 href，避免两次连接竞争
+                ws = _ws_login.create_connection(page_target['webSocketDebuggerUrl'], timeout=5, suppress_origin=True)
+                ws.settimeout(3)
+                ws.send(json.dumps({'id': 1, 'method': 'Network.enable'}))
+                ws.send(json.dumps({'id': 2, 'method': 'Network.getAllCookies'}))
+                ws.send(json.dumps({'id': 3, 'method': 'Runtime.evaluate', 'params': {
+                    'expression': 'window.location.href', 'returnByValue': True
+                }}))
+                dl = system_time.time() + 8
+                cookies_raw = None
+                page_url = ''
+                got_cookies = False
+                got_url = False
+                while system_time.time() < dl and not (got_cookies and got_url):
+                    try:
+                        raw = ws.recv()
+                        msg = json.loads(raw)
+                        if msg.get('id') == 2:
+                            cookies_raw = msg.get('result', {}).get('cookies', [])
+                            got_cookies = True
+                        elif msg.get('id') == 3:
+                            page_url = (msg.get('result', {}).get('result', {}) or {}).get('value', '')
+                            got_url = True
+                    except _ws_login.WebSocketTimeoutException:
+                        continue
+                    except Exception:
+                        break
+                ws.close()
+
+                jinritemai_cookies = [c for c in (cookies_raw or []) if 'jinritemai.com' in (c.get('domain') or '')]
+                # 优先用 CDP eval 取到的精确 href；取不到时降级用 tab 列表里的 url
+                _cur_url = page_url or (page_target.get('url') or '')
+                app.logger.info(f'[登录检测] url={_cur_url[:80]} jinritemai_cookies={len(jinritemai_cookies)} wait={_wait_i+1}s')
+
+                if len(jinritemai_cookies) >= 3 and 'login' not in _cur_url.lower():
+                    _logged_in = True
+        except Exception as _le:
+            app.logger.debug(f'[登录检测] 异常（忽略）: {_le}')
+
+        if _logged_in:
+            _report(10, '已登录，开始上传...')
+            break
+
+        _report(5, f'请在浏览器中登录抖店后台...({_wait_i+1}s)')
+        system_time.sleep(2)
+
+    if not _logged_in:
+        return api_error(msg='登录超时。请在浏览器中打开 https://fxg.jinritemai.com 并登录后重试')
+    # 设置环境变量让 v4 使用正确的端口
+    os.environ['CDP_PORT'] = str(_proto_port)
 
     # === 文件日志诊断（写入 exe 同目录，确保可见） ===
     from datetime import datetime as _diag_dt
@@ -4338,11 +7047,6 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
     _diag(f'sys.path[0]={_sys.path[0]}')
     _diag(f'proto_dir_exists={os.path.isdir(os.path.join(_base, "protocol-research"))}')
     _diag(f'log_path={_diag_log_path}')
-
-    def _report(pct, msg):
-        if progress_callback:
-            try: progress_callback(pct, msg)
-            except: pass
 
     _report(10, '协议模式：读取上传任务')
     record_list, load_error = _load_upload_records(record_id)
@@ -4372,28 +7076,76 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
             sku_list = []
 
         # 标题：优先 record.title，其次 record.name
-        product_title = (record.title or '').strip() or (record.name or '').strip() or '协议发布商品'
-        # 价格：从SKU中取第一个有效价格
-        price_val = 9.9
-        if sku_list:
-            for s in sku_list:
-                try:
-                    p = float(s.get('price', 0))
-                    if p > 0:
-                        price_val = p
-                        break
-                except (ValueError, TypeError):
-                    continue
+        product_title = sanitize_no_brand_title_text(
+            (record.title or '').strip() or (record.name or '').strip()
+        ) or '协议发布商品'
+
+        # 价格：从 SKU 中取第一个有效价格；若没有任何有效价格则中止该商品发布
+        # 历史上这里 fallback 到 9.9 元，会让用户的高价商品被默默以 9.9 元提交，已撤销该兜底
+        price_val = 0.0
+        for s in (sku_list or []):
+            try:
+                p = float(s.get('price', 0))
+                if p > 0:
+                    price_val = p
+                    break
+            except (ValueError, TypeError):
+                continue
+        if price_val <= 0:
+            err_msg = f'{record.name}: 未配置有效 SKU 价格，无法发布。请先在产品列表中填写每个 SKU 的单价'
+            _diag(f'RETURN no valid price: {record.name}')
+            results.append({'record': record.name, 'status': 'failed', 'error': err_msg})
+            _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} 缺少价格')
+            continue
+
+        # 把每个 SKU 的真实价格/库存透传给协议层，避免协议层再兜底
+        sku_info_payload = []
+        try:
+            product_level_stock = int(float(record.repo or 0))
+        except (ValueError, TypeError):
+            product_level_stock = 0
+        for s in (sku_list or []):
+            try:
+                sp = float(s.get('price', 0)) or price_val
+            except (ValueError, TypeError):
+                sp = price_val
+            try:
+                sk = int(s.get('quantity', 0) or s.get('stock', 0) or product_level_stock or 0)
+            except (ValueError, TypeError):
+                sk = 0
+            sku_info_payload.append({
+                'name': s.get('name', '默认'),
+                'image_path': s.get('path', ''),
+                'price': sp,
+                'stock': sk,
+            })
+        if not sku_info_payload:
+            sku_info_payload = [{'name': '默认', 'image_path': '', 'price': price_val, 'stock': product_level_stock}]
+
+        # 材质：读取用户在设置中配置的材质组成，拼成 "棉75%;氨纶25%" 格式
+        # 历史上这里 fallback 到 '棉75%;氨纶25%' 且 record.material 字段根本不存在，已修正
+        material_str = ''
+        try:
+            _ms = settings_manager.get_settings()
+            _ac = settings_manager.normalize_automation_config(_ms.automation_config)
+            _materials = _ac.get('material_compositions') or []
+            material_str = ';'.join(
+                f"{m.get('material','').strip()}{int(m.get('percentage',0))}%"
+                for m in _materials
+                if m.get('material') and int(m.get('percentage', 0) or 0) > 0
+            )
+        except Exception as _me:
+            _diag(f'load material from settings failed: {_me}')
 
         product_data = {
             'title': product_title,
             'price': {'current': price_val},
-            'sku_info': [{'name': s.get('name', '默认')} for s in sku_list] if sku_list else [{'name': '默认'}],
-            'material': getattr(record, 'material', None) or '棉75%;氨纶25%',
+            'sku_info': sku_info_payload,
+            'material': material_str,
         }
 
         # 收集图片路径（与DOM流程一致，从文件系统标准目录读取）
-        image_paths = {'main_images': [], 'main_images_1x1': [], 'detail_images': []}
+        image_paths = {'main_images': [], 'main_images_1x1': [], 'detail_images': [], 'sku_images': []}
         try:
             # 1:1 方图 (800) → main_images_1x1 → 用于 pic 字段
             main_pics = get_pic_list(record, '800')
@@ -4420,7 +7172,14 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
             image_paths['main_images'] = list(image_paths['main_images_1x1'])
             print('[协议] 3:4主图缺失，使用1:1方图回退')
 
-        _diag(f'images: 1x1={len(image_paths["main_images_1x1"])} 3:4={len(image_paths["main_images"])} detail={len(image_paths["detail_images"])}')
+        # 收集 SKU 规格图
+        image_paths['sku_images'] = []
+        for s in sku_list:
+            sku_path = s.get('path', '')
+            if sku_path and os.path.isfile(sku_path):
+                image_paths['sku_images'].append(sku_path)
+
+        _diag(f'images: 1x1={len(image_paths["main_images_1x1"])} 3:4={len(image_paths["main_images"])} detail={len(image_paths["detail_images"])} sku={len(image_paths["sku_images"])}')
         if not image_paths['main_images_1x1']:
             _diag('RETURN no main_images_1x1')
             return api_error(msg=f'{record.name}: 未找到主图（请确保主图/800 或 主图 目录下有图片）')
@@ -4493,6 +7252,16 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
                                 'summary': str(s.get('summary', '')),
                             } for s in steps]
 
+        # 把用户在设置里选择的运费模板名透传给协议层，
+        # 协议层会实时拉取店铺模板列表后按名称匹配 ID，避免历史的硬编码 ID 问题
+        shipping_template_name = ''
+        try:
+            _ss = settings_manager.get_settings()
+            _ac_now = settings_manager.normalize_automation_config(_ss.automation_config)
+            shipping_template_name = str(_ac_now.get('shipping_template') or '').strip()
+        except Exception as _se:
+            _diag(f'load shipping_template from settings failed: {_se}')
+
         try:
             result = protocol_run_v4(
                 category_leaf_id=int(category_config['category_leaf_id']),
@@ -4501,20 +7270,34 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
                     'main_3x4': image_paths.get('main_images', []),
                     'main_1x1': image_paths.get('main_images_1x1', []),
                     'detail': image_paths.get('detail_images', []),
+                    'sku': image_paths.get('sku_images', []),
                 },
                 category_config=category_config,
                 progress_callback=_v4_progress,
+                cdp_port=_proto_port,
+                shipping_template_name=shipping_template_name,
+                stop_before_submit=stop_before_submit,
             )
             if isinstance(result, dict) and result.get('success'):
                 pid = result.get('data', {}).get('product_id', '')
+                stopped = bool(result.get('data', {}).get('stopped_before_submit'))
                 results.append({'record': record.name, 'product_id': pid, 'status': 'ok',
                                 'path': result.get('data', {}).get('path', ''),
+                                'stopped_before_submit': stopped,
                                 'steps': result.get('steps', [])})
-                _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} OK ({pid[:16]})')
-                _diag(f'protocol_run_v4 OK: pid={pid}')
+                if stopped:
+                    _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} 预检通过（已截停）')
+                    _diag('protocol_run_v4 OK: stopped_before_submit')
+                else:
+                    _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} OK ({pid[:16]})')
+                    _diag(f'protocol_run_v4 OK: pid={pid}')
             else:
                 err = (result or {}).get('error', {}) if isinstance(result, dict) else {}
                 err_msg = err.get('message', str(err)[:50]) if isinstance(err, dict) else str(result)[:50]
+                if isinstance(err, dict):
+                    err_detail = str(err.get('detail') or err.get('fix_hint') or '').strip()
+                    if err_detail and err_detail not in err_msg:
+                        err_msg = f'{err_msg}：{err_detail}'
                 results.append({'record': record.name, 'status': 'failed', 'error': err_msg,
                                 'steps': result.get('steps', [])})
                 _report(20 + int(((idx+1)/total)*70), f'协议: {record.name} 失败')
@@ -4532,7 +7315,29 @@ def _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
 
     success_count = sum(1 for r in results if r.get('status') == 'ok')
     _diag(f'DONE: success_count={success_count}/{total} results={results}')
-    return api_ok(msg=f'协议模式完成：{success_count}/{total} 个商品发布成功', data={'results': results})
+
+    # 清理自动启动的浏览器（只关闭我们自己启动的页面，不关用户原有的）
+    if _proto_page is not None:
+        try:
+            _proto_page.quit()
+        except Exception:
+            pass
+
+    if success_count == 0 and total > 0:
+        # 收集失败原因（取第一个有 error 的结果）
+        first_error = ''
+        for r in results:
+            if r.get('error'):
+                first_error = str(r['error'])[:200]
+                break
+        if not first_error:
+            first_error = '请确认Chrome浏览器已启动并已登录抖店后台'
+        return api_error(msg=f'发布失败：{first_error}', data={'results': results})
+    elif success_count == 0:
+        return api_error(msg='没有可发布的商品，请先导入商品数据', data={'results': results})
+    if stop_before_submit:
+        return api_ok(msg=f'协议预检完成：{success_count}/{total} 个商品已到提交前截停点', data={'results': results})
+    return api_ok(msg=f'发布完成：{success_count}/{total} 个商品', data={'results': results})
 
 
 def _run_upload_task(task_id: str, record_id=None, stop_before_submit=False):
@@ -4585,7 +7390,12 @@ def _run_upload_task(task_id: str, record_id=None, stop_before_submit=False):
             with _upload_tasks_lock:
                 t = _upload_tasks.get(task_id)
                 if t: t['message'] = '协议模式：正在初始化CDP会话'
-            result = _execute_protocol_flow(record_id=record_id, progress_callback=_protocol_progress_callback, task_id=task_id)
+            result = _execute_protocol_flow(
+                record_id=record_id,
+                progress_callback=_protocol_progress_callback,
+                task_id=task_id,
+                stop_before_submit=stop_before_submit,
+            )
             success = bool(result.get('success'))
             message = str(result.get('msg') or '')
             result_data = result.get('data') or {}
@@ -4633,15 +7443,21 @@ def _run_upload_task(task_id: str, record_id=None, stop_before_submit=False):
             if task.get('cancelled'):
                 task['status'] = 'cancelled'
                 task['message'] = '任务已被用户取消'
+                task['progress'] = 100
+                task['finished_at'] = datetime.now().isoformat()
             elif success:
                 task['status'] = 'success'
+                task['progress'] = 100
                 task['message'] = message or '上传完成'
                 task['error'] = None
+                task['finished_at'] = datetime.now().isoformat()
             else:
                 task['status'] = 'failed'
+                task['progress'] = 100
                 task['message'] = '上传失败'
                 task['error'] = message or '上传失败（未知原因）'
                 task['debug_report'] = _latest_browser_debug_error_after(task.get('started_at'))
+                task['finished_at'] = datetime.now().isoformat()
     except Exception as e:
         traceback.print_exc()
         with _upload_tasks_lock:
@@ -4659,8 +7475,12 @@ def _run_upload_task(task_id: str, record_id=None, stop_before_submit=False):
 @app.post('/api/upload/start')
 def upload_start():
     data = request.get_json(silent=True) or {}
+    try:
+        stop_before_submit, final_publish_confirmed = _resolve_upload_stop_before_submit(data)
+    except ValueError as e:
+        return api_error(msg=str(e))
+
     record_id = data.get('record_id')
-    stop_before_submit = _debug_bool(data.get('stop_before_submit'))
     record_name = '全部商品'
 
     if record_id:
@@ -4678,12 +7498,15 @@ def upload_start():
         'status': 'pending',
         'progress': 0,
         'message': '任务已创建',
+        'current_step': None,
+        'steps': [],
         'error': None,
         'created_at': datetime.now().isoformat(),
         'started_at': None,
         'finished_at': None,
         'debug_report': None,
         'stop_before_submit': stop_before_submit,
+        'final_publish_confirmed': final_publish_confirmed,
         'cancelled': False,
     }
 
@@ -4767,7 +7590,7 @@ def upload_cancel(task_id):
         task = _upload_tasks.get(task_id)
         if not task:
             return api_error(msg='上传任务不存在')
-        if task.get('status') in ('completed', 'failed', 'cancelled'):
+        if task.get('status') in ('success', 'completed', 'failed', 'cancelled'):
             return api_error(msg=f'任务已完成，无法取消（状态：{task["status"]}）')
         task['cancelled'] = True
         task['message'] = '正在取消...'
@@ -4797,7 +7620,12 @@ def upload_debug_injection():
 @app.post('/api/upload/start-all')
 def upload_start_all():
     """启动全部商品上传"""
-    stop_before_submit = _debug_bool((request.get_json(silent=True) or {}).get('stop_before_submit'))
+    data = request.get_json(silent=True) or {}
+    try:
+        stop_before_submit, final_publish_confirmed = _resolve_upload_stop_before_submit(data)
+    except ValueError as e:
+        return api_error(msg=str(e))
+
     records = list(Record.select().where(Record.status == 0).order_by(Record.id))
     if not records:
         return api_error(msg='没有待上传的商品')
@@ -4806,9 +7634,12 @@ def upload_start_all():
     task = {
         'task_id': task_id, 'record_id': None, 'record_name': f'全部({len(records)}个)',
         'status': 'pending', 'progress': 0, 'message': f'批量上传{len(records)}个商品',
+        'current_step': None, 'steps': [],
         'error': None, 'created_at': datetime.now().isoformat(),
         'started_at': None, 'finished_at': None, 'debug_report': None,
-        'stop_before_submit': stop_before_submit, 'cancelled': False,
+        'stop_before_submit': stop_before_submit,
+        'final_publish_confirmed': final_publish_confirmed,
+        'cancelled': False,
     }
     with _upload_tasks_lock:
         _upload_tasks[task_id] = task
@@ -5011,6 +7842,55 @@ def _dedup_sku_list(sku_list):
     return deduped, removed
 
 
+def list_files_recursive(startpath):
+    """递归遍历所有文件（ID模式）"""
+    result = []
+    for root, _, files in os.walk(startpath):
+        for filename in sorted(files):
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
+                result.append(os.path.join(root, filename))
+    return result
+
+
+def parse_downloaded_sku_file_name(file_stem: str):
+    raw_name = html.unescape(str(file_stem or '')).strip()
+    match = re.match(r'^(?:SKU[_\-\s]*)?(\d{1,4})[_\-\s]*(.*)$', raw_name, flags=re.IGNORECASE)
+    if not match:
+        return None, raw_name
+    try:
+        index_value = int(match.group(1))
+    except Exception:
+        index_value = None
+    stripped_name = (match.group(2) or '').strip() or raw_name
+    return index_value, stripped_name
+
+
+def normalize_capture_sku_name(value):
+    raw = html.unescape(str(value or ''))
+    raw = raw.replace('&gt;', '>').replace('＞', '>').replace('/', '').replace('\\', '').replace('_', '')
+    raw = re.sub(r'^(?:SKU)?\d+', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'[\s\-\+\(\)\[\]【】（）<>「」『』·.,，。:：;；!！?？"“”‘’]', '', raw)
+    return raw
+
+
+def infer_clazz_from_title(t: str) -> int:
+    try:
+        s = (t or '').lower()
+        if '船袜' in s:
+            return 0
+        if ('短筒' in s) or ('短袜' in s):
+            return 1
+        if '中筒' in s:
+            return 2
+        if '长筒' in s:
+            return 3
+        if '袜套' in s:
+            return 4
+        return 2
+    except Exception:
+        return 2
+
+
 def _build_duplicate_groups(sku_list):
     groups = {}
     for sku in sku_list:
@@ -5150,7 +8030,29 @@ def get_settings():
     try:
         settings = settings_manager.get_settings()
         automation_config = settings_manager.normalize_automation_config(settings.automation_config)
-        return api_ok(msg='获取设置成功', data={'settings': {
+
+        # 材质选项以「平台实采列表」为准：发布流程打开材质下拉时会顺带采集并缓存。
+        # 缓存缺失（还没发过货）时退回内置默认，下拉本身支持自定义输入，不会卡住用户。
+        material_meta = {}
+        try:
+            from src.material_options_cache import load_meta, load_options
+            platform_options = load_options()
+            material_meta = load_meta()
+            if platform_options:
+                merged = list(platform_options)
+                seen = set(merged)
+                for name in (automation_config.get('material_options') or []):
+                    if name not in seen:
+                        seen.add(name)
+                        merged.append(name)
+                automation_config = dict(automation_config)
+                automation_config['material_options'] = merged
+        except Exception as exc:
+            material_meta = {'last_error': f'读取平台材质缓存失败: {exc}'}
+        automation_config = dict(automation_config)
+        automation_config['platform_material_options_meta'] = material_meta
+
+        sanitized_settings = enforce_no_external_ai_settings({
             'pricing_config': settings.pricing_config,
             'cost_items': settings.cost_items,
             'model_configs': settings.model_configs,
@@ -5170,7 +8072,18 @@ def get_settings():
                 'batch_mode_enabled': settings.processing.batch_processing_mode,
                 'max_concurrent_operations': settings.processing.max_concurrent_tasks,
             }
-        }})
+        })
+        # 发布优化模型配置允许保留(仅小米/DeepSeek)，覆盖 ops 净化对它的清空；
+        # 回传时隐藏 api_key 明文，只标记是否已配置，避免密钥随设置接口外泄。
+        masked_configs = []
+        for cfg in (settings.model_configs or []):
+            c = dict(cfg)
+            c['api_key_set'] = bool(c.get('api_key'))
+            c.pop('api_key', None)
+            masked_configs.append(c)
+        sanitized_settings['model_configs'] = masked_configs
+        sanitized_settings['llm_provider_presets'] = LLM_PROVIDER_PRESETS
+        return api_ok(msg='获取设置成功', data={'settings': sanitized_settings})
     except Exception as e:
         return api_error(f'获取设置失败: {str(e)}')
 
@@ -5212,12 +8125,24 @@ def update_settings():
             backend_data['cost_items'] = data.get('cost_items')
 
         if 'model_configs' in data:
-            backend_data['model_configs'] = data.get('model_configs')
+            # 发布优化模型配置：交由 config.sanitize_model_configs 校验(仅放行小米/DeepSeek)。
+            # 前端未改密钥时可传 api_key_set 占位，此处与已存配置做合并保留旧密钥。
+            incoming = data.get('model_configs') or []
+            existing = {c.get('id'): c for c in (settings_manager.get_settings().model_configs or [])}
+            merged = []
+            for c in incoming:
+                if not isinstance(c, dict):
+                    continue
+                c = dict(c)
+                # 未提交新密钥(只回传占位)时，沿用已存密钥
+                if not c.get('api_key') and c.get('id') in existing:
+                    c['api_key'] = existing[c['id']].get('api_key', '')
+                merged.append(c)
+            backend_data['model_configs'] = merged
 
         if 'automation_config' in data:
             automation_config = data.get('automation_config') or {}
             normalized_automation = settings_manager.normalize_automation_config(automation_config)
-            allowed_materials = set(normalized_automation.get('material_options') or [])
             material_compositions = automation_config.get('material_compositions') or []
             if isinstance(material_compositions, list) and len(material_compositions) > 0:
                 total_percentage = 0
@@ -5225,8 +8150,12 @@ def update_settings():
                     if not isinstance(item, dict):
                         continue
                     material_name = str(item.get('material') or '').strip()
-                    if material_name and material_name not in allowed_materials:
-                        return api_error(f'材质「{material_name}」不在平台面料选项内')
+                    # 允许自定义材质：平台会持续新增面料，按内置白名单拒绝会把新材质挡在外面。
+                    # 这里只校验名称非空与长度，名称能否被平台接受由发布流程在真实页面上校验并报错。
+                    if not material_name:
+                        return api_error('材质名称不能为空')
+                    if len(material_name) > MATERIAL_NAME_MAX_LENGTH:
+                        return api_error(f'材质名称过长（上限 {MATERIAL_NAME_MAX_LENGTH} 字）：{material_name[:20]}…')
                     try:
                         total_percentage += int(float(item.get('percentage', 0) or 0))
                     except Exception:
@@ -5241,57 +8170,6 @@ def update_settings():
             return api_error('设置保存失败')
     except Exception as e:
         return api_error(f'设置更新失败: {str(e)}')
-
-
-@app.post('/settings/automation/certificate/import')
-def import_automation_certificate():
-    """导入自动化设置中的合格证图片到应用数据目录"""
-    try:
-        data = request.get_json(silent=True) or {}
-        source_path = os.path.abspath(str(data.get('source_path') or '').strip())
-        if not source_path:
-            return api_error('缺少合格证图片路径')
-        if not os.path.isfile(source_path):
-            return api_error('合格证图片不存在')
-
-        try:
-            target_path = _resolve_managed_qualification_certificate_path(source_path)
-        except ValueError as exc:
-            return api_error(str(exc))
-
-        _delete_managed_qualification_certificate_files()
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        shutil.copy2(source_path, target_path)
-
-        return api_ok(msg='合格证图片导入成功', data={
-            'stored_path': target_path,
-            'file_name': os.path.basename(target_path),
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return api_error(f'导入合格证图片失败: {str(e)}')
-
-
-@app.post('/settings/automation/certificate/remove')
-def remove_automation_certificate():
-    """删除自动化设置中的合格证图片"""
-    try:
-        data = request.get_json(silent=True) or {}
-        stored_path = os.path.abspath(str(data.get('stored_path') or '').strip()) if data.get('stored_path') else ''
-        assets_dir = _get_automation_assets_dir()
-
-        if stored_path:
-            if not _is_path_within_dir(stored_path, assets_dir):
-                return api_error('只能删除应用数据目录中的合格证图片')
-            if os.path.isfile(stored_path):
-                os.remove(stored_path)
-        else:
-            _delete_managed_qualification_certificate_files()
-
-        return api_ok(msg='合格证图片已删除')
-    except Exception as e:
-        traceback.print_exc()
-        return api_error(f'删除合格证图片失败: {str(e)}')
 
 
 @app.post('/settings/automation/wash-label/import')
@@ -5359,223 +8237,6 @@ def remove_automation_wash_label_tag_image():
         return api_error(f'删除水洗标/吊牌图失败: {str(e)}')
 
 
-@app.get('/debug/version-info')
-def debug_version_info():
-    """自检：确认协议模块是否可用"""
-    import sys as _sys
-    info = {
-        'has_protocol_module': False,
-        'has_protocol_flow_func': False,
-        'publish_mode': 'unknown',
-        'is_frozen': getattr(_sys, 'frozen', False),
-    }
-    # 检查 MEIPASS 路径
-    _base = _sys._MEIPASS if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-    info['base_path'] = _base
-    proto_dir = os.path.join(_base, 'protocol-research')
-    proto_file = os.path.join(proto_dir, 'fxg_protocol_v2.py')
-    errors_file = os.path.join(proto_dir, 'fxg_errors.py')
-    info['proto_dir_exists'] = os.path.isdir(proto_dir)
-    info['proto_file_exists'] = os.path.isfile(proto_file)
-    info['errors_file_exists'] = os.path.isfile(errors_file)
-    if os.path.isdir(proto_dir):
-        info['proto_dir_contents'] = os.listdir(proto_dir)
-    # 尝试带路径导入
-    _sys.path.insert(0, proto_dir)
-    try:
-        from fxg_protocol_v2 import run as protocol_run  # noqa: F811
-        info['has_protocol_module'] = True
-    except ImportError as e:
-        info['protocol_import_error'] = str(e)
-    info['has_protocol_flow_func'] = '_execute_protocol_flow' in globals() or '_execute_protocol_flow' in dir()
-    user_settings = settings_manager.get_settings()
-    ac = settings_manager.normalize_automation_config(user_settings.automation_config)
-    info['publish_mode'] = ac.get('publish_mode', 'dom')
-    return api_ok(msg='版本信息', data=info)
-
-
-@app.post('/debug/simple-flow')
-def debug_simple_flow():
-    """最简单的流程测试：调用 _execute_protocol_flow 并返回完整原始结果（不含大字段）"""
-    import json as _json, sys as _sys2
-    # 先检查路径
-    if getattr(_sys2, 'frozen', False):
-        _check_base = _sys2._MEIPASS
-    else:
-        _check_base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    _check_proto = os.path.join(_check_base, 'protocol-research')
-    path_info = {
-        'frozen': getattr(_sys2, 'frozen', False),
-        'base': _check_base,
-        'proto_dir': _check_proto,
-        'proto_exists': os.path.isdir(_check_proto),
-        'fxg_v2_exists': os.path.isfile(os.path.join(_check_proto, 'fxg_protocol_v2.py')),
-        'sys_path_head': _sys2.path[:3],
-    }
-    try:
-        result = _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
-        safe = {
-            'path_info': path_info,
-            'success': result.get('success'),
-            'msg': str(result.get('msg')),
-            'has_data': result.get('data') is not None,
-            'data_type': str(type(result.get('data'))),
-            'data_keys': list(result.get('data', {}).keys()) if isinstance(result.get('data'), dict) else 'N/A',
-        }
-        if isinstance(result.get('data'), dict):
-            results = result['data'].get('results')
-            if isinstance(results, list):
-                safe['results_count'] = len(results)
-                safe['results_preview'] = [{'record': r.get('record'), 'status': r.get('status'), 'error': str(r.get('error'))[:100]} for r in results[:5]]
-        return api_ok(msg='简单流程测试完成', data=safe)
-    except Exception as e:
-        import traceback
-        return api_error(msg=f'异常: {e}', data={'path_info': path_info, 'traceback': traceback.format_exc()[-500:]})
-
-
-@app.post('/debug/protocol-flow-test')
-def debug_protocol_flow_test():
-    """直接调用 _execute_protocol_flow 并返回原始结果，用于诊断"""
-    import json as _json
-    result = _execute_protocol_flow(record_id=None, progress_callback=None, task_id=None)
-    # 返回完整的 result 结构
-    return api_ok(msg='协议流程测试完成', data={
-        'raw_result': result,
-        'success': result.get('success'),
-        'msg': result.get('msg'),
-        'data_keys': list(result.get('data', {}).keys()) if result.get('data') else None,
-        'results_preview': str(result.get('data', {}).get('results', 'NO_DATA_KEY'))[:500],
-    })
-
-
-@app.post('/debug/protocol-test')
-def debug_protocol_test():
-    """直接测试协议流水线，返回详细步骤信息（不走任务队列）"""
-    import json as _json, sys as _sys
-    if getattr(_sys, 'frozen', False):
-        _base = _sys._MEIPASS
-    else:
-        # Dev mode: __file__ is in tauri-app/python-sidecar/app.py
-        # Go up 3 levels: python-sidecar → tauri-app → project-root(2.0)
-        _base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    _sys.path.insert(0, os.path.join(_base, 'protocol-research'))
-
-    log_lines = []
-
-    def _log(msg):
-        log_lines.append(msg)
-        print(f'[协议测试] {msg}')
-
-    _log('=== 协议诊断开始 ===')
-
-    # Step 1: load records
-    record_list, load_error = _load_upload_records(None)
-    if load_error:
-        _log(f'加载记录失败: {load_error}')
-        return api_error(msg=load_error, data={'log': log_lines})
-    _log(f'加载到 {len(record_list)} 条记录')
-
-    if len(record_list) == 0:
-        _log('无待上传记录')
-        return api_error(msg='没有待上传数据', data={'log': log_lines})
-
-    record = record_list[0]
-    _log(f'记录: id={record.id} name={record.name} title={record.title} clazz={record.clazz} path={record.path}')
-
-    # Step 2: check images
-    image_paths = {'main_images': [], 'main_images_1x1': [], 'detail_images': []}
-    try:
-        main_pics = get_pic_list(record, '800')
-        image_paths['main_images_1x1'] = [p for p in main_pics[:5] if os.path.isfile(p)]
-        _log(f'800主图: {len(image_paths["main_images_1x1"])} 张')
-    except Exception as e:
-        _log(f'800主图失败: {e}')
-
-    try:
-        sub_pics = get_pic_list(record, '750')
-        image_paths['main_images'] = [p for p in sub_pics[:5] if os.path.isfile(p)]
-        _log(f'750主图: {len(image_paths["main_images"])} 张')
-    except Exception as e:
-        _log(f'750主图失败: {e}')
-
-    try:
-        detail_pics = get_detail_pic_list(record)
-        image_paths['detail_images'] = [p for p in detail_pics if os.path.isfile(p)]
-        _log(f'详情图: {len(image_paths["detail_images"])} 张')
-    except Exception as e:
-        _log(f'详情图失败: {e}')
-
-    if not image_paths['main_images'] and image_paths['main_images_1x1']:
-        image_paths['main_images'] = list(image_paths['main_images_1x1'])
-        _log('3:4主图缺失，使用1:1回退')
-
-    if not image_paths['main_images_1x1']:
-        _log('无主图可用，中断')
-        return api_error(msg=f'{record.name}: 未找到主图', data={'log': log_lines})
-
-    # Step 3: prepare product data
-    sku_list = _json.loads(record.content) if record.content else []
-    product_title = (record.title or '').strip() or (record.name or '').strip()
-    price_val = 9.9
-    for s in sku_list:
-        try:
-            p = float(s.get('price', 0))
-            if p > 0:
-                price_val = p
-                break
-        except: continue
-    _log(f'标题=[{product_title}] 价格={price_val} SKU数={len(sku_list)}')
-
-    # Step 4: category
-    raw_clazz = str(getattr(record, 'clazz', '') or '').strip()
-    _clazz_to_leaf = {
-        '0': 1000010268, '1': 1000010266, '2': 1000010267, '3': 1000010269, '4': 1000010270,
-    }
-    leaf_id = _clazz_to_leaf.get(raw_clazz, 1000010267)
-    _log(f'clazz={raw_clazz} -> leaf_id={leaf_id}')
-
-    # Step 5: import and run
-    try:
-        from fxg_protocol_v2 import run as protocol_run
-        _log('协议模块导入成功')
-    except ImportError as e:
-        import traceback as _tb
-        _log(f'协议模块导入失败: {e}')
-        _log(_tb.format_exc())
-        return api_error(msg=f'协议模块未找到: {e}', data={'log': log_lines})
-
-    try:
-        result = protocol_run(
-            category_leaf_id=leaf_id,
-            product_data={
-                'title': product_title,
-                'price': {'current': price_val},
-                'sku_info': [{'name': s.get('name', '默认')} for s in sku_list[:10]] if sku_list else [{'name': '默认'}],
-                'material': '棉75%;氨纶25%',
-            },
-            image_paths=image_paths,
-            category_config={
-                'category_leaf_id': leaf_id,
-                'first_cid': 1000003282, 'first_cname': '服装',
-                'second_cid': 1000009114, 'second_cname': '内衣裤袜',
-                'third_cid': 1000009597, 'third_cname': '袜子',
-                'fourth_cid': leaf_id, 'fourth_cname': '中筒袜',
-            },
-        )
-        _log(f'protocol_run 返回: success={result.get("success")}')
-        if not result.get('success'):
-            err = result.get('error', {})
-            _log(f'错误: code={err.get("code")} msg={err.get("message")}')
-        for s in result.get('steps', []):
-            _log(f'  步骤 [{s["status"]}] {s["name"]}: {s.get("summary", "")}')
-        return api_ok(msg='协议诊断完成', data={'result': result, 'log': log_lines})
-    except Exception as e:
-        import traceback as _tb
-        _log(f'protocol_run 异常: {e}')
-        _log(_tb.format_exc())
-        return api_error(msg=f'协议执行异常: {e}', data={'log': log_lines})
-
-
 @app.route('/settings/publish-mode', methods=['GET', 'POST'])
 def publish_mode():
     """获取或设置发布模式: protocol / official / dom"""
@@ -5631,16 +8292,6 @@ def reset_settings():
         return api_error(f'重置设置失败: {str(e)}')
 
 
-@app.get('/settings/page')
-def settings_page():
-    """设置页面"""
-    try:
-        return render_template('/view/settings/index.html', ctx=constants)
-    except Exception as e:
-        traceback.print_exc()
-        return api_error(f'页面加载失败：{str(e)}')
-
-
 @app.post('/api/generate_smart_title')
 def generate_smart_title():
     """🧠 智能产品标题生成API"""
@@ -5660,7 +8311,8 @@ def generate_smart_title():
         # 解析SKU列表
         sku_list = json.loads(record.content) if record.content else []
         
-        base_name = record.name if record.name else "产品"
+        base_name = sanitize_no_brand_title_text(record.name) if record.name else "产品"
+        base_name = base_name or "产品"
         
         # 简化的标题建议
         suggestions_data = [
@@ -5721,7 +8373,8 @@ def generate_smart_title_enhanced():
         # 解析SKU列表
         sku_list = json.loads(record.content) if record.content else []
         
-        base_name = record.name if record.name else "产品"
+        base_name = sanitize_no_brand_title_text(record.name) if record.name else "产品"
+        base_name = base_name or "产品"
         
         # 简化的增强标题建议
         suggestions_data = [
@@ -5868,58 +8521,6 @@ def get_network_status():
         return api_error(f'获取网络状态失败：{str(e)}')
 
 
-# 🔧 新增：控制GUI拖拽区域显示/隐藏的API - 添加防抖机制
-# 防抖机制相关变量
-_last_toggle_time = None
-_toggle_lock = threading.Lock()
-_debounce_interval = timedelta(milliseconds=300)  # 300ms防抖间隔
-
-@app.post('/gui/toggle_drag_area')
-def toggle_drag_area():
-    """控制GUI拖拽区域的显示和隐藏 - 带防抖机制"""
-    global _last_toggle_time
-    
-    try:
-        # 🔧 防抖机制：避免频繁切换导致闪烁
-        with _toggle_lock:
-            current_time = datetime.now()
-            if _last_toggle_time and (current_time - _last_toggle_time) < _debounce_interval:
-                return api_ok('操作被防抖机制跳过')
-            _last_toggle_time = current_time
-        
-        data = request.get_json()
-        show = data.get('show', True)  # 默认显示
-        
-        # 🔧 使用线程安全的GUI操作方法
-        if hasattr(gui, 'window') and gui.window and hasattr(gui.window, 'safe_toggle_label'):
-            # 使用新的线程安全方法
-            def safe_toggle():
-                try:
-                    success = gui.window.safe_toggle_label(show)
-                    if success:
-                        status = '已显示' if show else '已隐藏'
-                        print(f'GUI拖拽区域{status}')
-                    else:
-                        print('GUI拖拽区域操作被跳过（正在更新中）')
-                except Exception as e:
-                    print(f'GUI操作异常: {str(e)}')
-            
-            # 🔧 直接调用，避免Qt事件循环问题
-            safe_toggle()
-                
-            return api_ok('操作成功')
-        else:
-            error_msg = 'GUI窗口未初始化'
-            print(f'❌ {error_msg}')
-            return api_error(error_msg)
-    except Exception as e:
-        error_msg = f'控制GUI拖拽区域失败: {str(e)}'
-        print(f'❌ {error_msg}')
-        
-        traceback.print_exc()
-        return api_error(f'操作失败: {str(e)}')
-
-
 # 🚀 智能价格计算API - 重新实现
 
 @app.post('/api/pricing/calculate_smart_prices')
@@ -6048,7 +8649,7 @@ def generate_professional_title():
         
         # 构建产品信息对象
         product_info = ProfessionalProductInfo(
-            name=record.name,
+            name=sanitize_no_brand_title_text(record.name),
             category=record.clazz if record.clazz else 2,
             remark=record.remark if record.remark else "",
             sku_list=sku_list
@@ -6083,6 +8684,31 @@ def generate_professional_title():
     except Exception as e:
         app.logger.error(f"专业标题生成失败: {e}")
         return api_error(f'生成失败: {str(e)}')
+
+
+DEFAULT_PRICING_TEMPLATE = '默认袜子模板'
+
+
+def _load_pricing_config():
+    """读取 pricing_config.json；文件不存在时返回 None，由调用方决定补默认结构还是报错。"""
+    config_file = get_runtime_data_path('pricing_config.json')
+    if not os.path.exists(config_file):
+        return None
+    with open(config_file, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _save_pricing_config(config):
+    """打上 last_updated 时间戳后写回 pricing_config.json。"""
+    config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
+    config_file = get_runtime_data_path('pricing_config.json')
+    with open(config_file, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+def _pricing_cost_items(config):
+    """取默认模板的成本项列表。"""
+    return config.get('templates', {}).get(DEFAULT_PRICING_TEMPLATE, {}).get('base_cost_items', [])
 
 
 @app.post('/api/pricing/cost-config')
@@ -6148,23 +8774,20 @@ def save_cost_config():
             os.makedirs(config_dir)
         
         # 读取现有配置
-        existing_config = {}
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                existing_config = json.load(f)
-        else:
+        existing_config = _load_pricing_config()
+        if existing_config is None:
             # 如果配置文件不存在，创建一个新的空配置
             existing_config = {}
-        
+
         # 更新成本配置
         if 'templates' not in existing_config:
             existing_config['templates'] = {}
-        
-        if '默认袜子模板' not in existing_config['templates']:
-            existing_config['templates']['默认袜子模板'] = {}
-        
-        existing_config['templates']['默认袜子模板']['base_cost_items'] = cost_items
-        existing_config['templates']['默认袜子模板']['profit_margin'] = target_profit_rate
+
+        if DEFAULT_PRICING_TEMPLATE not in existing_config['templates']:
+            existing_config['templates'][DEFAULT_PRICING_TEMPLATE] = {}
+
+        existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['base_cost_items'] = cost_items
+        existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['profit_margin'] = target_profit_rate
         
         # 🔧 修复：保存营销价格配置，使用正确的字段名
         if 'marketing_pricing' in data:
@@ -6191,22 +8814,18 @@ def save_cost_config():
                 if validated_marketing['price_range'] not in valid_ranges:
                     validated_marketing['price_range'] = 'low'
                 
-                existing_config['templates']['默认袜子模板']['marketing_config'] = validated_marketing
+                existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['marketing_config'] = validated_marketing
                 print(f"✅ 营销配置已保存: {validated_marketing}")
-        
-        # 🔧 添加保存时间戳
-        existing_config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        
-        # 保存配置
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, ensure_ascii=False, indent=2)
+
+        # 🔧 添加保存时间戳并保存配置
+        _save_pricing_config(existing_config)
         print(f"✅ 配置已保存到: {config_file}")
-        
+
         # 🔧 验证保存是否成功
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 saved_config = json.load(f)
-                saved_items = saved_config.get('templates', {}).get('默认袜子模板', {}).get('base_cost_items', [])
+                saved_items = _pricing_cost_items(saved_config)
                 if len(saved_items) != len(cost_items):
                     print(f"⚠️ 保存验证失败: 期望{len(cost_items)}个项目，实际保存{len(saved_items)}个")
                 else:
@@ -6264,16 +8883,13 @@ def force_reload_pricing_config():
 def get_pricing_config():
     """获取价格配置API"""
     try:
-        config_file = get_runtime_data_path('pricing_config.json')
-        
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-        else:
+        config = _load_pricing_config()
+
+        if config is None:
             # 返回默认配置
             config = {
                 'templates': {
-                    '默认袜子模板': {
+                    DEFAULT_PRICING_TEMPLATE: {
                         'base_cost_items': [
                             {
                                 'name': '原材料',
@@ -6359,21 +8975,18 @@ def add_cost_item():
             return jsonify({'success': False, 'error': '成本值必须是非负数'})
         
         # 读取现有配置
-        config_file = get_runtime_data_path('pricing_config.json')
-        existing_config = {}
-        
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                existing_config = json.load(f)
-        
+        existing_config = _load_pricing_config()
+        if existing_config is None:
+            existing_config = {}
+
         # 确保配置结构存在
         if 'templates' not in existing_config:
             existing_config['templates'] = {}
-        if '默认袜子模板' not in existing_config['templates']:
-            existing_config['templates']['默认袜子模板'] = {'base_cost_items': []}
-        
+        if DEFAULT_PRICING_TEMPLATE not in existing_config['templates']:
+            existing_config['templates'][DEFAULT_PRICING_TEMPLATE] = {'base_cost_items': []}
+
         # 检查是否已存在同名项目
-        cost_items = existing_config['templates']['默认袜子模板'].get('base_cost_items', [])
+        cost_items = existing_config['templates'][DEFAULT_PRICING_TEMPLATE].get('base_cost_items', [])
         for item in cost_items:
             if item['name'] == data['name']:
                 return jsonify({'success': False, 'error': f'成本项目 "{data["name"]}" 已存在'})
@@ -6388,13 +9001,11 @@ def add_cost_item():
         }
         
         cost_items.append(new_item)
-        existing_config['templates']['默认袜子模板']['base_cost_items'] = cost_items
-        existing_config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        
+        existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['base_cost_items'] = cost_items
+
         # 保存配置
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, ensure_ascii=False, indent=2)
-        
+        _save_pricing_config(existing_config)
+
         return jsonify({
             'success': True,
             'message': f'成本项目 "{data["name"]}" 添加成功',
@@ -6416,15 +9027,12 @@ def update_cost_item(item_name):
         data = request.get_json()
         
         # 读取现有配置
-        config_file = get_runtime_data_path('pricing_config.json')
-        if not os.path.exists(config_file):
+        existing_config = _load_pricing_config()
+        if existing_config is None:
             return jsonify({'success': False, 'error': '配置文件不存在'})
-        
-        with open(config_file, 'r', encoding='utf-8') as f:
-            existing_config = json.load(f)
-        
+
         # 查找并更新项目
-        cost_items = existing_config.get('templates', {}).get('默认袜子模板', {}).get('base_cost_items', [])
+        cost_items = _pricing_cost_items(existing_config)
         item_found = False
         
         for item in cost_items:
@@ -6453,10 +9061,8 @@ def update_cost_item(item_name):
             return jsonify({'success': False, 'error': f'成本项目 "{item_name}" 不存在'})
         
         # 保存配置
-        existing_config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, ensure_ascii=False, indent=2)
-        
+        _save_pricing_config(existing_config)
+
         return jsonify({
             'success': True,
             'message': f'成本项目 "{item_name}" 更新成功'
@@ -6475,15 +9081,12 @@ def delete_cost_item(item_name):
     """删除单个成本项目API"""
     try:
         # 读取现有配置
-        config_file = get_runtime_data_path('pricing_config.json')
-        if not os.path.exists(config_file):
+        existing_config = _load_pricing_config()
+        if existing_config is None:
             return jsonify({'success': False, 'error': '配置文件不存在'})
-        
-        with open(config_file, 'r', encoding='utf-8') as f:
-            existing_config = json.load(f)
-        
+
         # 查找并删除项目
-        cost_items = existing_config.get('templates', {}).get('默认袜子模板', {}).get('base_cost_items', [])
+        cost_items = _pricing_cost_items(existing_config)
         original_count = len(cost_items)
         
         # 过滤掉要删除的项目
@@ -6493,13 +9096,11 @@ def delete_cost_item(item_name):
             return jsonify({'success': False, 'error': f'成本项目 "{item_name}" 不存在'})
         
         # 更新配置
-        existing_config['templates']['默认袜子模板']['base_cost_items'] = cost_items
-        existing_config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        
+        existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['base_cost_items'] = cost_items
+
         # 保存配置
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, ensure_ascii=False, indent=2)
-        
+        _save_pricing_config(existing_config)
+
         return jsonify({
             'success': True,
             'message': f'成本项目 "{item_name}" 删除成功',
@@ -6518,13 +9119,10 @@ def delete_cost_item(item_name):
 def get_cost_items():
     """获取成本项目列表API"""
     try:
-        config_file = get_runtime_data_path('pricing_config.json')
-        
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                
-            cost_items = config.get('templates', {}).get('默认袜子模板', {}).get('base_cost_items', [])
+        config = _load_pricing_config()
+
+        if config is not None:
+            cost_items = _pricing_cost_items(config)
         else:
             cost_items = []
         
@@ -6577,316 +9175,95 @@ def get_pricing_templates():
 @app.get('/api/ai/config')
 def get_ai_config():
     """获取AI配置API"""
-    try:
-        config_file = os.path.join(os.path.dirname(__file__), 'ai_config.json')
-        
-        # 默认配置
-        default_config = {
-            'deepseek': {
-                'enabled': True,
-                'api_key': '',
-                'model': 'deepseek-v4-pro',
-                'priority': 1
-            },
-            'openai': {
-                'enabled': False,
-                'api_key': '',
-                'model': 'gpt-4',
-                'priority': 2
-            },
-            'claude': {
-                'enabled': False,
-                'api_key': '',
-                'model': 'claude-3-sonnet-20240229',
-                'priority': 3
-            }
+    return api_ok('外部 AI 已禁用', data={
+        'ai_policy': dict(AI_POLICY),
+        'providers': {
+            'deepseek': {'enabled': False, 'api_key': '', 'model': '', 'priority': 1},
+            'openai': {'enabled': False, 'api_key': '', 'model': '', 'priority': 2},
+            'claude': {'enabled': False, 'api_key': '', 'model': '', 'priority': 3},
         }
-        
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                # 合并默认配置，确保所有字段都存在
-                for provider in default_config:
-                    if provider not in config:
-                        config[provider] = default_config[provider]
-                    else:
-                        for key in default_config[provider]:
-                            if key not in config[provider]:
-                                config[provider][key] = default_config[provider][key]
-        else:
-            config = default_config
-        
-        # 隐藏API密钥的敏感信息
-        safe_config = {}
-        for provider, settings in config.items():
-            safe_config[provider] = settings.copy()
-            if safe_config[provider]['api_key']:
-                # 只显示前4位和后4位
-                key = safe_config[provider]['api_key']
-                if len(key) > 8:
-                    safe_config[provider]['api_key'] = key[:4] + '*' * (len(key) - 8) + key[-4:]
-        
-        return jsonify({
-            'success': True,
-            'data': safe_config
-        })
-        
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'获取AI配置失败: {str(e)}'
-        })
+    })
 
 
 @app.post('/api/ai/config')
 def save_ai_config():
     """保存AI配置API"""
-    try:
-        data = request.get_json()
-        
-        # 验证配置数据
-        required_providers = ['deepseek', 'openai', 'claude']
-        for provider in required_providers:
-            if provider not in data:
-                return jsonify({
-                    'success': False,
-                    'error': f'缺少{provider}配置'
-                })
-            
-            provider_config = data[provider]
-            required_fields = ['enabled', 'api_key', 'model', 'priority']
-            for field in required_fields:
-                if field not in provider_config:
-                    return jsonify({
-                        'success': False,
-                        'error': f'{provider}配置缺少{field}字段'
-                    })
-        
-        # 验证至少启用一个服务
-        enabled_services = [p for p in data.values() if p.get('enabled')]
-        if not enabled_services:
-            return jsonify({
-                'success': False,
-                'error': '至少需要启用一个AI服务'
-            })
-        
-        # 验证启用的服务都有API密钥
-        for provider, config in data.items():
-            if config.get('enabled') and not config.get('api_key'):
-                provider_names = {
-                    'deepseek': 'DeepSeek',
-                    'openai': 'OpenAI',
-                    'claude': 'Claude'
-                }
-                return jsonify({
-                    'success': False,
-                    'error': f'请填写{provider_names.get(provider, provider)}的API密钥'
-                })
-        
-        # 保存配置
-        config_file = os.path.join(os.path.dirname(__file__), 'ai_config.json')
-        
-        # 添加时间戳
-        data['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        print("🔄 AI配置已更新，建议重启应用以应用新配置")
-        
-        return jsonify({
-            'success': True,
-            'message': 'AI配置保存成功'
-        })
-        
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'保存AI配置失败: {str(e)}'
-        })
+    return api_ok('外部 AI 已禁用，配置未保存', data={
+        'ai_policy': dict(AI_POLICY),
+        'model_configs': [],
+    })
 
 
 @app.post('/api/ai/test')
 def test_ai_connection():
-    """测试AI连接API"""
+    """测试发布优化 LLM 连接（仅小米/DeepSeek）。
+    payload: {provider: {api_key, model, api_base?/base_url?}}；逐个真实调用一次短 prompt。"""
     try:
-        data = request.get_json()
-        
-        test_results = {}
-        
-        # 测试每个启用的AI服务
-        for provider, config in data.items():
-            if not config.get('enabled'):
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict) or not data:
+            return api_error('未提供模型配置')
+        results = {}
+        for provider, cfg in data.items():
+            if not isinstance(cfg, dict):
                 continue
-                
-            provider_names = {
-                'deepseek': 'DeepSeek',
-                'openai': 'OpenAI',
-                'claude': 'Claude'
-            }
-            
-            try:
-                api_key = config.get('api_key', '').strip()
-                model = config.get('model', '')
-                
-                if not api_key:
-                    test_results[provider] = {
-                        'success': False,
-                        'error': 'API密钥为空'
-                    }
-                    continue
-                
-                # 根据不同提供商测试连接
-                if provider == 'deepseek':
-                    success, error = test_deepseek_connection(api_key, model)
-                elif provider == 'openai':
-                    success, error = test_openai_connection(api_key, model)
-                elif provider == 'claude':
-                    success, error = test_claude_connection(api_key, model)
-                else:
-                    success, error = False, '未知的AI提供商'
-                
-                test_results[provider] = {
-                    'success': success,
-                    'error': error if not success else None
-                }
-                
-            except Exception as e:
-                test_results[provider] = {
+            p = str(provider).strip().lower()
+            if p not in ALLOWED_PUBLISH_AI_PROVIDERS:
+                results[provider] = {
                     'success': False,
-                    'error': f'测试连接时出错: {str(e)}'
+                    'error': f'仅支持发布优化厂商 {", ".join(ALLOWED_PUBLISH_AI_PROVIDERS)}，不支持 {provider}',
                 }
-        
-        return jsonify({
-            'success': True,
-            'data': test_results
-        })
-        
+                continue
+            preset = LLM_PROVIDER_PRESETS.get(p, {})
+            base_url = str(cfg.get('base_url') or cfg.get('api_base') or preset.get('base_url') or '')
+            preset_models = preset.get('models') or []
+            model = str(cfg.get('model') or cfg.get('model_name') or '') or (preset_models[0] if preset_models else '')
+            client = LLMClient(p, str(cfg.get('api_key') or ''), base_url, model)
+            try:
+                ok, detail = client.test_connection(timeout=20)
+                if ok:
+                    results[provider] = {'success': True, 'reply': detail, 'model': model}
+                else:
+                    results[provider] = {'success': False, 'error': detail}
+            except LLMError as e:
+                results[provider] = {'success': False, 'error': str(e)}
+            except Exception as e:
+                results[provider] = {'success': False, 'error': f'测试失败：{e}'}
+        if not results:
+            return api_error('未提供有效的模型配置')
+        return api_ok('测试完成', data=results)
     except Exception as e:
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'测试AI连接失败: {str(e)}'
-        })
+        return api_error(f'测试失败：{e}')
 
 
-def test_deepseek_connection(api_key: str, model: str) -> tuple[bool, str]:
-    """测试DeepSeek连接"""
+@app.post('/api/ai/models')
+def list_ai_models():
+    """获取某厂商可用模型列表（OpenAI 兼容 GET /models）。
+    payload: {provider, api_key?, api_base?/base_url?}；未传密钥时回退已存配置。"""
     try:
-        import requests
-        
-        url = "http://127.0.0.1:8000/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": "Hello, this is a connection test."}
-            ],
-            "max_tokens": 10,
-            "temperature": 0.1
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            return True, None
-        elif response.status_code == 401:
-            return False, "API密钥无效"
-        elif response.status_code == 429:
-            return False, "请求频率过高，请稍后再试"
-        else:
-            return False, f"HTTP {response.status_code}: {response.text[:100]}"
-            
-    except requests.exceptions.Timeout:
-        return False, "连接超时"
-    except requests.exceptions.ConnectionError:
-        return False, "网络连接失败"
+        data = request.get_json(silent=True) or {}
+        provider = str(data.get('provider') or '').strip().lower()
+        if provider not in ALLOWED_PUBLISH_AI_PROVIDERS:
+            return api_error(f'仅支持 {", ".join(ALLOWED_PUBLISH_AI_PROVIDERS)}')
+        preset = LLM_PROVIDER_PRESETS.get(provider, {})
+        api_key = str(data.get('api_key') or '').strip()
+        base_url = str(data.get('base_url') or data.get('api_base') or preset.get('base_url') or '').strip()
+        # 前端未带密钥（如只回传占位）时，回退到已保存配置
+        if not api_key:
+            for c in (settings_manager.get_settings().model_configs or []):
+                if str(c.get('provider') or '').lower() == provider and c.get('api_key'):
+                    api_key = c.get('api_key')
+                    if not base_url:
+                        base_url = c.get('base_url') or c.get('api_base') or ''
+                    break
+        client = LLMClient(provider, api_key, base_url, '')
+        ok, result = client.list_models()
+        if ok:
+            return api_ok('获取成功', data={'models': result})
+        return api_error(result)
     except Exception as e:
-        return False, f"连接测试失败: {str(e)}"
-
-
-def test_openai_connection(api_key: str, model: str) -> tuple[bool, str]:
-    """测试OpenAI连接"""
-    try:
-        import requests
-        
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": "Hello, this is a connection test."}
-            ],
-            "max_tokens": 10,
-            "temperature": 0.1
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            return True, None
-        elif response.status_code == 401:
-            return False, "API密钥无效"
-        elif response.status_code == 429:
-            return False, "请求频率过高，请稍后再试"
-        else:
-            return False, f"HTTP {response.status_code}: {response.text[:100]}"
-            
-    except requests.exceptions.Timeout:
-        return False, "连接超时"
-    except requests.exceptions.ConnectionError:
-        return False, "网络连接失败"
-    except Exception as e:
-        return False, f"连接测试失败: {str(e)}"
-
-
-def test_claude_connection(api_key: str, model: str) -> tuple[bool, str]:
-    """测试Claude连接"""
-    try:
-        import requests
-        
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01"
-        }
-        
-        payload = {
-            "model": model,
-            "max_tokens": 10,
-            "messages": [
-                {"role": "user", "content": "Hello, this is a connection test."}
-            ]
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            return True, None
-        elif response.status_code == 401:
-            return False, "API密钥无效"
-        elif response.status_code == 429:
-            return False, "请求频率过高，请稍后再试"
-        else:
-            return False, f"HTTP {response.status_code}: {response.text[:100]}"
-            
-    except requests.exceptions.Timeout:
-        return False, "连接超时"
-    except requests.exceptions.ConnectionError:
-        return False, "网络连接失败"
-    except Exception as e:
-        return False, f"连接测试失败: {str(e)}"
+        traceback.print_exc()
+        return api_error(f'获取模型失败：{e}')
 
 
 # 🚀 新增：毛利率配置API
@@ -6917,27 +9294,22 @@ def save_profit_margin_config():
         profit_margin_decimal = profit_margin / 100.0
         
         # 读取现有配置
-        config_file = get_runtime_data_path('pricing_config.json')
-        existing_config = {}
-        
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                existing_config = json.load(f)
-        
+        existing_config = _load_pricing_config()
+        if existing_config is None:
+            existing_config = {}
+
         # 确保配置结构存在
         if 'templates' not in existing_config:
             existing_config['templates'] = {}
-        if '默认袜子模板' not in existing_config['templates']:
-            existing_config['templates']['默认袜子模板'] = {'base_cost_items': []}
-        
+        if DEFAULT_PRICING_TEMPLATE not in existing_config['templates']:
+            existing_config['templates'][DEFAULT_PRICING_TEMPLATE] = {'base_cost_items': []}
+
         # 更新毛利率
-        existing_config['templates']['默认袜子模板']['profit_margin'] = profit_margin_decimal
-        existing_config['last_updated'] = system_time.strftime('%Y-%m-%d %H:%M:%S', system_time.localtime())
-        
+        existing_config['templates'][DEFAULT_PRICING_TEMPLATE]['profit_margin'] = profit_margin_decimal
+
         # 保存配置
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, ensure_ascii=False, indent=2)
-        
+        _save_pricing_config(existing_config)
+
         app.logger.info(f"✅ 毛利率已实时保存: {profit_margin}%")
         
         return jsonify({
@@ -6959,78 +9331,25 @@ def save_profit_margin_config():
             'error': error_msg
         })
 
-
-# 🚀 新增：配置验证API
-
-@app.post('/api/pricing/validate-config')
-def validate_pricing_config():
-    """验证价格配置有效性API"""
-    try:
-        data = request.get_json()
-        
-        validation_results = {
-            'is_valid': True,
-            'errors': [],
-            'warnings': [],
-            'suggestions': []
-        }
-        
-        # 验证成本项目
-        cost_items = data.get('cost_items', [])
-        
-        if len(cost_items) == 0:
-            validation_results['warnings'].append('没有配置任何成本项目，可能影响价格计算准确性')
-        
-        # 验证每个成本项目
-        for i, item in enumerate(cost_items):
-            if not item.get('name'):
-                validation_results['errors'].append(f'成本项目{i+1}缺少名称')
-                validation_results['is_valid'] = False
-            
-            if item.get('cost_type') not in ['fixed', 'percentage', 'per_unit']:
-                validation_results['errors'].append(f'成本项目{i+1}的类型无效')
-                validation_results['is_valid'] = False
-            
-            if not isinstance(item.get('value'), (int, float)) or item.get('value', 0) < 0:
-                validation_results['errors'].append(f'成本项目{i+1}的值无效')
-                validation_results['is_valid'] = False
-        
-        # 验证利润率
-        profit_margin = data.get('target_profit_rate', 0)
-        if not isinstance(profit_margin, (int, float)) or profit_margin < 0 or profit_margin > 1:
-            validation_results['errors'].append('利润率必须在0-100%之间')
-            validation_results['is_valid'] = False
-        elif profit_margin < 0.1:
-            validation_results['warnings'].append('利润率过低，可能影响盈利能力')
-        elif profit_margin > 0.5:
-            validation_results['warnings'].append('利润率过高，可能影响产品竞争力')
-        
-        # 提供优化建议
-        if len(cost_items) > 0:
-            fixed_costs = [item for item in cost_items if item.get('cost_type') == 'fixed']
-            percentage_costs = [item for item in cost_items if item.get('cost_type') == 'percentage']
-            
-            if len(fixed_costs) == 0:
-                validation_results['suggestions'].append('建议添加一些固定成本项目（如包装、运费等）')
-            
-            if len(percentage_costs) == 0:
-                validation_results['suggestions'].append('建议添加一些百分比成本项目（如平台费、推广费等）')
-        
-        return jsonify({
-            'success': True,
-            'data': validation_results
-        })
-        
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'配置验证失败: {str(e)}'
-        })
 # ========== 商品链接采集 API ==========
 
 # 全局任务存储
 capture_tasks = {}
+
+# DOM 采集互斥锁：同一时刻只允许一个采集任务在跑，避免共享 capture-browser-profile
+# 时 Chrome 同一 user_data_dir 只能挂一个实例的并发冲突。
+_capture_lock = threading.Lock()
+# 标记当前是否有采集任务在运行（task_id 形式）；释放时清零
+_capture_running_task_id: Optional[str] = None
+
+
+def _capture_wait_seconds(env_name: str, default_seconds: int = 120) -> int:
+    try:
+        value = int(os.environ.get(env_name, str(default_seconds)))
+    except (TypeError, ValueError):
+        value = default_seconds
+    return max(2, min(value, 600))
+
 
 # mtop 产品数据缓存 (itemId → {title, price, skuList...})，供单品采集复用
 _mtop_product_cache: dict = {}
@@ -7040,6 +9359,25 @@ _browser_cookie_str: str = ''
 _browser_cookie_ts: float = 0.0
 
 
+def _capture_task_recovery_info(task: dict) -> dict:
+    error_code = str((task or {}).get('error_code') or '')
+    retryable_codes = {
+        '1688_antibot_verification',
+        'triggered_antibot_verification',
+        'login_timeout',
+    }
+    action_hints = {
+        '1688_antibot_verification': '请先在采集浏览器里完成 1688 访问验证，再点击重试采集。',
+        'triggered_antibot_verification': '请先在浏览器里完成平台安全验证，再点击重试采集。',
+        'login_timeout': '请先在浏览器里完成平台登录，再点击重试采集。',
+    }
+    return {
+        'can_retry': bool(error_code in retryable_codes or (task or {}).get('status') == 'failed'),
+        'user_action_required': error_code in retryable_codes,
+        'action_hint': action_hints.get(error_code, ''),
+    }
+
+
 def _is_1688_capture_url(url: str) -> bool:
     return '1688.com' in (url or '').lower()
 
@@ -7047,6 +9385,128 @@ def _is_1688_capture_url(url: str) -> bool:
 def _is_taobao_tmall_capture_url(url: str) -> bool:
     lower_url = (url or '').lower()
     return 'taobao.com' in lower_url or 'tmall.com' in lower_url
+
+
+def _resolve_capture_redirect_url(url: str):
+    normalized_url = normalize_capture_url(url)
+    if not normalized_url:
+        return '', ''
+    if not is_taobao_short_link(normalized_url):
+        return normalized_url, ''
+
+    try:
+        import requests
+        response = requests.get(
+            normalized_url,
+            allow_redirects=True,
+            timeout=8,
+            stream=True,
+            headers={
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/120.0.0.0 Safari/537.36'
+                ),
+            },
+        )
+        final_url = normalize_capture_url(response.url)
+        response.close()
+    except Exception as exc:
+        raise ValueError(f'解析淘宝短链失败：{exc}。请打开短链后复制最终的淘宝/天猫商品链接再试') from exc
+
+    final_host = capture_url_host(final_url)
+    if not final_host.endswith(('.taobao.com', '.tmall.com')) and final_host not in {'taobao.com', 'tmall.com'}:
+        raise ValueError(f'淘宝短链解析后的域名不受支持：{final_host or "未知域名"}')
+    return final_url, normalized_url
+
+
+def _is_1688_login_url(url: str) -> bool:
+    """1688 平台自己的登录页。属于 1688 平台，与淘宝登录页是不同实体。"""
+    lower = (url or '').lower()
+    return 'login.1688.com' in lower or 'login.alibaba.com' in lower
+
+
+def _is_taobao_login_url(url: str) -> bool:
+    """淘宝/天猫平台的登录页（也是阿里"会员通"统一登录入口）。属于淘宝平台，与 1688 登录页是不同实体。"""
+    lower = (url or '').lower()
+    return 'login.taobao.com' in lower or 'login.tmall.com' in lower
+
+
+def _detect_local_proxy_risk() -> str:
+    """检测本地代理 / TUN 环境，返回面向用户的诊断+解决提示（无风险返回空串）。
+
+    淘宝/1688 的二维码登录依赖阿里风控脚本（baxia.js）向风控服务器换取 token。
+    若本地代理（Clash / Mihomo 等）开启 TUN 模式，会在网卡层接管全部流量、把阿里
+    请求绕到海外节点，风控按"海外数据中心 IP"判高风险拒发 token，二维码框就永远空白；
+    或规则集直接 REJECT 阿里域名（如 *.mmstat.com）。这两种情况都不是浏览器代码能
+    单方面修复的（流量在系统网络层就被接管），只能引导用户调整代理。
+
+    所有检测异常一律吞掉返回空串，绝不阻断采集主流程。
+    """
+    reasons = []
+    # 1) Windows 系统代理开关
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            try:
+                enable = winreg.QueryValueEx(key, "ProxyEnable")[0]
+            except FileNotFoundError:
+                enable = 0
+            if enable:
+                try:
+                    server = winreg.QueryValueEx(key, "ProxyServer")[0]
+                except FileNotFoundError:
+                    server = ""
+                reasons.append(f"系统代理开启({server or '未知地址'})")
+    except Exception:
+        pass
+    # 2) 代理软件进程 + TUN 虚拟网卡
+    try:
+        import psutil
+        names = ('clash', 'mihomo', 'verge', 'v2ray', 'xray', 'sing-box', 'trojan', 'shadowsocks')
+        found = set()
+        for p in psutil.process_iter(['name']):
+            nm = (p.info.get('name') or '').lower()
+            for k in names:
+                if k in nm:
+                    found.add('Clash/Mihomo' if k in ('clash', 'mihomo', 'verge') else k)
+                    break
+        if found:
+            reasons.append("代理软件运行中(" + "、".join(sorted(found)) + ")")
+        try:
+            import socket as _sock
+            stats = psutil.net_if_stats()
+            addrs = psutil.net_if_addrs()
+            tun_keys = ('meta', 'tun', 'tap', 'wintun', 'clash', 'mihomo', 'wireguard')
+            for ifname, addr_list in addrs.items():
+                low = ifname.lower()
+                if not any(k in low for k in tun_keys):
+                    continue
+                # 关键：Windows 上 psutil 对 TUN 虚拟网卡的 isup 常误报 False，
+                # 改用"是否分到 IPv4 地址"判断是否真正启用
+                # （Clash/Mihomo TUN 默认 fake-ip 网关 198.18.x.x）。
+                has_ipv4 = any(getattr(a, 'family', None) == _sock.AF_INET for a in addr_list)
+                is_up = getattr(stats.get(ifname), 'isup', False)
+                if has_ipv4 or is_up:
+                    reasons.append(f"TUN 虚拟网卡启用({ifname})")
+                    break
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    if not reasons:
+        return ""
+    return (
+        "⚠️ 检测到本地代理可能导致登录二维码空白：" + "；".join(reasons) + "。"
+        "代理(尤其 TUN 模式)会把淘宝流量绕到海外节点，阿里风控因此拒发二维码。"
+        "解决任选其一：① 在 Clash/代理软件中临时关闭 TUN 模式或系统代理后重试；"
+        "② 在代理规则里把 *.taobao.com、*.tmall.com、*.alicdn.com、*.mmstat.com 设为直连(DIRECT)；"
+        "③ 直接用登录页右侧的『账号密码登录』(不依赖二维码)。"
+    )
 
 
 def _is_taobao_tmall_product_url(url: str) -> bool:
@@ -7257,12 +9717,15 @@ def _extract_1688_context_snapshot(page):
 
     数据路径 (2026-05 验证):
       title       → globalModel.offerDetail.subject
-      main_images → globalModel.offerDetail.mainImageList
-      all_images  → globalModel.offerDetail.imageList
+      main_images → globalModel.offerDetail.mainImageList  (注意：对象数组 {fullPathImageURI, imageURI})
+      all_images  → globalModel.offerDetail.imageList      (同样是对象数组)
       price       → globalModel.tradeModel.offerPriceModel.currentPrices[].price
       sku_props   → globalModel.offerDetail.skuProps
       sku_map     → globalModel.tradeModel.skuMap
       detail_url  → data.description.fields.detailUrl
+
+    JS 侧负责把图片对象数组扁平化为 URL 字符串数组，避免上层代码 startswith('http') 在
+    dict 上抛 AttributeError 并被 except 吃掉导致"未找到图片文件"。
     """
     return page.run_js(
         '''
@@ -7273,14 +9736,38 @@ def _extract_1688_context_snapshot(page):
             const offerDetail = globalModel?.offerDetail || {};
             const tradeModel = globalModel?.tradeModel || {};
 
-            // 主图: offerDetail.mainImageList 优先
-            const mainImages = Array.isArray(offerDetail?.mainImageList)
-                ? offerDetail.mainImageList
-                : [];
-            // 全部图片: offerDetail.imageList
-            const allImages = Array.isArray(offerDetail?.imageList)
-                ? offerDetail.imageList
-                : [];
+            // 把 mainImageList / imageList 的对象数组扁平化为 URL 字符串数组
+            function pickImageUrl(item) {
+                if (!item) return '';
+                if (typeof item === 'string') return item;
+                if (typeof item === 'object') {
+                    // 优先级：完整 URL > 尺寸 URL > 相对路径
+                    return item.fullPathImageURI
+                        || item.imageURI
+                        || item.size310x310ImageURI
+                        || item.size220x220ImageURI
+                        || item.searchImageURI
+                        || item.summImageURI
+                        || '';
+                }
+                return '';
+            }
+            function flattenImages(list) {
+                if (!Array.isArray(list)) return [];
+                const result = [];
+                const seen = new Set();
+                for (const item of list) {
+                    const u = pickImageUrl(item);
+                    if (u && !seen.has(u)) {
+                        seen.add(u);
+                        result.push(u);
+                    }
+                }
+                return result;
+            }
+
+            const mainImages = flattenImages(offerDetail?.mainImageList);
+            const allImages  = flattenImages(offerDetail?.imageList);
             // 价格
             const currentPrices = Array.isArray(tradeModel?.offerPriceModel?.currentPrices)
                 ? tradeModel.offerPriceModel.currentPrices
@@ -7294,7 +9781,7 @@ def _extract_1688_context_snapshot(page):
                 ? tradeModel.skuMap
                 : [];
             // 详情图
-            const detailUrl = data?.description?.fields?.detailUrl
+            const detailUrl = (data?.description?.fields && data.description.fields.detailUrl)
                 || offerDetail?.detailUrl
                 || '';
 
@@ -7313,6 +9800,41 @@ def _extract_1688_context_snapshot(page):
         })()
         '''
     ) or {}
+
+
+def _is_1688_antibot_page(page) -> bool:
+    """检测当前页是否为 1688 风控/验证页。
+
+    避免对"正常商品页"误判为验证页：1688 商品页渲染过程中，body 文本或外层 HTML
+    可能瞬时包含 "验证"/"punish" 等子串（埋点脚本、商家详情、压缩 JS 变量名），若据此
+    判为验证页，任务会卡在 120s 验证等待循环，而实际页面完全正常。
+
+    判定优先级：1) 已有 offerDetail.subject → 正常商品页，直接 False；
+    2) 无商品上下文时再看强风控标记 + 验证关键词。真验证页会整页替换、offerDetail 不填充。
+    红线：本函数只做"区分正常页 vs 真验证页"，不绕过任何真实风控/验证码。
+    """
+    try:
+        marker = page.run_js(
+            '''
+            return (() => {
+                const href = location.href || '';
+                const html = document.documentElement?.outerHTML || '';
+                const text = document.body?.innerText || '';
+                // 1) 已有商品标题 → 正常商品页，绝不判为验证页（避免渲染过程瞬时误判）
+                const od = window.context?.result?.global?.globalData?.model?.offerDetail;
+                if (od && od.subject && String(od.subject).length > 0) return false;
+                // 2) 强风控特征：收紧 bare 'punish'，避免误匹配压缩 JS 变量名
+                if (/_____tmd_____|x5sec|sufei-punish|punishpage|baxia-punish/i.test(href + html)) {
+                    return true;
+                }
+                // 3) 文本验证关键词：仅在无商品上下文时才采信，避免商品详情文本误命中
+                return /验证码|安全验证|访问验证/.test(text);
+            })()
+            '''
+        )
+        return bool(marker)
+    except Exception:
+        return False
 
 
 def _collect_1688_detail_images(detail_url: str):
@@ -7351,6 +9873,23 @@ def _build_1688_sku_info(snapshot: dict, clean_url_fn, default_price: float):
     prop_titles = []
     value_image_map = {}
 
+    # clean_url_fn 允许为 None：调用方有时不需要 URL 清洗逻辑，给个 no-op fallback
+    def _clean(u):
+        u = (u or '').strip()
+        if not u:
+            return ''
+        if callable(clean_url_fn):
+            try:
+                return clean_url_fn(u) or ''
+            except Exception:
+                pass
+        # 内置回退清洗：补全协议
+        if u.startswith('//'):
+            return 'https:' + u
+        if u.startswith('http'):
+            return u
+        return ''
+
     for prop in sku_props:
         prop_name = str(prop.get('prop') or prop.get('name') or '').strip()
         if prop_name:
@@ -7358,7 +9897,7 @@ def _build_1688_sku_info(snapshot: dict, clean_url_fn, default_price: float):
         for value in prop.get('value') or []:
             value_name = str(value.get('name') or '').strip()
             raw_image = value.get('imageUrl') or value.get('image') or value.get('imgUrl') or ''
-            cleaned_image = clean_url_fn(raw_image)
+            cleaned_image = _clean(raw_image)
             if value_name and cleaned_image:
                 value_image_map[value_name] = cleaned_image
 
@@ -7440,36 +9979,15 @@ def _append_query_params(url: str, params: dict) -> str:
 
 
 def _find_cdp_port() -> int:
-    """扫描本地 CDP 调试端口。优先扫描采集浏览器端口范围。"""
+    """扫描本地 CDP 调试端口。覆盖发布、调试和采集浏览器端口段。"""
     from urllib.request import urlopen as _urlopen
-    # 优先: 采集浏览器端口范围 (9400-9499)
-    for port in range(9400, 9499):
+    for port in _protocol_cdp_port_candidates():
         try:
-            _urlopen(f'http://127.0.0.1:{port}/json/version', timeout=0.5).read()
+            _urlopen(f'http://127.0.0.1:{port}/json/version', timeout=0.2).read()
             return port
         except Exception:
             continue
-    # 其次: 常见调试端口
-    for port in (9222, 9223, 9224, 9225):
-        try:
-            _urlopen(f'http://127.0.0.1:{port}/json/version', timeout=1).read()
-            return port
-        except Exception:
-            continue
-    # 最后: 广泛扫描
-    import socket
-    for port in range(9222, 9550):
-        try:
-            sock = socket.create_connection(('127.0.0.1', port), timeout=0.15)
-            sock.close()
-            try:
-                _urlopen(f'http://127.0.0.1:{port}/json/version', timeout=0.5).read()
-                return port
-            except Exception:
-                continue
-        except Exception:
-            continue
-    return 0
+    return None
 
 
 def _cdp_get_cookies_and_token(cdp_port: int) -> tuple:
@@ -7523,269 +10041,6 @@ def _cdp_get_cookies_and_token(cdp_port: int) -> tuple:
     except Exception as e:
         app.logger.warning(f"⚠️ CDP cookie 提取失败: {e}")
         return '', ''
-
-
-def _cdp_extract_font_mapping(cdp_port: int) -> dict:
-    """通过 CDP 提取浏览器中已加载的淘宝价格字体（secfont），
-    用 fontTools 解析字符→数字映射表。全程不碰 DOM。
-    返回 {encoded_char: digit_str, ...} 或空 dict。"""
-    import websocket
-    from urllib.request import urlopen as _urlopen
-    try:
-        targets = json.loads(_urlopen(f'http://127.0.0.1:{cdp_port}/json/list', timeout=3).read())
-        target = next(
-            (t for t in targets if t.get('type') == 'page' and 'taobao' in (t.get('url') or '').lower()),
-            targets[0] if targets else None,
-        )
-        if not target:
-            return {}
-
-        ws = websocket.create_connection(target['webSocketDebuggerUrl'], timeout=5, suppress_origin=True)
-        _msg_id = [0]
-
-        def _cdp(method, params=None):
-            _msg_id[0] += 1
-            ws.send(json.dumps({'id': _msg_id[0], 'method': method, 'params': params or {}}))
-            deadline = time.time() + 15
-            while time.time() < deadline:
-                raw = ws.recv()
-                msg = json.loads(raw)
-                if msg.get('id') == _msg_id[0]:
-                    return msg
-            raise TimeoutError(method)
-
-        # 通过 JS 找到 secfont 的 blob URL 并 fetch 字体二进制
-        _cdp('Runtime.enable')
-        result = _cdp('Runtime.evaluate', {
-            'expression': '''
-                (async function() {
-                    try {
-                        // 遍历所有 stylesheet 找到 secfont 的 @font-face
-                        for (var sheet of document.styleSheets) {
-                            try {
-                                for (var rule of sheet.cssRules || []) {
-                                    if (rule instanceof CSSFontFaceRule) {
-                                        var family = rule.style.getPropertyValue('font-family') || '';
-                                        if (family.indexOf('secfont') !== -1) {
-                                            var src = rule.style.getPropertyValue('src') || '';
-                                            var match = src.match(/url\\(["']?([^"')]+)["']?\\)/);
-                                            if (match) {
-                                                var blobUrl = match[1];
-                                                var resp = await fetch(blobUrl);
-                                                var buf = await resp.arrayBuffer();
-                                                var bytes = new Uint8Array(buf);
-                                                var b64 = '';
-                                                for (var i = 0; i < bytes.length; i++)
-                                                    b64 += String.fromCharCode(bytes[i]);
-                                                return {
-                                                    family: family.trim(),
-                                                    size: bytes.length,
-                                                    base64: btoa(b64)
-                                                };
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch(e) {}
-                        }
-                        return {error: 'no secfont found'};
-                    } catch(e) {
-                        return {error: e.message || String(e)};
-                    }
-                })()
-            ''',
-            'returnByValue': True,
-            'awaitPromise': True,
-            'timeout': 10000,
-        })
-        ws.close()
-
-        font_info = ((result.get('result') or {}).get('result') or {}).get('value') or {}
-        if font_info.get('error'):
-            app.logger.warning(f"⚠️ 字体提取失败: {font_info['error']}")
-            return {}
-
-        font_base64 = font_info.get('base64', '')
-        if not font_base64:
-            return {}
-
-        app.logger.info(f"📝 提取到字体: {font_info.get('family')}, {font_info.get('size')} bytes")
-
-        # 用 fontTools 解析字体 cmap 表
-        import base64
-        from fontTools.ttLib import TTFont
-        from io import BytesIO
-
-        font_bytes = base64.b64decode(font_base64)
-        font = TTFont(BytesIO(font_bytes))
-        cmap = font.getBestCmap()  # {codepoint: glyph_name}
-        if not cmap:
-            font.close()
-            return {}
-
-        # 获取所有 glyph 的名称→ID 映射
-        glyph_order = font.getGlyphOrder()  # [name, ...]
-
-        # 构建字符→字形名称 映射
-        char_to_glyph = {}
-        for codepoint, glyph_name in cmap.items():
-            char = chr(codepoint)
-            char_to_glyph[char] = glyph_name
-
-        font.close()
-
-        app.logger.info(f"📝 字体 cmap: {len(char_to_glyph)} 个字符映射")
-
-        # 字体 cmap 直接给出字符→字形映射
-        # 字形名称如 'uni0030' → 数字 '0', 'uni0031' → '1'
-        # 但淘宝的自定义字体使用非标准字形名
-        # 关键在于: 编码字符 'a' → 字形(看起来像 '5')
-        # cmap 告诉我们: 'a'(0x61) → glyph_name
-        # 我们需要知道 glyph_name 代表哪个数字
-        #
-        # 方法: 创建测试字符串，在浏览器中渲染，提取每个字符对应的数字
-        # 但这里我们返回 cmap 让调用方使用
-        return char_to_glyph
-
-    except Exception as e:
-        app.logger.warning(f"⚠️ 字体提取/解析失败: {e}")
-        return {}
-
-
-def _decode_prices_via_cdp(cdp_port: int, encoded_prices: list) -> list:
-    """通过 CDP Runtime.evaluate 批量解码价格（使用页面已加载的 secfont）。
-    不修改 DOM，不触发事件。返回解码后的价格字符串列表。"""
-    import websocket
-    from urllib.request import urlopen as _urlopen
-    try:
-        targets = json.loads(_urlopen(f'http://127.0.0.1:{cdp_port}/json/list', timeout=3).read())
-        target = next(
-            (t for t in targets if t.get('type') == 'page' and 'taobao' in (t.get('url') or '').lower()),
-            targets[0] if targets else None,
-        )
-        if not target:
-            return encoded_prices  # 返回原始值
-
-        ws = websocket.create_connection(target['webSocketDebuggerUrl'], timeout=5, suppress_origin=True)
-        _msg_id = [0]
-
-        def _cdp(method, params=None):
-            _msg_id[0] += 1
-            ws.send(json.dumps({'id': _msg_id[0], 'method': method, 'params': params or {}}))
-            deadline = time.time() + 15
-            while time.time() < deadline:
-                raw = ws.recv()
-                msg = json.loads(raw)
-                if msg.get('id') == _msg_id[0]:
-                    return msg
-            raise TimeoutError(method)
-
-        _cdp('Runtime.enable')
-
-        encoded_json = json.dumps(encoded_prices, ensure_ascii=False)
-        result = _cdp('Runtime.evaluate', {
-            'expression': f'''
-                (function() {{
-                    try {{
-                        var prices = {encoded_json};
-                        // 找到 secfont 的 fontFamily 名称
-                        var fontFamily = '';
-                        for (var sheet of document.styleSheets) {{
-                            try {{
-                                for (var rule of sheet.cssRules || []) {{
-                                    if (rule instanceof CSSFontFaceRule) {{
-                                        var f = rule.style.getPropertyValue('font-family') || '';
-                                        if (f.indexOf('secfont') !== -1) {{
-                                            fontFamily = f.trim().replace(/['"]/g, '');
-                                        }}
-                                    }}
-                                }}
-                            }} catch(e) {{}}
-                        }}
-                        if (!fontFamily) return {{error: 'no secfont'}};
-
-                        // 为每个编码价格创建测量容器
-                        var container = document.createElement('div');
-                        container.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;pointer-events:none;';
-                        document.body.appendChild(container);
-
-                        var results = [];
-                        for (var p = 0; p < prices.length; p++) {{
-                            var encoded = prices[p] || '';
-                            // 解析格式 [1_7ij1w4tp#51#<base64>#]
-                            var match = encoded.match(/^\\[\\d+_(\\w+)#\\d+#(.+)#\\]$/);
-                            if (!match) {{
-                                results.push(encoded);
-                                continue;
-                            }}
-                            var b64 = match[2];
-                            var raw = '';
-                            try {{ raw = atob(b64); }} catch(e) {{ results.push(encoded); continue; }}
-
-                            // 为每个字符渲染并获取计算样式
-                            // 使用 canvas 测量是最快的方式
-                            var canvas = document.createElement('canvas');
-                            var ctx = canvas.getContext('2d');
-                            canvas.width = raw.length * 30;
-                            canvas.height = 40;
-                            ctx.font = '28px ' + fontFamily;
-                            ctx.fillStyle = '#000';
-                            ctx.fillText(raw, 0, 30);
-
-                            // 分析像素列，识别每个字符对应的数字
-                            // 简化为: 先用已知数字渲染参考，再匹配
-                            var refDigits = '0123456789';
-                            var refCanvas = document.createElement('canvas');
-                            var refCtx = refCanvas.getContext('2d');
-                            refCanvas.width = 300; refCanvas.height = 40;
-                            refCtx.font = '28px ' + fontFamily;
-                            refCtx.fillStyle = '#000';
-                            refCtx.fillText(refDigits, 0, 30);
-
-                            // 逐字符匹配
-                            var decoded = '';
-                            for (var c = 0; c < raw.length; c++) {{
-                                var charImg = ctx.getImageData(c * 30, 0, 25, 38);
-                                var bestDigit = '?';
-                                var bestScore = Infinity;
-                                for (var d = 0; d < 10; d++) {{
-                                    var refImg = refCtx.getImageData(d * 30, 0, 25, 38);
-                                    var score = 0;
-                                    for (var i = 0; i < charImg.data.length; i += 4) {{
-                                        score += Math.abs(charImg.data[i] - refImg.data[i]);
-                                    }}
-                                    if (score < bestScore) {{
-                                        bestScore = score;
-                                        bestDigit = String(d);
-                                    }}
-                                }}
-                                decoded += bestDigit;
-                            }}
-                            results.push(decoded);
-                        }}
-                        document.body.removeChild(container);
-                        return results;
-                    }} catch(e) {{
-                        return {{error: e.message || String(e)}};
-                    }}
-                }})()
-            ''',
-            'returnByValue': True,
-            'timeout': 30000,
-        })
-        ws.close()
-
-        value = ((result.get('result') or {}).get('result') or {}).get('value') or {}
-        if isinstance(value, dict) and value.get('error'):
-            app.logger.warning(f"⚠️ 价格解码失败: {value['error']}")
-            return encoded_prices
-        if isinstance(value, list):
-            return value
-        return encoded_prices
-
-    except Exception as e:
-        app.logger.warning(f"⚠️ CDP 价格解码失败: {e}")
-        return encoded_prices
 
 
 def _mtop_post_fetch(cookies_header: str, mtop_token: str, shop_id: str, seller_id: str, page_no: int,
@@ -8106,6 +10361,19 @@ def _extract_taobao_ice_data(page) -> dict:
                 propMap[String(p.pid || '')] = {name: p.name || '', values: values};
             });
 
+            // 属性值图片映射：vid → 图片URL。
+            // 天猫 ICE 结构里颜色等属性值自带色卡图（image/imageUrl/img/imgUrl），
+            // 每个 SKU 通过 propPath 里的 vid 取回自己的色卡图，保证 SKU 图与颜色身份一致。
+            var vidImageMap = {};
+            (props || []).forEach(function(p) {
+                (p.values || []).forEach(function(v) {
+                    var img = v.image || v.imageUrl || v.img || v.imgUrl || '';
+                    img = String(img || '').trim();
+                    if (img && img.indexOf('//') === 0) img = 'https:' + img;
+                    if (img) vidImageMap[String(v.vid || '')] = img;
+                });
+            });
+
             // 构建 SKU 信息列表
             data.skuList = [];
             var seenNames = {};
@@ -8131,7 +10399,13 @@ def _extract_taobao_ice_data(page) -> dict:
 
                 var skuName = nameParts.join('+') || '默认';
                 var skuPrice = ((info.price || {}).priceMoney) || priceMoney;
+                // 从 propPath 的 vid 反查色卡图（取第一个有图的属性值，通常是颜色）
                 var skuImage = '';
+                for (var pi = 0; pi < parts.length; pi++) {
+                    if (!parts[pi]) continue;
+                    var vid2 = parts[pi].split(':')[1];
+                    if (vid2 && vidImageMap[vid2]) { skuImage = vidImageMap[vid2]; break; }
+                }
 
                 // 去重
                 if (seenNames[skuName]) return;
@@ -8235,6 +10509,73 @@ def _extract_taobao_ice_data(page) -> dict:
         return None
 
 
+def _collect_taobao_desc_images_via_browser(page, max_images: int = 80) -> list:
+    """在当前商品页内分段滚动，触发宝贝描述懒加载后从 DOM 收集详情图。
+
+    背景：天猫/淘宝详情描述是纯 JS 渲染 + 懒加载，pcDescUrl 的裸 HTML 里只有
+    <script> 标签，HTTP 抓取拿不到图（2026-08 实证）。采集流程的页面会话是有效的，
+    直接在页内滚动等描述模块渲染完毕再收图即可。
+
+    只返回阿里 CDN 的真图片 URL（带图片扩展名），调用方负责去重/下载。
+    """
+    import re as _re
+
+    # 分段滚动到底部，触发描述区懒加载
+    try:
+        page.run_js('window.scrollTo(0, 0)')
+        for _ in range(16):
+            page.run_js('window.scrollBy(0, 900)')
+            system_time.sleep(0.6)
+        page.run_js('window.scrollTo(0, document.body.scrollHeight)')
+        system_time.sleep(1.5)
+    except Exception as e:
+        app.logger.warning(f"详情图滚动加载异常: {e}")
+
+    collected = page.run_js(r'''
+        var urls = [];
+        var sels = [
+            '#description img',
+            '#container .descV8-singleImage img',
+            '#container .descV8-container img',
+            '.detail-content img',
+            '.desc-root img',
+            '[class*="descV8"] img',
+            '[class*="detailDesc"] img',
+            '[class*="detail-desc"] img'
+        ];
+        sels.forEach(function (s) {
+            document.querySelectorAll(s).forEach(function (im) {
+                var u = im.getAttribute('data-src') || im.getAttribute('data-ks-lazyload') || im.getAttribute('src') || '';
+                if (!u) return;
+                u = String(u).trim();
+                if (u.indexOf('//') === 0) u = 'https:' + u;
+                urls.push(u);
+            });
+        });
+        return urls;
+    ''') or []
+
+    result = []
+    for u in collected:
+        if 'alicdn.com' not in u and 'taobaocdn' not in u:
+            continue
+        if 's.gif' in u or 'placeholder' in u.lower():
+            continue
+        if not _re.search(r'\.(?:jpg|jpeg|png|webp)(?:[_.?#]|$)', u, _re.IGNORECASE):
+            continue
+        if u not in result:
+            result.append(u)
+        if len(result) >= max_images:
+            break
+
+    # 回滚到顶部，避免影响后续 DOM 兜底提取的视口判断
+    try:
+        page.run_js('window.scrollTo(0, 0)')
+    except Exception:
+        pass
+    return result
+
+
 def _fetch_taobao_desc_images(page, pc_desc_url: str) -> list:
     """从淘宝 PC 详情页 URL 提取详情图列表（二次HTTP请求）。"""
     import requests as _requests
@@ -8249,10 +10590,17 @@ def _fetch_taobao_desc_images(page, pc_desc_url: str) -> list:
         # 详情页的图片通常在 <img> 标签或 JSON 数据中
         import re as _re
         img_urls = _re.findall(r'(?:src|data-src)=["\']([^"\']*(?:alicdn|taobaocdn|gw\.alicdn)[^"\']*)["\']', html)
+        # 补充 JSON 内嵌图片 URL（desc 页常把图放在 "url":"//..." 这类字段里）
+        img_urls += _re.findall(r'"((?:https?:)?//[^"\']*(?:alicdn|taobaocdn)[^"\']*)"', html)
         result = []
-        for u in img_urls[:80]:
+        for u in img_urls[:120]:
             u = u.strip()
             if not u or 's.gif' in u or 'placeholder' in u.lower():
+                continue
+            # 只保留真图片：路径必须带图片扩展名（允许 _尺寸/_裁剪 等 CDN 后缀）。
+            # 否则 <script src="https://g.alicdn.com/....js"> 会被误当详情图下载，
+            # 存成 .jpg 后内容是 JS（现场实证：详情_001.jpg 文件头是 !function...）。
+            if not _re.search(r'\.(?:jpg|jpeg|png|webp)(?:[_.?#]|$)', u, _re.IGNORECASE):
                 continue
             if not u.startswith('http'):
                 u = 'https:' + u
@@ -8492,11 +10840,30 @@ def _download_capture_product_images(product_data: dict, product_url: str, optio
     os.makedirs(sku_img_dir, exist_ok=True)
     os.makedirs(detail_img_dir, exist_ok=True)
 
+    # 重复采集同一商品时先清空旧文件，避免上一次失败/旧版逻辑留下的脏文件
+    # （如把 JS 存成的 .jpg）混入本次结果
+    for _dir in (main_img_dir, sku_img_dir, detail_img_dir):
+        for _name in os.listdir(_dir):
+            _fp = os.path.join(_dir, _name)
+            if os.path.isfile(_fp):
+                try:
+                    os.remove(_fp)
+                except OSError:
+                    pass
+
     session = requests.Session()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': product_url,
     })
+
+    def _looks_like_image(content: bytes) -> bool:
+        """校验下载内容确实是图片（魔数检查），防止把防盗链返回的 JS/HTML 挑战页存成 .jpg。"""
+        if not content or len(content) < 12:
+            return False
+        if content.startswith(b'RIFF'):
+            return content[8:12] == b'WEBP'
+        return content.startswith((b'\xff\xd8\xff', b'\x89PNG', b'GIF8', b'BM'))
 
     def download_image(img_url, filepath):
         try:
@@ -8506,6 +10873,8 @@ def _download_capture_product_images(product_data: dict, product_url: str, optio
                 img_url = 'https:' + img_url
             response = session.get(img_url, timeout=15)
             if response.status_code != 200 or len(response.content) < 100:
+                return False
+            if not _looks_like_image(response.content):
                 return False
             with open(filepath, 'wb') as f:
                 f.write(response.content)
@@ -8671,15 +11040,23 @@ def _capture_taobao_tmall_product_for_store(page, product_url: str, options: dic
 
     if ice_data and ice_data.get('title') and ice_data['price']['current'] > 0:
         product_data.update(ice_data)
-        # 如果有详情图URL，异步获取详情图
         pc_desc_url = ice_data.pop('_pc_desc_url', '')
-        if pc_desc_url:
+        detail_imgs = []
+        # 详情图优先走页内滚动懒加载采集（天猫详情纯 JS 渲染，裸 HTML 拿不到图）
+        try:
+            detail_imgs = _collect_taobao_desc_images_via_browser(page)
+            if detail_imgs:
+                app.logger.info(f"详情图(浏览器滚动懒加载): {len(detail_imgs)} 张")
+        except Exception as e:
+            app.logger.warning(f"详情图浏览器采集异常: {e}")
+        # 兜底：pcDescUrl 二次 HTTP 抓取
+        if not detail_imgs and pc_desc_url:
             try:
                 detail_imgs = _fetch_taobao_desc_images(page, pc_desc_url)
-                if detail_imgs:
-                    product_data['detail_images'] = detail_imgs
             except Exception as e:
                 app.logger.warning(f"详情图获取失败: {e}")
+        if detail_imgs:
+            product_data['detail_images'] = detail_imgs
         app.logger.info(f"ICE提取成功: title={product_data['title'][:30]} price={product_data['price']['current']} imgs={len(product_data['main_images'])} skus={len(product_data['sku_info'])} details={len(product_data['detail_images'])}")
     else:
         app.logger.info(f"ICE提取数据不完整，回退到HTTP正则+DOM")
@@ -8858,33 +11235,76 @@ def start_capture():
             app.logger.error("❌ 无效的请求数据")
             return jsonify({'success': False, 'message': '无效的请求数据'})
         
-        url = data.get('url', '').strip()
+        raw_url = str(data.get('url', '') or '').strip()
+        url = normalize_capture_url(raw_url)
         options = data.get('options', {
             'download_images': True,
             'extract_sku': True,
             'extract_params': True
         })
-        
+
         app.logger.info(f"🔗 采集URL: {url}")
         app.logger.info(f"⚙️ 采集选项: {options}")
-        
+
         # 验证URL
         if not url:
             app.logger.error("❌ URL为空")
             return jsonify({'success': False, 'message': '请输入商品或店铺链接'})
-        
+
+        try:
+            resolved_url, short_url = _resolve_capture_redirect_url(url)
+            if short_url:
+                app.logger.info(f"🔁 淘宝短链已解析: {short_url} -> {resolved_url}")
+            url = resolved_url
+        except ValueError as resolve_error:
+            app.logger.error(f"❌ 短链解析失败: {resolve_error}")
+            return jsonify({'success': False, 'message': str(resolve_error)})
+
         is_1688 = _is_1688_capture_url(url)
         is_taobao_tmall = _is_taobao_tmall_capture_url(url)
         if not is_1688 and not is_taobao_tmall:
             app.logger.error(f"❌ 不支持的URL: {url}")
             return jsonify({'success': False, 'message': '仅支持淘宝/天猫/1688商品链接，或淘宝/天猫店铺链接'})
 
+        # 平台 + 采集方式由后端按 URL 自动识别，并从用户设置读取每平台的偏好。
+        # 1688 与 淘宝/天猫 是两个独立平台，从 capture_preferences 分别取对应字段，不跨用。
+        platform_choice = '1688' if is_1688 else 'taobao'
+        try:
+            _ms = settings_manager.get_settings()
+            _ac = settings_manager.normalize_automation_config(_ms.automation_config)
+            _prefs = _ac.get('capture_preferences') or {}
+            if platform_choice == '1688':
+                capture_mode = str(_prefs.get('alibaba_1688_mode') or 'dom').strip().lower()
+            else:
+                capture_mode = str(_prefs.get('taobao_tmall_mode') or 'dom').strip().lower()
+            if capture_mode not in {'dom', 'protocol'}:
+                capture_mode = 'dom'
+        except Exception as _pref_err:
+            app.logger.warning(f"⚠️ 读取采集偏好失败，回退默认 dom: {_pref_err}")
+            capture_mode = 'dom'
+
+        app.logger.info(f"🎯 平台: {platform_choice} | 采集方式: {capture_mode}（按用户设置自动选择）")
+
         product_id = _extract_capture_product_id(url)
-        
+
         # 生成任务ID
         import hashlib
         task_id = f"capture_{int(system_time.time())}_{hashlib.md5(url.encode()).hexdigest()[:8]}"
         app.logger.info(f"🆔 生成任务ID: {task_id}")
+
+        # 并发互斥：同一时刻只允许一个采集任务在跑，避免共享 capture-browser-profile 时
+        # Chrome 单 user_data_dir 限制导致两个任务互相打断对方的页面状态。
+        global _capture_running_task_id
+        with _capture_lock:
+            if _capture_running_task_id:
+                running = _capture_running_task_id
+                app.logger.warning(f"❌ 已有采集任务在跑: {running}，拒绝新请求 {task_id}")
+                return jsonify({
+                    'success': False,
+                    'message': f'已有采集任务正在运行 ({running})，请等待完成或先取消后再试'
+                })
+            _capture_running_task_id = task_id
+            app.logger.info(f"🔒 已占用采集互斥锁: {task_id}")
 
         protocol_capture_runtime = _start_protocol_capture_record(
             source_url=url,
@@ -8897,69 +11317,22 @@ def start_capture():
         task = {
             'task_id': task_id,
             'url': url,
+            'original_url': raw_url if raw_url and raw_url != url else '',
             'options': options,
+            'platform': platform_choice,
+            'capture_mode': capture_mode,
             'status': 'pending',
             'progress': 0,
             'message': '任务创建成功',
             'created_at': datetime.now().isoformat(),
             'result': None,
+            'error_code': '',
+            'cancelled': False,
             'protocol_capture_root': protocol_capture_runtime.get('root') if protocol_capture_runtime else '',
         }
         
         capture_tasks[task_id] = task
         app.logger.info(f"✅ 任务已创建: {task_id}")
-        
-        # URL清洗函数：处理阿里云CDN的各种后缀
-        def clean_alicdn_url(url):
-            """
-            清洗阿里云CDN图片URL，去除缩略图和质量后缀
-            例如：
-            - https://.../xxx.jpg_90x90q30.jpg_.webp -> https://.../xxx.jpg
-            - https://.../xxx.jpg_q50.jpg_.webp -> https://.../xxx.jpg
-            - https://.../xxx.jpg_.webp -> https://.../xxx.jpg
-            """
-            if not url:
-                return ''
-            
-            # 补全协议
-            if url.startswith('//'):
-                url = 'https:' + url
-            elif not url.startswith('http'):
-                return ''
-            
-            # 去掉URL参数
-            url = url.split('?')[0]
-            
-            # 阿里云CDN图片URL处理规则（按优先级）
-            import re
-            task_url = capture_tasks[task_id].get('url', '')
-            
-            # 1. 处理 _数字x数字q数字.jpg_.webp （如：_90x90q30.jpg_.webp）
-            url = re.sub(r'_\d+x\d+q\d+\.jpg_\.webp$', '.jpg', url)
-            
-            # 2. 处理 _q数字.jpg_.webp （如：_q50.jpg_.webp）
-            url = re.sub(r'_q\d+\.jpg_\.webp$', '.jpg', url)
-            
-            # 3. 处理 _.webp （通用webp后缀）
-            url = re.sub(r'_\.webp$', '', url)
-            
-            # 4. 处理 .jpg_.webp
-            url = re.sub(r'\.jpg_\.webp$', '.jpg', url)
-            
-            # 5. 处理 _数字x数字q数字.jpg （如：_90x90q30.jpg）
-            url = re.sub(r'_\d+x\d+q\d+\.jpg$', '.jpg', url)
-            
-            # 6. 处理 _q数字.jpg （如：_q50.jpg）
-            url = re.sub(r'_q\d+\.jpg$', '.jpg', url)
-            
-            # 7. 处理双后缀情况（如：.jpg.jpg、.png.jpg等）
-            url = re.sub(r'\.(jpg|jpeg|png|gif|webp)\.(jpg|jpeg|png|gif|webp)$', r'.\1', url)
-            
-            # 8. 处理 -0-picasso 等特殊标记
-            # picasso 是阿里的图片处理服务，URL格式: xxx-0-picasso.jpg
-            # 这种URL通常是正常的，不需要特殊处理
-            
-            return url
         
         # 在后台线程中启动采集
         def run_capture_task():
@@ -8967,14 +11340,36 @@ def start_capture():
             import traceback
             import re
             task_url = capture_tasks.get(task_id, {}).get('url', url)
-            
+            # 读取本任务的平台/采集方式（默认 auto + dom，保证旧调用兼容）
+            task_platform = capture_tasks.get(task_id, {}).get('platform', 'auto')
+            task_capture_mode = capture_tasks.get(task_id, {}).get('capture_mode', 'dom')
+
             try:
                 app.logger.info(f"🚀 开始执行采集任务: {task_id}")
-                
+                app.logger.info(f"🎯 任务平台: {task_platform} | 采集方式: {task_capture_mode}")
+
+                # 采集方式分发说明：
+                #   - dom（默认）：当前已实现的两套独立提取路径
+                #       · 1688  → JS 注入读取 window.context（不跨用淘宝协议）
+                #       · 淘宝/天猫 → 浏览器内 mtop 客户端调用（不跨用 1688 协议）
+                #   - protocol（预览版）：基于 CDP Network 域被动抓接口响应。
+                #       完整实现需要枚举每个平台的关键接口并解析响应，工作量较大；
+                #       本版本先把请求/响应原文落到 protocol_capture_root 目录便于离线复盘，
+                #       数据提取仍走 DOM 路径以保证用户能拿到产品数据，不会出现"功能空转"。
+                if task_capture_mode == 'protocol':
+                    app.logger.warning(
+                        "⚠️ 协议采集为预览版：本次仍按 DOM 路径完成数据提取，"
+                        "协议层网络快照将被记录到 protocol_capture_root 供后续抓包分析"
+                    )
+                    capture_tasks[task_id]['message'] = '协议采集（预览版）：本次走 DOM 提取并记录协议层网络快照...'
+                else:
+                    app.logger.info("📋 采集方式: DOM 采集（读浏览器渲染数据）")
+
                 # 更新任务状态
                 capture_tasks[task_id]['status'] = 'running'
                 capture_tasks[task_id]['progress'] = 10
-                capture_tasks[task_id]['message'] = '正在启动浏览器...'
+                if not capture_tasks[task_id].get('message', '').startswith('协议采集'):
+                    capture_tasks[task_id]['message'] = '正在启动浏览器...'
                 app.logger.info(f"📊 进度: 10% - 正在启动浏览器...")
                 
                 # 使用DrissionPage进行采集（因为项目已经有了这个依赖）
@@ -8999,22 +11394,38 @@ def start_capture():
                 # 🛡️ 反爬虫策略配置
                 # 1. 设置真实的User-Agent
                 co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-                
+
                 # 2. 禁用自动化检测特征
-                
+
                 # 3. 添加更多反检测参数
                 co.set_argument('--disable-dev-shm-usage')
                 # co.set_argument('--no-sandbox')  # 已移除：会显示警告提示
                 co.set_argument('--disable-gpu')
-                
+
                 # 4. 设置窗口大小（模拟真实用户）
                 co.set_argument('--window-size=1920,1080')
-                
-                # 5. 禁用webdriver标志
-                co.set_pref('excludeSwitches', ['enable-automation'])
-                co.set_pref('useAutomationExtension', False)
-                
-                app.logger.info("✅ 反爬虫策略已配置")
+
+                # 5. webdriver 标记由 addScriptToEvaluateOnNewDocument 里的 JS 覆盖处理。
+                # --disable-blink-features=AutomationControlled 在 Chrome 120+ 已废弃，
+                # 加了反而显示"不受支持的命令行标记"警告，不加。
+
+                # 6. 强制不走系统代理（关键！）
+                # 现场实测：用户机器开启 Clash 类本地代理(127.0.0.1:7897)时，规则集会拦截
+                #   - g.alicdn.com/AWSC/...baxia*.js（阿里风控"八仙"脚本）
+                #   - gm.mmstat.com / log.mmstat.com（阿里埋点）
+                # 阿里登录页依赖 baxia.js 获取风控 token 才会调用 qrcode/generate.do 生成二维码，
+                # baxia 被掐就会出现"二维码框存在但永远空白"的现象。
+                # 1688/淘宝/天猫都是国内站点，采集浏览器直连即可，不需要也不应走系统代理。
+                co.set_argument('--no-proxy-server')
+                # 备用兜底：即便上面被某些场景忽略，bypass-list 也会强制绕过阿里域名
+                co.set_argument(
+                    '--proxy-bypass-list=<-loopback>;'
+                    '*.taobao.com;*.tmall.com;*.alibaba.com;*.alibabagroup.com;'
+                    '*.1688.com;*.alicdn.com;*.aliyun.com;*.alipay.com;'
+                    '*.mmstat.com;*.alipayobjects.com'
+                )
+
+                app.logger.info("✅ 反爬虫策略已配置（含强制直连绕过本地代理）")
                 
                 # 更新进度
                 capture_tasks[task_id]['progress'] = 20
@@ -9024,34 +11435,108 @@ def start_capture():
                 # 创建页面
                 app.logger.info("🌐 正在启动浏览器...")
                 page = ChromiumPage(co)
-                
-                # 🛡️ 注入反检测脚本
-                page.run_js('''
-                    // 移除webdriver标识
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => false
-                    });
-                    
-                    // 伪造插件
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
-                    });
-                    
-                    // 伪造语言
-                    Object.defineProperty(navigator, 'languages', {
-                        get: () => ['zh-CN', 'zh', 'en']
-                    });
-                    
-                    // 覆盖权限查询
-                    const originalQuery = window.navigator.permissions.query;
-                    window.navigator.permissions.query = (parameters) => (
-                        parameters.name === 'notifications' ?
-                            Promise.resolve({ state: Notification.permission }) :
-                            originalQuery(parameters)
-                    );
-                    
-                    console.log('✅ 反检测脚本已注入');
-                ''')
+
+                # ============== 持久化注入：反检测 + mmstat 埋点短路 ==============
+                # 用 Page.addScriptToEvaluateOnNewDocument，每个新 document 加载前自动注入。
+                # 旧的 page.run_js 只对当前空白页生效，page.get(商品页) 之后就失效了。
+                #
+                # mmstat 短路（关键）：
+                #   现场实测：用户机器开 Clash / verge-mihomo / Mihomo 等本地代理工具时，
+                #   规则集常把 *.mmstat.com（阿里埋点）加入 REJECT 名单，导致请求 SSL 失败。
+                #   1688 详情页的初始化 JS 依赖埋点上报，埋点失败会触发 launch_regist_error
+                #   并 abort 整个主框架，所有商品模块 JS 被级联取消，最终页面只剩空骨架。
+                #   `--no-proxy-server` 启动参数对 TUN 模式代理无效（TUN 在网卡层接管）。
+                #   这里在浏览器内 hook fetch / XHR / sendBeacon / Image，让所有 *.mmstat.com
+                #   请求立即返回 fake 200，业务 JS 以为埋点成功，正常继续渲染。
+                init_script = r'''
+                (function () {
+                  // 反检测
+                  try {
+                    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                    Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3, 4, 5] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+                    if (window.navigator.permissions && window.navigator.permissions.query) {
+                      const origQuery = window.navigator.permissions.query;
+                      window.navigator.permissions.query = function (p) {
+                        return p && p.name === 'notifications'
+                          ? Promise.resolve({ state: Notification.permission })
+                          : origQuery(p);
+                      };
+                    }
+                  } catch (e) {}
+
+                  // mmstat 短路 —— 绕过本地代理拦截阿里埋点导致的页面渲染中断
+                  var BLOCK_PATTERNS = [ /mmstat\.com/i ];
+                  function shouldFake(url) {
+                    if (typeof url !== 'string') return false;
+                    for (var i = 0; i < BLOCK_PATTERNS.length; i++) {
+                      if (BLOCK_PATTERNS[i].test(url)) return true;
+                    }
+                    return false;
+                  }
+
+                  if (window.fetch) {
+                    var origFetch = window.fetch;
+                    window.fetch = function (input, init) {
+                      var url = typeof input === 'string' ? input : (input && input.url) || '';
+                      if (shouldFake(url)) {
+                        return Promise.resolve(new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } }));
+                      }
+                      return origFetch.apply(this, arguments);
+                    };
+                  }
+
+                  if (window.XMLHttpRequest) {
+                    var origOpen = XMLHttpRequest.prototype.open;
+                    var origSend = XMLHttpRequest.prototype.send;
+                    XMLHttpRequest.prototype.open = function (method, url) {
+                      try { this.__fakeUrl = shouldFake(url) ? url : null; } catch (e) {}
+                      return origOpen.apply(this, arguments);
+                    };
+                    XMLHttpRequest.prototype.send = function () {
+                      var self = this;
+                      if (self.__fakeUrl) {
+                        setTimeout(function () {
+                          try {
+                            Object.defineProperty(self, 'readyState',   { configurable: true, get: function () { return 4; } });
+                            Object.defineProperty(self, 'status',       { configurable: true, get: function () { return 200; } });
+                            Object.defineProperty(self, 'statusText',   { configurable: true, get: function () { return 'OK'; } });
+                            Object.defineProperty(self, 'responseText', { configurable: true, get: function () { return ''; } });
+                            Object.defineProperty(self, 'response',     { configurable: true, get: function () { return ''; } });
+                            if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                            if (typeof self.onload === 'function') self.onload();
+                            self.dispatchEvent(new Event('readystatechange'));
+                            self.dispatchEvent(new Event('load'));
+                            self.dispatchEvent(new Event('loadend'));
+                          } catch (e) {}
+                        }, 0);
+                        return;
+                      }
+                      return origSend.apply(this, arguments);
+                    };
+                  }
+
+                  if (navigator.sendBeacon) {
+                    var origBeacon = navigator.sendBeacon.bind(navigator);
+                    navigator.sendBeacon = function (url, data) {
+                      if (shouldFake(url)) return true;
+                      return origBeacon(url, data);
+                    };
+                  }
+
+                  try { console.log('[capture-init] anti-detect + mmstat-shim installed'); } catch (e) {}
+                })();
+                '''
+                try:
+                    page.add_init_js(init_script)
+                    app.logger.info("✅ init 脚本已持久化注入（反检测 + mmstat 短路）")
+                except Exception as init_err:
+                    # add_init_js 不可用时降级为 run_js（只对当前页面生效，但聊胜于无）
+                    app.logger.warning(f"⚠️ add_init_js 失败，降级为 run_js: {init_err}")
+                    try:
+                        page.run_js(init_script)
+                    except Exception as run_err:
+                        app.logger.error(f"❌ 反检测/mmstat 脚本注入失败: {run_err}")
                 
                 # 从任务中获取URL
                 is_1688 = _is_1688_capture_url(task_url)
@@ -9060,12 +11545,10 @@ def start_capture():
                 capture_tasks[task_id]['message'] = '正在访问商品页面...'
                 app.logger.info(f"📊 进度: 20% - 正在访问商品页面...")
                 
-                # 🛡️ 首页导航：建立浏览轨迹（仅单品采集，店铺采集直接跳目标页以减少刷新）
-                if not is_taobao_tmall_store:
+                # 🛡️ 首页导航：建立浏览轨迹（1688 跳过避免触发风控）
+                if not is_taobao_tmall_store and not is_1688:
                     try:
-                        if is_1688:
-                            page.get('https://www.1688.com', timeout=15)
-                        elif 'tmall.com' in task_url:
+                        if 'tmall.com' in task_url:
                             page.get('https://www.tmall.com', timeout=15)
                         else:
                             page.get('https://www.taobao.com', timeout=15)
@@ -9075,25 +11558,128 @@ def start_capture():
 
                 # 访问目标页面
                 app.logger.info(f"🔗 正在访问: {task_url}")
-                nav_ok = True
-                try:
-                    page.get(task_url, timeout=30)
-                except Exception as nav_err:
-                    err_str = str(nav_err)
-                    if '刷新' in err_str or 'refresh' in err_str.lower():
-                        app.logger.warning(f"页面刷新/重定向 ({err_str[:80]})，等待页面稳定...")
-                        system_time.sleep(5)
-                        nav_ok = False
-                    else:
-                        raise
+                if is_1688:
+                    # 1688: DrissionPage page.get 会因登录重定向触发刷新检测而崩溃，用 CDP 导航
+                    # 关键：必须用本任务自己启动的 capture_port，不能用 _find_cdp_port() —
+                    # 否则会扫到系统里其他 Chrome（如 DrissionPage 默认 9222），把别人的 Chrome
+                    # 强制导航到 1688 商品页，而真正的采集浏览器还停在空白页。
+                    try:
+                        import websocket as _ws1688nav
+                        cdp_port = capture_port
+                        targets1688 = json.loads(urlopen(f'http://127.0.0.1:{cdp_port}/json/list', timeout=3).read())
+                        # 优先选 DrissionPage 当前控制的那个 tab，避免误导航到其他 tab
+                        current_tab_id = ''
+                        try:
+                            current_tab_id = str(getattr(page, 'tab_id', '') or '')
+                        except Exception:
+                            current_tab_id = ''
+                        page_targets = [t for t in targets1688 if t.get('type') == 'page']
+                        target_for_nav = None
+                        if current_tab_id:
+                            for t in page_targets:
+                                if t.get('id') == current_tab_id:
+                                    target_for_nav = t
+                                    break
+                        if target_for_nav is None and page_targets:
+                            target_for_nav = page_targets[0]
+                        if target_for_nav:
+                            ws1688 = _ws1688nav.create_connection(target_for_nav['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
+                            ws1688.settimeout(5)
+                            # 双保险：在 Page.navigate 之前通过同一个 WebSocket 直接注册
+                            # Page.addScriptToEvaluateOnNewDocument，确保 mmstat 短路脚本
+                            # 在本次导航的新 document 加载前生效。
+                            # add_init_js 依赖 DrissionPage API 是否可用；旧版 API 不可用时
+                            # 会降级为 run_js（只对当前空白页生效），CDP 导航后就失效。
+                            # 这里直接通过 CDP 再注册一次，不依赖 DrissionPage 版本。
+                            try:
+                                ws1688.send(json.dumps({
+                                    'id': 0,
+                                    'method': 'Page.addScriptToEvaluateOnNewDocument',
+                                    'params': {'source': init_script},
+                                }))
+                            except Exception as _reg_err:
+                                app.logger.warning(f"⚠️ 1688 CDP addScriptToEvaluateOnNewDocument 注册失败（不影响采集）: {_reg_err}")
+                            ws1688.send(json.dumps({'id': 1, 'method': 'Page.enable'}))
+                            ws1688.send(json.dumps({'id': 2, 'method': 'Page.navigate', 'params': {'url': task_url}}))
+                            # 等待页面加载：基础 5 秒 + 轮询等 window.context 商品数据就绪
+                            # （window.context 就绪 ≈ 1688 SPA 主框架渲染完成）
+                            system_time.sleep(5)
+                            for _w1688 in range(5):
+                                try:
+                                    if page.run_js(
+                                        "return !!(window.context?.result?.global"
+                                        "?.globalData?.model?.offerDetail?.subject)"
+                                    ):
+                                        app.logger.info(f"✅ 1688 window.context 就绪（约 {5 + _w1688 * 2}s）")
+                                        break
+                                except Exception:
+                                    pass
+                                system_time.sleep(2)
+                            ws1688.close()
+                    except Exception as _cdp_nav_err:
+                        app.logger.warning(f"1688 CDP导航失败({_cdp_nav_err})，尝试DrissionPage")
+                        try:
+                            page.get(task_url, timeout=30)
+                        except Exception as _dr_err:
+                            app.logger.warning(f"1688导航异常，等待页面稳定: {_dr_err}")
+                            system_time.sleep(5)
+                else:
+                    try:
+                        page.get(task_url, timeout=30)
+                    except Exception as nav_err:
+                        err_str = str(nav_err)
+                        if '刷新' in err_str or 'refresh' in err_str.lower():
+                            app.logger.warning(f"页面刷新/重定向 ({err_str[:80]})，等待页面稳定...")
+                            system_time.sleep(5)
+                        else:
+                            raise
                 current_url = page.url
                 app.logger.info(f"📍 当前URL: {current_url[:100]}")
-                
+
+                if is_1688 and _is_1688_antibot_page(page):
+                    antibot_wait_seconds = _capture_wait_seconds('CAPTURE_ANTIBOT_WAIT_SECONDS', 120)
+                    app.logger.warning(f"⚠️ 1688 触发风控验证页，等待用户处理（最多{antibot_wait_seconds}秒）...")
+                    capture_tasks[task_id]['message'] = '⏳ 1688 触发访问验证，请在采集浏览器中完成验证...'
+                    wait_deadline = system_time.time() + antibot_wait_seconds
+                    while system_time.time() < wait_deadline:
+                        if capture_tasks.get(task_id, {}).get('cancelled'):
+                            return
+                        system_time.sleep(2)
+                        if not _is_1688_antibot_page(page):
+                            app.logger.info("✅ 1688 验证通过，重新进入商品页")
+                            try:
+                                page.get(task_url, timeout=30)
+                            except Exception:
+                                pass
+                            system_time.sleep(3)
+                            break
+                    else:
+                        app.logger.error("❌ 1688 风控验证等待超时")
+                        capture_tasks[task_id]['status'] = 'failed'
+                        capture_tasks[task_id]['progress'] = 0
+                        capture_tasks[task_id]['error_code'] = '1688_antibot_verification'
+                        capture_tasks[task_id]['message'] = (
+                            f'1688 触发访问验证，{antibot_wait_seconds} 秒内未完成验证。请在采集浏览器中完成验证后重新采集；'
+                            '如果反复触发，先使用普通浏览器打开同一商品链接确认账号/网络环境正常。'
+                        )
+                        _finalize_protocol_capture_record(
+                            protocol_capture_runtime,
+                            task_id=task_id,
+                            source_url=task_url,
+                            status='failed',
+                            progress=0,
+                            message=capture_tasks[task_id]['message'],
+                            error='1688_antibot_verification',
+                        )
+                        return
+
                 if not is_1688 and ('punish' in current_url or 'sec.taobao.com' in current_url or 'bixi.alicdn.com' in current_url):
                     app.logger.warning("⚠️ 触发安全验证，等待用户处理（最多120秒）...")
                     capture_tasks[task_id]['message'] = '⏳ 触发安全验证，请在浏览器中完成验证...'
                     wait_count = 0
                     while wait_count < 60:
+                        if capture_tasks.get(task_id, {}).get('cancelled'):
+                            return
                         system_time.sleep(2)
                         wait_count += 1
                         current_url = page.url
@@ -9106,6 +11692,7 @@ def start_capture():
                         app.logger.error("❌ 验证等待超时")
                         capture_tasks[task_id]['status'] = 'failed'
                         capture_tasks[task_id]['progress'] = 0
+                        capture_tasks[task_id]['error_code'] = 'triggered_antibot_verification'
                         capture_tasks[task_id]['message'] = '验证等待超时，请手动完成验证后重新采集'
                         _finalize_protocol_capture_record(
                             protocol_capture_runtime,
@@ -9134,27 +11721,57 @@ def start_capture():
                     current_url = page.url
                     app.logger.info(f"🔍 当前URL: {current_url}")
                     
-                    # 通过URL判断是否需要登录（更快更准确）
-                    if (is_1688 and ('login.1688.com' in current_url or 'login.alibaba.com' in current_url)) or (
-                        not is_1688 and ('login.taobao.com' in current_url or 'login.tmall.com' in current_url)
-                    ):
+                    # 通过 URL 判断是否需要登录。
+                    # 关键：1688 和淘宝/天猫是两个独立平台，登录页也是两套独立实体：
+                    #   - 1688 任务：当前 URL 可能是 1688 自己的登录页（_is_1688_login_url），
+                    #     也可能是淘宝"会员通"统一登录页（_is_taobao_login_url）；
+                    #     只要 cookie 写到对应域名上，回到 detail.1688.com 后 **协议提取永远走 1688 的 window.context**，
+                    #     绝不会因为登录页是淘宝域名就改用淘宝的 mtop 协议。
+                    #   - 淘宝/天猫任务：只识别 _is_taobao_login_url，不会去看 1688 的登录页。
+                    if is_1688:
+                        on_login_page = (
+                            _is_1688_login_url(current_url)
+                            or _is_taobao_login_url(current_url)
+                        )
+                        login_hint_msg = (
+                            '需要登录 1688，请在浏览器中完成登录（建议使用账号密码，扫码登录可能被风控）...'
+                        )
+                    else:
+                        on_login_page = _is_taobao_login_url(current_url)
+                        login_hint_msg = '需要登录淘宝/天猫，请在浏览器中完成登录...'
+
+                    # 检测到登录页时，主动诊断本地代理/TUN 环境（二维码空白的常见根因），
+                    # 把根因和解决办法直接推给用户，避免对着空白二维码干等到超时。
+                    proxy_risk_hint = _detect_local_proxy_risk()
+
+                    if on_login_page:
                         login_detected = True
-                        app.logger.warning("⚠️ 检测到登录页面（URL包含login）")
-                        capture_tasks[task_id]['message'] = '需要登录，请在浏览器中完成登录...'
-                        
-                        # 等待用户登录（最多等待120秒）
+                        app.logger.warning(f"⚠️ 检测到登录页面: {current_url[:120]}")
+                        if proxy_risk_hint:
+                            login_hint_msg = login_hint_msg + ' ' + proxy_risk_hint
+                            app.logger.warning(f"🛑 代理环境风险: {proxy_risk_hint}")
+                        capture_tasks[task_id]['message'] = login_hint_msg
+
+                        # 等待用户登录（最多等待 120 秒）
                         wait_count = 0
                         app.logger.info("⏳ 等待用户完成登录（最多120秒）...")
                         while wait_count < 60 and login_detected:
+                            if capture_tasks.get(task_id, {}).get('cancelled'):
+                                return
                             system_time.sleep(2)
                             wait_count += 1
-                            
-                            # 检查URL是否变回商品详情页
+
+                            # 检查 URL 是否已离开登录页
                             current_url = page.url
-                            if (
-                                (is_1688 and 'login.1688.com' not in current_url and 'login.alibaba.com' not in current_url) or
-                                (not is_1688 and 'login.taobao.com' not in current_url and 'login.tmall.com' not in current_url)
-                            ):
+                            if is_1688:
+                                still_on_login = (
+                                    _is_1688_login_url(current_url)
+                                    or _is_taobao_login_url(current_url)
+                                )
+                            else:
+                                still_on_login = _is_taobao_login_url(current_url)
+
+                            if not still_on_login:
                                 if is_taobao_tmall_store:
                                     login_detected = False
                                     app.logger.info(f"✅ 店铺登录完成，回到店铺链接: {task_url[:100]}")
@@ -9171,12 +11788,33 @@ def start_capture():
                                     # 等待页面稳定加载
                                     system_time.sleep(2)
                                     break
+                                # 已经离开登录页但没回到商品页（1688 登录后常停在首页或中转页），
+                                # 主动导航回原始商品链接
+                                app.logger.info(
+                                    f"✅ 已离开登录页但未跳回商品页，主动重新导航: {current_url[:80]}"
+                                )
+                                try:
+                                    page.get(task_url, timeout=30)
+                                    system_time.sleep(3)
+                                    login_detected = False
+                                    break
+                                except Exception as _renav_err:
+                                    app.logger.warning(f"⚠️ 登录后重新导航失败: {_renav_err}")
+                                    # 继续等下一轮检测，不立刻判失败
                         
                         if login_detected:
                             app.logger.warning("⏰ 登录等待超时")
                             capture_tasks[task_id]['status'] = 'failed'
                             capture_tasks[task_id]['progress'] = 0
-                            capture_tasks[task_id]['message'] = '需要先在浏览器中完成1688/淘宝登录，当前会话仍停留在登录页'
+                            capture_tasks[task_id]['error_code'] = 'login_timeout'
+                            timeout_msg = (
+                                '1688 登录等待超时，当前会话仍停留在登录页，请先在浏览器中完成登录后再重试'
+                                if is_1688
+                                else '淘宝/天猫登录等待超时，当前会话仍停留在登录页，请先在浏览器中完成登录后再重试'
+                            )
+                            if proxy_risk_hint:
+                                timeout_msg = timeout_msg + ' ' + proxy_risk_hint
+                            capture_tasks[task_id]['message'] = timeout_msg
                             _finalize_protocol_capture_record(
                                 protocol_capture_runtime,
                                 task_id=task_id,
@@ -9227,6 +11865,124 @@ def start_capture():
                         'sku_info': [],
                         'parameters': [],
                     }
+
+                    # ============================================================
+                    # 关键校验：浏览器实际跳到的 offerId 必须等于 task_url 的 offerId
+                    # ------------------------------------------------------------
+                    # 之前的 CDP Page.navigate 只 sleep(5) 不等导航完成回调；如果导航被
+                    # 1688 风控阻塞/CDP tab 选错/旧 profile 残留，浏览器可能还停在上一次
+                    # 采集留下的商品页 (例如 1031073754824)，但 task_url 是另一个商品
+                    # (例如 9999999)。此时 sidecar 会拿"上一次商品的 window.context 数据"
+                    # 但 product_id 用"新商品的 offerId"算出来，结果就是"输入 A 链接，
+                    # 采集到 B 商品数据"——这是严重的数据错配 bug，必须在提取前堵住。
+                    # ============================================================
+                    expected_pid = (_extract_capture_product_id(task_url) or '').strip()
+
+                    def _current_page_pid():
+                        try:
+                            return (_extract_capture_product_id(page.url or '') or '').strip()
+                        except Exception:
+                            return ''
+
+                    if expected_pid:
+                        actual_pid = _current_page_pid()
+                        if actual_pid != expected_pid:
+                            app.logger.warning(
+                                f"⚠️ 浏览器 URL 与目标商品不一致: expected={expected_pid} actual={actual_pid} "
+                                f"current_url={(page.url or '')[:140]}；强制重新导航 1 次"
+                            )
+                            try:
+                                page.get(task_url, timeout=30)
+                                system_time.sleep(4)
+                            except Exception as _renav_err:
+                                app.logger.warning(f"重新导航异常: {_renav_err}")
+                            actual_pid = _current_page_pid()
+                            if actual_pid != expected_pid:
+                                app.logger.error(
+                                    f"❌ 重新导航后 URL 仍不匹配: expected={expected_pid} actual={actual_pid} "
+                                    f"current_url={(page.url or '')[:200]}"
+                                )
+                                capture_tasks[task_id]['status'] = 'failed'
+                                capture_tasks[task_id]['progress'] = 0
+                                capture_tasks[task_id]['error_code'] = '1688_url_mismatch'
+                                capture_tasks[task_id]['message'] = (
+                                    f'浏览器未能跳转到目标商品 (期望 offerId={expected_pid}，'
+                                    f'实际停在 {actual_pid or "未知页面"})。可能原因：1688 反爬拦截/页面跳转被本地代理阻断。'
+                                    f'请关闭代理工具的 TUN 模式或在浏览器中手动访问 {task_url} 后重试。'
+                                )
+                                _finalize_protocol_capture_record(
+                                    protocol_capture_runtime,
+                                    task_id=task_id,
+                                    source_url=task_url,
+                                    status='failed',
+                                    progress=0,
+                                    message=capture_tasks[task_id]['message'],
+                                    error='1688_url_mismatch',
+                                )
+                                return
+                        app.logger.info(f"✅ URL 一致性校验通过: offerId={expected_pid}")
+
+                    # 显式等待 window.context.result.global.globalData.model.offerDetail 填充
+                    # 1688 用 eager load mode + set_load_mode('eager')，page.get() 提前返回，
+                    # 此时 model 可能还没由 launch JS 写入。最多等 18s。
+                    # 同时校验 offerDetail.offerId 等于 expected_pid，防止页面正在切换但 ctx
+                    # 还是上一个商品的残留值。
+                    wait_ready_start = system_time.time()
+                    ready_ok = False
+                    last_observed_offer_id = ''
+                    while system_time.time() - wait_ready_start < 18:
+                        try:
+                            ready_info = page.run_js('''
+                                return (() => {
+                                    const od = window.context?.result?.global?.globalData?.model?.offerDetail;
+                                    if (!od || !od.subject || od.subject.length === 0) return null;
+                                    return { offer_id: String(od.offerId || '') };
+                                })()
+                            ''')
+                            if ready_info:
+                                observed_oid = str((ready_info or {}).get('offer_id') or '').strip()
+                                last_observed_offer_id = observed_oid
+                                # 双重校验：URL 一致 + offerDetail.offerId 也要一致
+                                if not expected_pid or observed_oid == expected_pid:
+                                    ready_ok = True
+                                    break
+                        except Exception:
+                            pass
+                        system_time.sleep(0.5)
+                    elapsed = system_time.time() - wait_ready_start
+                    if ready_ok:
+                        app.logger.info(
+                            f"✅ 1688 window.context.offerDetail 已就绪（等待 {elapsed:.1f}s, offerId={last_observed_offer_id}）"
+                        )
+                    else:
+                        # offerDetail 未填充，或填充的 offerId 跟 task_url 不符
+                        if expected_pid and last_observed_offer_id and last_observed_offer_id != expected_pid:
+                            app.logger.error(
+                                f"❌ window.context.offerDetail.offerId={last_observed_offer_id} 与目标 {expected_pid} 不符，"
+                                f"采集会拿到错误商品；直接失败而不是吐错数据"
+                            )
+                            capture_tasks[task_id]['status'] = 'failed'
+                            capture_tasks[task_id]['progress'] = 0
+                            capture_tasks[task_id]['error_code'] = '1688_offerid_mismatch'
+                            capture_tasks[task_id]['message'] = (
+                                f'window.context 数据与目标商品不一致 (期望 offerId={expected_pid}，'
+                                f'页面里是 {last_observed_offer_id})。可能浏览器残留了上次的页面状态。'
+                                f'请手动刷新页面或重启采集浏览器后重试。'
+                            )
+                            _finalize_protocol_capture_record(
+                                protocol_capture_runtime,
+                                task_id=task_id,
+                                source_url=task_url,
+                                status='failed',
+                                progress=0,
+                                message=capture_tasks[task_id]['message'],
+                                error='1688_offerid_mismatch',
+                            )
+                            return
+                        app.logger.warning(
+                            f"⚠️ 1688 window.context.offerDetail 未在 18s 内填充（last_observed_offer_id={last_observed_offer_id or '空'}），继续尝试提取"
+                        )
+
                     try:
                         snapshot = _extract_1688_context_snapshot(page)
                         if snapshot and snapshot.get('title'):
@@ -9280,11 +12036,44 @@ def start_capture():
                                 f"details={len(product_data['detail_images'])}"
                             )
                         else:
-                            app.logger.warning("1688 window.context 数据不可用，使用DOM回退")
-                            product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+                            # 关键：1688 提取失败时不能回退到淘宝 mtop 协议（两个平台独立）。
+                            # 直接报清晰的失败信息，让用户知道根因。
+                            app.logger.error("❌ 1688 window.context 数据不可用，且不能跨用淘宝协议；本次采集失败。")
+                            capture_tasks[task_id]['status'] = 'failed'
+                            capture_tasks[task_id]['progress'] = 0
+                            capture_tasks[task_id]['error_code'] = '1688_context_empty'
+                            capture_tasks[task_id]['message'] = (
+                                '1688 商品页 window.context 数据未填充，可能是页面没加载完整。'
+                                '常见原因：本地代理工具（Clash / verge-mihomo 等）的 TUN 模式拦截了 mmstat 之外的关键资源；'
+                                '请暂时关闭代理或在规则中放行 *.alicdn.com / *.1688.com / *.mmstat.com 后重试。'
+                            )
+                            _finalize_protocol_capture_record(
+                                protocol_capture_runtime,
+                                task_id=task_id,
+                                source_url=task_url,
+                                status='failed',
+                                progress=0,
+                                message=capture_tasks[task_id]['message'],
+                                error='1688_context_empty',
+                            )
+                            return
                     except Exception as e:
-                        app.logger.error(f"1688协议提取失败: {e}，回退到通用采集")
-                        product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
+                        # 同上：不跨协议回退。让错误信息明确指出根因。
+                        app.logger.error(f"❌ 1688 协议提取异常: {e}")
+                        capture_tasks[task_id]['status'] = 'failed'
+                        capture_tasks[task_id]['progress'] = 0
+                        capture_tasks[task_id]['error_code'] = '1688_extract_exception'
+                        capture_tasks[task_id]['message'] = f'1688 协议提取失败: {str(e)[:120]}'
+                        _finalize_protocol_capture_record(
+                            protocol_capture_runtime,
+                            task_id=task_id,
+                            source_url=task_url,
+                            status='failed',
+                            progress=0,
+                            message=capture_tasks[task_id]['message'],
+                            error='1688_extract_exception',
+                        )
+                        return
                 else:
                     # ==== 淘宝/天猫: ICE+HTTP+DOM 三级回退 ====
                     product_data = _capture_taobao_tmall_product_for_store(page, task_url, options)
@@ -9484,6 +12273,7 @@ def start_capture():
                 
                 capture_tasks[task_id]['status'] = 'failed'
                 capture_tasks[task_id]['progress'] = 0
+                capture_tasks[task_id]['error_code'] = type(e).__name__
                 capture_tasks[task_id]['message'] = f'采集失败: {str(e)}'
                 _finalize_protocol_capture_record(
                     protocol_capture_runtime,
@@ -9521,9 +12311,19 @@ def start_capture():
             # 默认
             return '.jpg'
         
-        # 在后台线程中运行
+        # 在后台线程中运行，外层 wrapper 负责释放互斥锁，无论成功/失败/异常都会清零
+        def _run_capture_task_with_lock_release():
+            try:
+                run_capture_task()
+            finally:
+                global _capture_running_task_id
+                with _capture_lock:
+                    if _capture_running_task_id == task_id:
+                        _capture_running_task_id = None
+                        app.logger.info(f"🔓 已释放采集互斥锁: {task_id}")
+
         import threading
-        thread = threading.Thread(target=run_capture_task, daemon=True)
+        thread = threading.Thread(target=_run_capture_task_with_lock_release, daemon=True)
         thread.start()
         app.logger.info(f"🧵 后台线程已启动")
         
@@ -9553,7 +12353,16 @@ def start_capture():
         app.logger.error("详细堆栈:")
         app.logger.error(traceback.format_exc())
         app.logger.error("=" * 80)
-        
+
+        # 如果在"占锁之后、启动线程之前"挂了，必须释放锁，避免后续永远拒绝新任务
+        # 注：函数顶部已经 `global _capture_running_task_id`，这里不能再声明一次
+        _task_id_local = locals().get('task_id')
+        if _task_id_local:
+            with _capture_lock:
+                if _capture_running_task_id == _task_id_local:
+                    _capture_running_task_id = None
+                    app.logger.info(f"🔓 启动失败已释放采集互斥锁: {_task_id_local}")
+
         return jsonify({
             'success': False,
             'message': f'启动任务失败: {str(e)}'
@@ -9571,12 +12380,17 @@ def get_capture_status(task_id: str):
             'message': '任务不存在'
         })
     
+    recovery_info = _capture_task_recovery_info(task)
     return jsonify({
         'success': True,
         'task_id': task_id,
         'status': task['status'],
         'progress': task['progress'],
         'message': task['message'],
+        'error_code': task.get('error_code', ''),
+        **recovery_info,
+        'platform': task.get('platform'),
+        'capture_mode': task.get('capture_mode'),
         'result': task.get('result'),
         'created_at': task['created_at']
     })
@@ -9586,12 +12400,17 @@ def get_capture_status(task_id: str):
 def get_capture_history():
     tasks = []
     for task in capture_tasks.values():
+        recovery_info = _capture_task_recovery_info(task)
         tasks.append({
             'task_id': task.get('task_id'),
             'url': task.get('url', ''),
             'status': task.get('status', 'pending'),
             'progress': task.get('progress', 0),
             'message': task.get('message', ''),
+            'error_code': task.get('error_code', ''),
+            **recovery_info,
+            'platform': task.get('platform'),
+            'capture_mode': task.get('capture_mode'),
             'created_at': task.get('created_at')
         })
     tasks.sort(key=lambda x: x.get('created_at') or '', reverse=True)
@@ -9621,7 +12440,16 @@ def cancel_capture(task_id: str):
 
     task['status'] = 'failed'
     task['progress'] = 0
+    task['cancelled'] = True
+    task['error_code'] = 'cancelled'
     task['message'] = '任务已取消'
+
+    # 同步释放互斥锁，否则后续新任务会一直被"已有采集任务正在运行"拒绝
+    global _capture_running_task_id
+    with _capture_lock:
+        if _capture_running_task_id == task_id:
+            _capture_running_task_id = None
+            app.logger.info(f"🔓 取消任务时释放采集互斥锁: {task_id}")
 
     return jsonify({
         'success': True,
@@ -9649,14 +12477,6 @@ def _import_capture_product_record(product_data: dict) -> dict:
     if not sku_path or not os.path.exists(sku_path):
         raise Exception('未找到SKU文件夹')
 
-    def list_files_recursive(startpath):
-        result = []
-        for root, _, files in os.walk(startpath):
-            for filename in sorted(files):
-                if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
-                    result.append(os.path.join(root, filename))
-        return result
-
     image_files = list_files_recursive(sku_path)
     if not image_files:
         main_path = None
@@ -9677,25 +12497,6 @@ def _import_capture_product_record(product_data: dict) -> dict:
             image_files = restored
     if not image_files:
         raise Exception('未找到图片文件')
-
-    def parse_downloaded_sku_file_name(file_stem: str):
-        raw_name = html.unescape(str(file_stem or '')).strip()
-        match = re.match(r'^(?:SKU[_\-\s]*)?(\d{1,4})[_\-\s]*(.*)$', raw_name, flags=re.IGNORECASE)
-        if not match:
-            return None, raw_name
-        try:
-            index_value = int(match.group(1))
-        except Exception:
-            index_value = None
-        stripped_name = (match.group(2) or '').strip() or raw_name
-        return index_value, stripped_name
-
-    def normalize_capture_sku_name(value):
-        raw = html.unescape(str(value or ''))
-        raw = raw.replace('&gt;', '>').replace('＞', '>').replace('/', '').replace('\\', '').replace('_', '')
-        raw = re.sub(r'^(?:SKU)?\d+', '', raw, flags=re.IGNORECASE)
-        raw = re.sub(r'[\s\-\+\(\)\[\]【】（）<>「」『』·.,，。:：;；!！?？"“”‘’]', '', raw)
-        return raw
 
     captured_sku_by_index = {}
     for enum_idx, captured_sku in enumerate(captured_sku_info, start=1):
@@ -9745,23 +12546,6 @@ def _import_capture_product_record(product_data: dict) -> dict:
 
     folder_name = os.path.basename(download_path)
     Record.delete().where(Record.path == download_path).execute()
-
-    def infer_clazz_from_title(t: str) -> int:
-        try:
-            s = (t or '').lower()
-            if '船袜' in s:
-                return 0
-            if ('短筒' in s) or ('短袜' in s):
-                return 1
-            if '中筒' in s:
-                return 2
-            if '长筒' in s:
-                return 3
-            if '袜套' in s:
-                return 4
-            return 2
-        except Exception:
-            return 2
 
     record = Record.create(
         name=folder_name,
@@ -9895,16 +12679,6 @@ def import_capture_result():
                 'message': '未找到SKU文件夹'
             })
         
-        # 递归获取SKU目录下的所有图片（ID模式：递归遍历）
-        def list_files_recursive(startpath):
-            """递归遍历所有文件（ID模式）"""
-            result = []
-            for root, _, files in os.walk(startpath):
-                for filename in sorted(files):
-                    if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
-                        result.append(os.path.join(root, filename))
-            return result
-
         def backfill_capture_sku_images(target_dir):
             """When SKU files are missing, rebuild them from local main images or captured URLs."""
             if not captured_sku_info:
@@ -10010,25 +12784,6 @@ def import_capture_result():
         # 创建SKU列表（符合拖拽导入格式）
         sku_list = []
 
-        def parse_downloaded_sku_file_name(file_stem: str):
-            raw_name = html.unescape(str(file_stem or '')).strip()
-            match = re.match(r'^(?:SKU[_\-\s]*)?(\d{1,4})[_\-\s]*(.*)$', raw_name, flags=re.IGNORECASE)
-            if not match:
-                return None, raw_name
-            try:
-                index_value = int(match.group(1))
-            except Exception:
-                index_value = None
-            stripped_name = (match.group(2) or '').strip() or raw_name
-            return index_value, stripped_name
-
-        def normalize_capture_sku_name(value):
-            raw = html.unescape(str(value or ''))
-            raw = raw.replace('&gt;', '>').replace('＞', '>').replace('/', '').replace('\\', '').replace('_', '')
-            raw = re.sub(r'^(?:SKU)?\d+', '', raw, flags=re.IGNORECASE)
-            raw = re.sub(r'[\s\-\+\(\)\[\]【】（）<>「」『』·.,，。:：;；!！?？"“”‘’]', '', raw)
-            return raw
-
         captured_sku_by_index = {}
         for enum_idx, captured_sku in enumerate(captured_sku_info, start=1):
             try:
@@ -10081,23 +12836,6 @@ def import_capture_result():
         Record.delete().where(Record.path == download_path).execute()
         
         now = datetime.now()
-        
-        def infer_clazz_from_title(t: str) -> int:
-            try:
-                s = (t or '').lower()
-                if '船袜' in s:
-                    return 0
-                if ('短筒' in s) or ('短袜' in s):
-                    return 1
-                if '中筒' in s:
-                    return 2
-                if '长筒' in s:
-                    return 3
-                if '袜套' in s:
-                    return 4
-                return 2
-            except Exception:
-                return 2
 
         inferred_clazz = infer_clazz_from_title(title)
 
