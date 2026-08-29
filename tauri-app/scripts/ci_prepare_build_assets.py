@@ -23,6 +23,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 TAURI_APP_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = TAURI_APP_DIR.parent
 
+# GitHub windows-latest 是 en-US 镜像（ACP=1252），Actions 把 step 的 stdout 接成管道，
+# Python 此时按 locale 编码写 stdout，本文件的中文日志会直接 UnicodeEncodeError 把 CI 打断。
+# 与 tauri-app/python-sidecar/app.py 的既有做法保持一致。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except (AttributeError, ValueError):
+        pass
+
 
 def log(message: str) -> None:
     print(f"[ci-prepare] {message}", flush=True)

@@ -10,9 +10,14 @@
 客户端（启动后静默 / 用户手动点检查）
   → 读取 https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest/download/latest.json
   → 比对版本（latest.json 的 version > 当前 tauri.conf.json 的 version？）
-  → 有新版 → 下载 setup.exe → 用内置公钥验签
-  → 先优雅停掉 python-backend（避免 exe 被占用）→ 覆盖安装 → 重启
+  → 有新版 → 下载 setup.exe + 用内置公钥验签（此阶段后端保持运行）
+  → 下载成功后才优雅停掉 python-backend（释放 exe 占用）→ 覆盖安装 → 重启
+  → 安装失败则自动把后端拉回来
 ```
+
+下载与安装是分开的两步（`update.download()` + `update.install()`，不是 `downloadAndInstall()`）。
+整包 110 MB 从 GitHub 拉，断流和超时是常态；如果像常见写法那样先停后端再下载，一旦下载失败，
+用户就停在「应用开着但采集、发布、商品列表全用不了」的状态且没有恢复入口。
 
 - 更新源：GitHub Releases（公开仓库 `CHEN126110/douyin-auto-uploader-`）
 - 签名公钥：写在 `tauri-app/src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
@@ -64,6 +69,10 @@ git push origin DouYin --tags
 
 ### 工作流做了哪些保护
 
+- **启动链 import 自检**：装完 pip 依赖后立刻 `import` 后端启动时会用到的模块。requirements.txt 与实际 import 脱节时几秒内红掉，而不是等 PyInstaller 打完十几分钟、产出一个能装不能跑的包（PyInstaller 对缺失模块只写 WARNING，退出码仍是 0）。
+- **sidecar 冒烟测试**：真的把打出来的 `python-backend.exe` 跑起来，等 `/health` 返回 200 才继续。只验证「exe 文件存在」挡不住任何运行期问题。放在 Rust 构建之前，坏包连签名环节都进不去。
+- **MCP Server 依赖**：`mcp-server/node_modules` 被 gitignore 排除，但整个目录会被打进安装包。CI 里单独 `npm ci --omit=dev` 并校验依赖可解析，否则装机后内置 MCP Server 一启动就 `ERR_MODULE_NOT_FOUND`。
+- **UTF-8 输出**：`windows-latest` 是 en-US 镜像（ACP=1252），Actions 把 stdout 接成管道，Python 会按 locale 编码写 stdout，脚本里的中文日志会直接 `UnicodeEncodeError` 打断 CI。job 级 `PYTHONUTF8=1` + 脚本内 `reconfigure` 双保险。
 - **版本号一致性校验**：tag 与 4 处版本号任一不符立即失败，避免「界面显示一个版本、updater 按另一个判断」。
 - **产物改 ASCII 名**：GitHub 上传 Release asset 时会把文件名里的中文逐个替换成 `.`，中文安装包名会让 latest.json 的下载地址 404。工作流统一改名成 `DouyinSockPublisher_<版本>_x64-setup.exe`。
 - **强制正式版**：`gh release create --latest`，不是草稿也不是预发布，否则 `releases/latest` 命不中。
@@ -104,7 +113,7 @@ npm run package:release -- -EmitUpdaterManifest -ReleaseNotes "本次更新说�
 
 - **私钥是更新信任根**：丢了就再也无法给已装用户推更新（只能引导手动重装）；泄露则他人能签发恶意更新让用户自动安装。离线异地备份，绝不进 git，绝不贴聊天记录。
 - **整包更新**：安装包内置 `python-backend.exe`（约 90 MB）+ node 运行时（约 85 MB），总计 110 MB 上下，无增量、每次整包重下。国内下 GitHub 大文件可能很慢，必要时把更新源迁到国内对象存储——只需改 `tauri.conf.json` 的 endpoints 和发布脚本的上传目标，客户端代码不用动。
-- **更新前停后端**：`src/services/updater.ts` 已在下载前调 `POST /internal/terminate`，避免覆盖安装时 exe 被占用而失败。
+- **停后端的时机**：`src/services/updater.ts` 在**下载并验签成功之后、安装之前**才调 `POST /internal/terminate`，避免覆盖安装时 exe 被占用而失败；安装若失败会 `invoke("start_python_backend")` 把后端拉回来。
 - **版本只能向前**：updater 只在 latest.json 版本更高时触发。误发了 bug 版只能再发更高版修复，不能让用户自动回退，所以**发布前的冒烟测试不能省**。
 - **dev 模式测不了真安装**：`npm run tauri:dev` 下只能测「检查」这一步，下载+覆盖安装必须用安装版测。
 - **静默检查的边界**：启动后 8 秒自动查一次，无新版或检查失败都不打扰用户；发现新版仍会弹确认框，用户可以选「稍后」。

@@ -30,5 +30,10 @@ pillow>=10.0.0
 pyyaml>=6.0
 py7zr>=0.21.0
 
+# 启动链硬依赖：app.py:198 "from src.utils import *" 会连带 import 下面两个包，
+# 缺任何一个都是 python-backend.exe 一启动就 ModuleNotFoundError（PyInstaller 只报 WARNING、照样打包成功）
+Flask-JWT-Extended>=4.6.0   # src/utils.py:15 from flask_jwt_extended import create_access_token
+ruamel.yaml>=0.18.0         # src/config.py:4 from ruamel.yaml import YAML（src/constants.py:20 在 import 期即实例化）
+
 # 打包工具
 pyinstaller>=6.0.0
