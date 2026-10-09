@@ -198,6 +198,11 @@ jobs:
       - name: 运行发布回归
         shell: pwsh
         run: |
+          # runner 的默认 TEMP 可能是 RUNNER~1 短路径；使用专用的规范目录，
+          # 同时补齐 clean checkout 中被 gitignore 排除的 pytest 父目录。
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          New-Item -ItemType Directory -Force -Path "taobao-publisher/tmp" | Out-Null
           python -m pip install pytest
           python -m pytest tests taobao-publisher/tests -q --basetemp taobao-publisher/tmp/release-pytest
           if ($LASTEXITCODE -ne 0) { throw "发布回归失败" }
