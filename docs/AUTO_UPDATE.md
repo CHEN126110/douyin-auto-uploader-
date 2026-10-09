@@ -97,10 +97,13 @@ npm run package:release -- -EmitUpdaterManifest -ReleaseNotes "本次更新说�
 
 ## 四、版本现状与升级验收
 
-2026-10-09 已核实：GitHub 上已有正式 `v4.0.28`，发布工作流成功，更新清单及安装包均可访问。
-本地功能迭代仍沿用 `4.0.28` 是用户未收到近期改动的原因：重新编译不会自动发布，同版本也不会触发升级。
+### 当前状态（2026-10-10）
 
-当前准备 `4.0.29`，按以下顺序验收：
+- 正式最新版：**`v4.0.29`**（`prerelease=false`、`make_latest=true`），已通过 4.0.28 → 4.0.29 真实升级验收。
+- 候选阶段的三个资源在提升为正式版时**字节未变**：`DouyinSockPublisher_4.0.29_x64-setup.exe`（165,869,457 字节）、`…exe.sig`、`latest.json`。提升动作只改了 Release 元数据（标题说明）和 `latest.json` 的 `notes`，安装包与 `signature` 均未触碰。
+- 本地开发机 `tauri-app/src-tauri/target/release/douyin-sock-publisher.exe` 仍是 4.0.28 的旧构建；重新编译不会自动发布，同版本也不会触发升级，要收更新必须重新构建或安装新版。
+
+### 每次发版的验收顺序
 
 1. 审查提交文件，只包含程序、默认配置及去敏测试证据；保留本地未选中的工作区改动。
 2. 用干净的代码副本构建，`ci_prepare_build_assets.py` 生成空商品库与默认设置，禁止把开发机数据打进安装包。
@@ -108,6 +111,36 @@ npm run package:release -- -EmitUpdaterManifest -ReleaseNotes "本次更新说�
 4. 在隔离安装目录执行旧版到候选包的升级，验证签名、安装覆盖、后端版本与启动，并比较测试商品和设置指纹。
 5. `/internal/update-readiness` 必须显示采集、抖店发布、淘宝发布、图片处理均空闲后才停止后端安装；无法读取状态时明确拒绝安装。
 6. 验收通过后提升为正式 latest，再核对公开更新清单及安装包哈希。
+
+### 提升为正式版（候选验收通过后）
+
+工作流只负责「发候选 + 回验候选资源」，**不会自动改 latest**：正式化是一道人工验收门。用带 `contents: write` 的令牌调 Release API 即可，两个字段都要给，缺 `make_latest` 只会去掉预发布标记、latest 仍指向旧版：
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/CHEN126110/douyin-auto-uploader-/releases/<release_id> \
+  -d '{"prerelease": false, "make_latest": "true"}'
+```
+
+`latest.json` 里的 `notes` 会原样显示在用户的更新弹窗里，候选阶段写的「候选版本，等待升级验收」这类内部措辞必须在正式化前改掉。该文件是**未签名资源**，替换 `notes` 不影响安装包验签，但改名/换 URL 会让下载 404：
+
+```bash
+# 1) 删除旧 asset（必须先删，同名上传会被拒）  2) 用 uploads.github.com 同名重传
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  https://api.github.com/repos/CHEN126110/douyin-auto-uploader-/releases/assets/<asset_id>
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  --data-binary @latest.json \
+  "https://uploads.github.com/repos/CHEN126110/douyin-auto-uploader-/releases/<release_id>/assets?name=latest.json"
+```
+
+提升后必须复查公共链路（不是带 tag 的地址）：
+
+```bash
+curl -sL https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest/download/latest.json
+# 期望 version=4.0.29、notes 为正式措辞，且 platforms.windows-x86_64.url 指向本次安装包
+curl -sIL https://github.com/CHEN126110/douyin-auto-uploader-/releases/download/v4.0.29/DouyinSockPublisher_4.0.29_x64-setup.exe
+# 期望 HTTP 200 且 Content-Length 与 Release 上的 asset 一致
+```
 
 Rust 壳现在和 Python 一样尊重显式 `DOUYIN_DATA_DIR`，必须是绝对路径。验收可将测试数据放入独立目录；不设置时仍使用原应用数据目录。不要指向真实商品目录做破坏性测试。
 
@@ -144,6 +177,7 @@ Rust 壳现在和 Python 一样尊重显式 `DOUYIN_DATA_DIR`，必须是绝对�
 | 点检查更新报错、日志显示 404 | 仓库没有正式 Release，或 latest.json 没作为 asset 上传，或 Release 是草稿/预发布 |
 | 检测到新版但下载失败 404 | latest.json 里的 url 与 Release 上实际 asset 名不符——多半是 asset 名带中文被 GitHub 改成了点，改用 ASCII 名重发 |
 | 下载完安装失败 | `python-backend.exe` 被占用。确认 `/internal/terminate` 生效；必要时 `Stop-Process -Name python-backend -Force` 后重试 |
+| 更新时弹「打开文件 - 安全警告 / 无法验证发布者」 | Windows 附件管理器对**未签名**安装包的提示：`tauri-plugin-updater` 在 Windows 上用 `ShellExecuteW` 启动安装器（`updater.rs` 的 install 分支），本机 `HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments\ScanWithAntiVirus=3` 时就会拦一次。**点「运行」即继续**，安装包随后仍要过内嵌公钥的 minisign 验签；这与版本改动无关，安装包也没有 Zone.Identifier。自动化测试里要改用 `cmd /c start`，`Start-Process` 会一直阻塞在这个对话框上 |
 | 验签失败（signature 相关报错） | 客户端内嵌的公钥与签名用的私钥不是一对。检查 `tauri.conf.json` 的 pubkey 与 Secrets 里的私钥是否配套；换过密钥的旧客户端必须手动重装 |
 | CI 在「解析并校验版本号」失败 | tag 与 4 处版本号不一致。先跑 `bump-version.ps1`，提交后重新打 tag |
 | CI 在「整理产物」报找不到 .sig | 两个签名 Secrets 没配或配错，`createUpdaterArtifacts` 没开 |

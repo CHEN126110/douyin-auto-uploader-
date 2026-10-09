@@ -28,7 +28,13 @@ class UploadBrowserProfileTest(unittest.TestCase):
                 else:
                     os.environ["DOUYIN_DATA_DIR"] = old_value
 
-        self.assertEqual(profile_path, Path(tmp_dir) / "upload-browser-profile")
+        # 比的是「同一个目录」，不是同一串拼写：Windows 会把同一路径同时表示成长名和
+        # 8.3 短名（CI runner 的 TEMP 是 C:\Users\RUNNER~1\...），产线代码统一返回
+        # 规范化长名，而 tempfile 给出的是环境里的短名，直接比字符串会误判。
+        self.assertEqual(
+            Path(os.path.realpath(profile_path)),
+            Path(os.path.realpath(Path(tmp_dir) / "upload-browser-profile")),
+        )
         self.assertNotIn("DrissionPage", str(profile_path))
 
     def test_browser_and_registry_resolve_the_same_profile_dir(self) -> None:

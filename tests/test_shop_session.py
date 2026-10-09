@@ -473,7 +473,13 @@ class PlatformAccountTest(unittest.TestCase):
         self.assertFalse(account["removable"])
         shop_session.set_active_profile(default)
         self.assertEqual(shop_session.get_active_profile(), default)
-        self.assertEqual(Path(shop_session.profile_dir(default)), self.directory / default)
+        # 比的是「同一个目录」，不是同一串拼写：Windows 会把同一路径同时表示成长名和
+        # 8.3 短名（CI runner 的 TEMP 是 C:\Users\RUNNER~1\...），产线代码统一返回
+        # 规范化长名，而 tempfile 给出的是环境里的短名，直接比字符串会误判。
+        self.assertEqual(
+            Path(os.path.realpath(shop_session.profile_dir(default))),
+            Path(os.path.realpath(self.directory / default)),
+        )
 
     def test_active_empty_default_placeholder_can_now_be_removed(self) -> None:
         """空默认占位不再是「不可删」——它没有任何身份/备注/历史，删掉是安全的。
