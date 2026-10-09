@@ -99,7 +99,7 @@ npm run package:release -- -EmitUpdaterManifest -ReleaseNotes "本次更新说�
 
 ### 当前状态（2026-10-10）
 
-- 正式最新版：**`v4.0.29`**（`prerelease=false`、`make_latest=true`），已通过 4.0.28 → 4.0.29 真实升级验收。
+- 正式最新版：**`v4.0.29`**（`prerelease=false`、`make_latest=true`），已通过 4.0.28 → 4.0.29 真实升级验收，逐项证据见[升级验收记录_4.0.29_2026-10-10.md](升级验收记录_4.0.29_2026-10-10.md)。
 - 候选阶段的三个资源在提升为正式版时**字节未变**：`DouyinSockPublisher_4.0.29_x64-setup.exe`（165,869,457 字节）、`…exe.sig`、`latest.json`。提升动作只改了 Release 元数据（标题说明）和 `latest.json` 的 `notes`，安装包与 `signature` 均未触碰。
 - 本地开发机 `tauri-app/src-tauri/target/release/douyin-sock-publisher.exe` 仍是 4.0.28 的旧构建；重新编译不会自动发布，同版本也不会触发升级，要收更新必须重新构建或安装新版。
 
