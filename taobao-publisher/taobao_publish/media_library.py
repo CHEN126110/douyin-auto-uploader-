@@ -535,6 +535,56 @@ def _nudge_children_render(client, parent_path, *, context_id):
         pass
 
 
+#: 等「下一层子目录渲染出来」的总时长（秒）。
+#: 真机实证（2026-10-10）：素材中心页点开父节点后会停在
+#: ``aria-expanded=true`` 而子节点一个都没挂载的状态，助推一次约 1 秒内出现。
+_CHILD_RENDER_TIMEOUT = 5.0
+
+#: 两次助推之间的最小间隔（秒）。助推只在「子节点一个都没渲染」时才真点开关。
+_CHILD_RENDER_NUDGE_INTERVAL = 0.8
+
+
+def _wait_for_child_render(client, path, *, context_id, timeout=None):
+    """确保 `path` 这一层已经渲染出来；渲染不出来就**如实返回** ``False``。
+
+    ## 为什么必须等（2026-10-10 真机实证）
+
+    素材中心页的树是虚拟列表：点开父节点后，DOM 会停在
+    ``aria-expanded="true"`` 而**子节点一个都没挂载**的状态（真机实测持续 3 秒以上）。
+    这时 :func:`folder_expression` 按路径找不到节点、原码是 ``directory_missing``，
+    于是 :func:`open_directory` 把「没渲染」判成「不存在」，报「请去素材中心建好该目录」——
+    而那个目录其实**一直在**：平台自己的 ``dir.query`` 对该商品目录返回
+    ``childrenSize=3``，三个子目录 id 与上传账本里的 ``folder_id`` 逐字相同。
+    照那句提示去手工建，只会建出**重复目录**（E-293 早警告过「读不到 ≠ 不存在」）。
+
+    助推（:func:`_nudge_children_render`）点一下父节点的开关即可让子节点挂载回来。
+
+    这里是**助推 + 有界等待**，不是兜底：
+
+    * 已经渲染 → 立刻返回 ``True``（一次都不点）；
+    * 等不到 → 返回 ``False``，调用方照原样如实报 ``directory_missing``（不猜、不建目录）。
+    """
+
+    wanted = [str(part) for part in path]
+    if not wanted:
+        return True
+    if timeout is None:
+        timeout = _CHILD_RENDER_TIMEOUT
+    deadline = time.monotonic() + max(0.0, timeout)
+    last_nudge = None
+    while True:
+        state = read_directory(client, context_id=context_id)
+        if any(list(known)[-len(wanted):] == wanted for known in (state.get('paths') or [])):
+            return True
+        now = time.monotonic()
+        if now >= deadline:
+            return False
+        if last_nudge is None or now - last_nudge >= _CHILD_RENDER_NUDGE_INTERVAL:
+            last_nudge = now
+            _nudge_children_render(client, wanted[:-1], context_id=context_id)
+        time.sleep(0.25)
+
+
 #: 助推表达式：父节点的子目录**一个都没渲染**时点一下它的开关。
 #: 路径比对用 `li.next-tree-node` 的 name 祖先链（与真机/合成页同形）。
 _CHILDREN_NUDGE_EXPRESSION = r"""
@@ -926,6 +976,12 @@ def open_directory(client, path, *, context_id, timeout=5.0, expand=False, page=
             listing_before = None
     for size in sizes:
         prefix = list(path[:size])
+        # 素材中心页把「已展开」父节点的子项从 DOM 上卸载（真机实证 2026-10-10）：
+        # 子目录**存在**却读不到。进下一层之前先助推并有界等待，等不到再照原样如实报
+        # directory_missing——否则会把「没渲染」判成「不存在」，把人引去手建重复目录。
+        # 选图器不点：那棵树的子目录会正常渲染（E-291/E-293），多点一下只会把节点折回去。
+        if page == PAGE_MATERIAL_CENTER and len(prefix) > 1:
+            _wait_for_child_render(client, prefix, context_id=context_id)
         result = client.evaluate(folder_expression(prefix, action='open'), context_id=context_id)
         if not isinstance(result, dict) or result.get('ok') is not True or not result.get('supported'):
             if not isinstance(result, dict) or result.get('reason'):

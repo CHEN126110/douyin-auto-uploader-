@@ -22,7 +22,7 @@
   .next-tree-node-inner { display: block; padding: 2px 4px; cursor: pointer; }
   .next-tree-node-inner.next-selected { background: #e6f0ff; }
   .next-tree-node-label { display: inline-block; }
-  .next-tree-switcher { display: inline-block; width: 12px; }
+  .next-tree-switcher { display: inline-block; width: 12px; height: 14px; vertical-align: middle; }
   #create-dialog { display: none; border: 1px solid #999; padding: 10px; margin-top: 8px; }
   #create-dialog.open { display: block; }
 </style>
@@ -94,6 +94,14 @@
 
         var sw = document.createElement("span");
         sw.className = "next-tree-switcher next-noline next-open";
+        // 点开关只切换「子节点挂没挂载」，**不改选中**（与真机一致）。
+        // 默认全部已挂载；只有显式调用 __synthetic_unmountChildren 之后，
+        // 才会出现真机那种「aria-expanded=true 但子节点一个都没挂载」的形态。
+        sw.addEventListener("click", function (event) {
+          event.stopPropagation();
+          item.mounted = item.mounted === false;
+          render();
+        });
         inner.appendChild(sw);
 
         var label = document.createElement("div");
@@ -104,7 +112,11 @@
         inner.addEventListener("click", function () { selected = full; render(); });
 
         li.appendChild(inner);
-        if (item.children && item.children.length) { li.appendChild(build(item.children, full)); }
+        // `mounted === false` = 真机素材中心页的虚拟列表形态：节点自己说 expanded=true，
+        // 子节点却不在 DOM 里（2026-10-10 真机实证，`tmp/material-center-children-timeline.json`）。
+        if (item.children && item.children.length && item.mounted !== false) {
+          li.appendChild(build(item.children, full));
+        }
         ul.appendChild(li);
       });
       return ul;
@@ -144,6 +156,17 @@
     document.getElementById("create-dialog").classList.add("open");
     document.getElementById("folder-name").focus();
   });
+
+  // 测试专用（只改本页 DOM 状态，纯本地）：把某个节点的子目录**从 DOM 上卸载**，
+  // 复现真机素材中心页那种「aria-expanded=true 但子节点没挂载」的虚拟列表形态。
+  // 不调用它时一切照旧（子节点全部挂载）——既有用例行为不变。
+  window.__synthetic_unmountChildren = function (path) {
+    var node = findNode(data, path);
+    if (!node) { return false; }
+    node.mounted = false;
+    render();
+    return true;
+  };
 
   document.getElementById("create-ok").addEventListener("click", function () {
     var name = document.getElementById("folder-name").value.trim();

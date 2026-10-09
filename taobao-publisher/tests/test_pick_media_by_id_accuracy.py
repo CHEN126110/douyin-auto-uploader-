@@ -99,6 +99,15 @@ class _Picker:
 
     def __init__(self, fixture):
         self.client = PageClient.connect(fixture["ws_url"], target_url=fixture["url"])
+        # CDP 能连上 ≠ 页面已经加载完：合成页的卡片是脚本渲染的，文档没到 complete
+        # 时 DOM 里一张卡都没有，紧接着 `pick(wait=0.0)` 会报 missing——
+        # 全量回归时机器被别的隔离浏览器占着，这一步就会输掉竞态（2026-10-10 实测）。
+        # 与同目录 `test_synthetic_folder_creation.py` 的等待约定保持一致。
+        deadline = time.monotonic() + 10
+        while not self.client.evaluate("document.readyState === 'complete'", timeout=2):
+            if time.monotonic() >= deadline:
+                pytest.fail("合成选图器没有完成加载")
+            time.sleep(0.05)
         self._reset()
 
     def _reset(self):

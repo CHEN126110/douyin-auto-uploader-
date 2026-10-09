@@ -306,7 +306,9 @@ def test_old_ledger_requires_same_resource_in_current_account(prepared_case, mon
     result = module.import_directory(None, prepared.manifest, 'account-A', authorization=AUTH)
     assert all(not receipt.uploaded_now for receipt in result.receipts)
     groups[prepared.receipts[0].folder][0]['url'] = 'https://img.example.invalid/wrong.jpg'
-    with pytest.raises(page.PageError, match='不符'):
+    # 同名但身份对不上 → 必须如实失败（措辞与协议路线 verify_against_gallery 一致），
+    # 既不重传整个目录，也不覆盖云端那张。
+    with pytest.raises(page.PageError, match='不是同一张图'):
         module.import_directory(None, prepared.manifest, 'account-A', authorization=AUTH)
     send.assert_not_called()
 

@@ -148,25 +148,151 @@ def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None)
     return tuple(receipts)
 
 
-def _reuse_existing(client, manifest, root, account_profile, *, should_cancel=None):
-    """迁移旧协议上传的回执；仅文件名相同不够，摘要和当前云端资源也必须相同。"""
-    from .protocol_media import UploadLedger
-    ledger = UploadLedger.load()
-    previous = {}
+def _folder_id_for(client, root, parts):
+    """拿到（必要时建出）``root/parts…`` 的 folderId。已存在就返回，不重复建。"""
+
+    from . import media_library
+    folder_id = ""
+    for index, part in enumerate(parts, start=1):
+        folder_id = media_library.ensure_child_directory(
+            client, [*root, *parts[:index - 1]], str(part), context_id=None)
+    return folder_id
+
+
+def _complete_existing(client, manifest, root, account_profile, *, port, authorization,
+                       progress=None, should_cancel=None):
+    """云端已有该商品目录时：**按证据决定哪些图要补传**。
+
+    ## 为什么不能"有目录就当成已完成"，也不能"整目录重来"
+
+    真机 2026-10-10（``ID-986833932804``）：三个角色目录都在，folderId 与上传账本逐字相同，
+    但目录里**一个文件都没有**——平台自己的 ``file.query`` 对三个 catId 都返回 0，
+    而账本里的旧回执还指着这三个目录。此时：
+    * 直接复用旧回执 → 把"目录在"当成"图在"，发布出去的是没有图的商品；
+    * 整目录重传 → 同名目录是**合并还是新建重复目录，平台语义未取证**（见阻塞项），不许赌；
+    * 直接失败 → 用户明明什么都没做错，只是空间里的图没了，却被告知"去建那个已存在的目录"。
+
+    所以按证据做**最小动作**：
+
+    * 云端**没有**的同名文件 → 用已验证的 ``upload.api``（E-212/E-216/E-221/E-247）
+      直接传进它该去的那个 ``folderId``，传完**回读核对** URL 才算落库，并写进账本；
+    * 云端**有**同名文件 → 只接受身份一致的（``same_image`` 比 URL）；
+      对不上（或账本没有本批回执）就**如实失败**——不覆盖、不改名、不将就。
+
+    每一步都过写授权门（``upload_image``）；没有授权时一个字节都不会发出去。
+    """
+
+    from . import media_library
+    from .protocol_media import UploadLedger, default_pace_seconds
+    from .upload_api import UploadCandidate, same_image
+
+    grouped = {}
     for source in manifest.images:
-        receipt = ledger.lookup({'name': PurePosixPath(source.relative_path).name, 'sha256': source.sha256})
-        if receipt is None:
-            raise page.PageError('图片空间已存在同名商品目录，但缺少本批素材回执：' + source.relative_path
-                + '；未重复导入或自动合并')
-        previous[source.relative_path] = receipt
-    receipts = _read_receipts(client, manifest, root, previous=previous, should_cancel=should_cancel)
-    prepared = PreparedProductMedia(manifest, account_profile, receipts)
+        grouped.setdefault(PurePosixPath(source.relative_path).parts[:-1], []).append(source)
+
+    ledger = UploadLedger.load()
+    receipts = []
+    pending = []
+    for folder, sources in grouped.items():
+        _cancelled(should_cancel)
+        contents = media_library.read_directory_files(
+            client, [*root, *folder], context_id=None,
+            page=media_library.PAGE_MATERIAL_CENTER)
+        files = {entry['name']: entry for entry in contents['files']}
+        if len(files) != len(contents['files']):
+            raise page.PageError('商品子目录存在同名图片，无法确认来源：' + '/'.join(folder))
+        missing = []
+        for source in sources:
+            name = PurePosixPath(source.relative_path).name
+            actual = files.get(name)
+            if actual is None:
+                missing.append(source)
+                continue
+            old = ledger.lookup({'name': name, 'sha256': source.sha256})
+            if old is None:
+                raise page.PageError('图片空间已有同名素材，但账本里没有本批回执，'
+                                     '不能确认是不是同一张图：' + source.relative_path)
+            if not same_image(actual['url'], old['url']):
+                raise page.PageError('图片空间里的同名素材与本批上传回执不是同一张图：'
+                                     + source.relative_path)
+            receipts.append(UploadedImageReceipt(
+                source.relative_path, name, (manifest.folder_name, *folder), actual['url'],
+                source.sha256, uploaded_now=False,
+                picture_id=str(actual.get('picture_id') or '') or str(old.get('picture_id') or '')))
+        if missing:
+            pending.append((_folder_id_for(client, root, folder), folder, missing))
+
+    if pending:
+        total = sum(len(item[2]) for item in pending)
+        if progress:
+            progress('云端已有该商品目录，其中 {} 张素材不在目录里，按用途补传'.format(total))
+        from .cdp_ws import CdpBrowser
+        from .upload_page import PictureSpacePageUploader, open_session
+        if not port:
+            raise TaobaoPublishError('IMAGE_UPLOAD_FAILED', '补传缺失素材需要当前账户的调试端口')
+        browser = CdpBrowser(port=port)
+        session = None
+        try:
+            session = open_session(browser)
+            uploader = PictureSpacePageUploader(session)
+            pace = default_pace_seconds()
+            for folder_id, folder, sources in pending:
+                _cancelled(should_cancel)
+                candidates = []
+                for source in sources:
+                    path = Path(manifest.product_dir) / source.relative_path
+                    candidates.append(UploadCandidate(
+                        path=str(path), name=PurePosixPath(source.relative_path).name,
+                        size=source.size, sha256=source.sha256))
+                report = uploader.upload_batch(
+                    candidates, folder_id=folder_id, authorization=authorization,
+                    progress=(lambda message: progress(message) if progress else None),
+                    pace_seconds=pace)
+                if not report.ok:
+                    detail = report.stopped_reason or '；'.join(
+                        '{}：{}'.format(item.get('name'),
+                                        item.get('message') or item.get('error_code'))
+                        for item in report.failed[:3])
+                    raise TaobaoPublishError(
+                        'IMAGE_UPLOAD_FAILED',
+                        '补传缺失素材失败（{}）：{}'.format('/'.join(folder), detail))
+                by_name = {item.name: item for item in report.receipts}
+                # 上传成功不算数：**回读**到同一个 URL 才算落库（与协议路线同一判据）。
+                contents = media_library.read_directory_files(
+                    client, [*root, *folder], context_id=None,
+                    page=media_library.PAGE_MATERIAL_CENTER)
+                files = {entry['name']: entry for entry in contents['files']}
+                for source in sources:
+                    name = PurePosixPath(source.relative_path).name
+                    receipt = by_name.get(name)
+                    actual = files.get(name)
+                    if receipt is None or actual is None:
+                        raise page.PageError('补传后回读不到该素材：' + source.relative_path)
+                    if not same_image(actual['url'], receipt.url):
+                        raise page.PageError('补传后回读到的不是同一张图：' + source.relative_path)
+                    ledger.record({'name': name, 'sha256': source.sha256,
+                                   'path': str(Path(manifest.product_dir) / source.relative_path)},
+                                  {'url': receipt.url, 'picture_id': receipt.picture_id},
+                                  folder_id=folder_id)
+                    receipts.append(UploadedImageReceipt(
+                        source.relative_path, name, (manifest.folder_name, *folder),
+                        receipt.url, source.sha256, uploaded_now=True,
+                        picture_id=receipt.picture_id))
+        finally:
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:  # noqa: BLE001 - 关上传页失败不该掩盖补传结果
+                    pass
+            browser.close()
+
+    prepared = PreparedProductMedia(manifest, account_profile, tuple(receipts))
     prepared.validate(account_profile)
     return prepared
 
 
 def import_directory(client, manifest, account_profile, *, authorization, progress=None,
-                     should_cancel=None, timeout=300.0):
+                     should_cancel=None, timeout=300.0, port=0):
     from . import media_library
     from .upload_panel import ensure_all_images
     authorization.require(WRITE_UPLOAD_IMAGE)
@@ -177,8 +303,11 @@ def import_directory(client, manifest, account_profile, *, authorization, progre
     root = media_library.product_root_path(client, manifest.folder_name, context_id=None,
                                           page=media_library.PAGE_MATERIAL_CENTER)
     if root:
-        prepared = _reuse_existing(client, manifest, root, account_profile, should_cancel=should_cancel)
-        if progress: progress('原商品目录已有完整素材，已核对旧回执与当前图片空间，不重复上传')
+        # 目录在 ≠ 图在：逐张核对，缺的用协议上传补进它该去的那一层。
+        prepared = _complete_existing(client, manifest, root, account_profile, port=port,
+                                     authorization=authorization, progress=progress,
+                                     should_cancel=should_cancel)
+        if progress: progress('原商品目录与当前图片空间已逐张核对，缺失的素材已补齐')
         return prepared
     _open_panel(client)
     ensure_all_images(client,context_id=None)
@@ -263,7 +392,7 @@ def make_preparer(account_profile, cdp_list_url):
                     if time.monotonic()>=deadline:raise page.PageError('素材中心尚未就绪，请完成登录后再试')
                     time.sleep(0.2)
                 prepared=import_directory(client,manifest,account_profile,authorization=authorization,
-                    progress=progress,should_cancel=should_cancel)
+                    progress=progress,should_cancel=should_cancel,port=endpoint.port)
                 prepared.selection_plan(item,account_profile)
                 cache_dir.mkdir(parents=True,exist_ok=True)
                 temp=cached.with_suffix('.tmp')

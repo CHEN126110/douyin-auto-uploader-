@@ -30,7 +30,7 @@ from types import SimpleNamespace
 import pytest
 
 from taobao_publish import media_library
-from taobao_publish.page import PageClient
+from taobao_publish.page import PageClient, PageError
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthetic-material-center.html"
 
@@ -185,3 +185,45 @@ def test_ensure_cloud_folders_runs_in_its_own_tab(synthetic_browser, monkeypatch
         "原页面被关掉了——建目录不该影响正在填写的表单"
     assert len(pages) == 1, "建目录用的临时标签没有关掉：{}".format(
         [(t.get("title"), t.get("url")) for t in pages])
+
+
+def test_unmounted_children_are_nudged_back_instead_of_declared_missing(synthetic_client):
+    """真机形态：商品节点自称 ``aria-expanded=true``，子目录却一个都没挂载。
+
+    2026-10-10 真机（``ID-986833932804``）：平台自己的 ``dir.query`` 给出
+    ``childrenSize=3``，三个子目录的 folderId 与上传账本逐字相同——**目录和图片都在**，
+    只是素材中心页的虚拟列表把它们从 DOM 上卸载了。当时 ``open_directory`` 直接把
+    「没渲染」判成「不存在」，报 ``判据=directory_missing`` 并提示"先去素材中心建好该目录"；
+    照那句提示做只会建出**重复目录**（E-293 早就警告过「读不到 ≠ 不存在」）。
+    """
+
+    assert synthetic_client.evaluate("window.__synthetic_unmountChildren(['ID-1'])") is True
+    rendered = [list(path) for path in
+                media_library.read_directory(synthetic_client, context_id=None)["paths"]]
+    assert ["ID-1"] in rendered
+    assert ["ID-1", "主图"] not in rendered, "子目录不该已渲染，否则这条用例什么都没测"
+
+    actual = media_library.open_directory(synthetic_client, ["ID-1", "主图"], context_id=None,
+                                          page=media_library.PAGE_MATERIAL_CENTER)
+    assert actual == ["ID-1", "主图"]
+    after = [list(path) for path in
+             media_library.read_directory(synthetic_client, context_id=None)["paths"]]
+    assert ["ID-1", "主图"] in after
+
+
+def test_still_missing_directory_fails_loudly_and_builds_nothing(synthetic_client, monkeypatch):
+    """助推 + 有界等待之后仍读不到 → 照原样如实报 ``directory_missing``。
+
+    这条是上面那条的**反面**：修法是「助推 + 等」，不是兜底——不许猜路径、
+    不许退到父目录、更不许顺手建目录。所以断言文案与「平台数据一个字节都没变」。
+    """
+
+    monkeypatch.setattr(media_library, "_CHILD_RENDER_TIMEOUT", 0.6)
+    before = synthetic_client.evaluate("JSON.stringify(window.__synthetic_state.data)")
+    with pytest.raises(PageError) as caught:
+        media_library.open_directory(synthetic_client, ["ID-1", "并不存在的角色"],
+                                     context_id=None, page=media_library.PAGE_MATERIAL_CENTER)
+    message = str(caught.value)
+    assert "判据=directory_missing" in message
+    assert "目标=ID-1/并不存在的角色" in message
+    assert synthetic_client.evaluate("JSON.stringify(window.__synthetic_state.data)") == before
