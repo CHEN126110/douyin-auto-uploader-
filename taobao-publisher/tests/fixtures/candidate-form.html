@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>淘宝候选适配器本地测试页面</title>
+<style>li{display:flex;gap:10px;margin:8px}button,input{min-height:25px}img{width:40px;height:40px}[hidden]{display:none!important}#gallery{height:240px;width:500px;overflow:auto}.card{min-height:50px}textarea{height:200px;width:600px}td{padding:8px}
+/* 真实平台上自定义规格的图片落点是 32×32；夹具必须给尺寸，
+   否则「可见性」守卫会把它判成不可见（真实平台不会）。 */
+.sell-color-option-image-upload{width:32px;height:32px;cursor:pointer}
+.sell-color-option-image-empty{width:32px;height:32px;background:#f2f2f2}
+.sell-color-item-wrap{display:flex;gap:8px;align-items:center}</style>
+<body>
+<div class="sell-component-info-wrapper-wrap"><div class="sell-component-info-wrapper-label">宝贝标题</div><input type="text"></div>
+<div class="sell-catProp-item-common"><label class="required">品牌</label><input type="text" value="已经提供的测试品牌"></div>
+<div class="sell-component-info-wrapper-wrap"><div class="sell-component-info-wrapper-label">一口价</div><input type="text"></div>
+<div class="sell-component-info-wrapper-wrap"><div class="sell-component-info-wrapper-label">总库存</div><input type="text"></div>
+<div class="sell-component-info-wrapper-wrap"><div class="sell-component-info-wrapper-label">1:1主图</div><div id="mainImages"></div></div>
+<div class="template"><div>运费模板</div><div class="next-select"><input readonly value="模型商家默认模板" onclick="document.getElementById('freightOptions').hidden=!document.getElementById('freightOptions').hidden"><div class="next-select-values">模型商家默认模板</div></div></div>
+<div class="next-overlay-inner next-select-single-menu" id="freightOptions" hidden><li class="next-menu-item" onclick="selectFreight('模型商家默认模板')"><span class="next-menu-item-text">模型商家默认模板</span></li></div>
+<button onclick="document.getElementById('drawer').hidden=false">+ 创建规格</button>
+<div id="drawer" class="sku-decouple-drawer-container" hidden>
+  <div class="select-mode"><label class="next-radio-wrapper"><input type="radio" name="mode">单层展示·自定义填写规格</label></div>
+  <ul id="names"></ul>
+  <div class="sell-color-item-container"><button class="add" onclick="addRow()">+</button></div>
+</div>
+<div class="sku-decouple-drawer-footer"><button onclick="confirmRows()">确认创建</button></div>
+<div class="sell-sku-table-wrapper-new" id="skuTable"></div>
+<div id="mediaPopup" class="sell-component-image-v2-media-popup" hidden><div id="gallery" class="PicturesShow" hidden></div></div>
+<div class="sell-component-info-wrapper-wrap"><div class="sell-component-info-wrapper-label">宝贝详情*</div><textarea></textarea></div>
+<!-- 上架时间：真实平台上这一行是<b>带 * 的必填行</b>，结构为
+     `div.sell-shelf-time > span.sell-radio.hoz > span.radio-item > label(文案) > label.next-radio-wrapper(空) > span.next-radio > input[type=radio]`。
+     ⚠️ 文案在**外层 label** 上，`input.closest('label')` 命中的是**空的**那层——
+     夹具必须保留这个结构，否则「按文本选单选项」的代码在真机上会失效却测不出来。 -->
+<div class="sell-component-info-wrapper-wrap" id="sell-field-startTime">
+  <div class="sell-component-info-wrapper-label-wrap">
+    <span class="sell-component-info-wrapper-label" title="上架时间">上架时间</span><span class="sell-component-info-wrapper-required">*</span>
+  </div>
+  <div class="sell-component-info-wrapper-component-child">
+    <div class="sell-shelf-time"><span class="sell-radio hoz">
+      <span class="radio-item"><label><label dir="ltr"><span class="next-radio"><span class="next-radio-inner"></span><input type="radio" name="shelfTime" class="next-radio-input" checked></span></label>立刻上架</label></span>
+      <span class="radio-item"><label><label dir="ltr"><span class="next-radio"><span class="next-radio-inner"></span><input type="radio" name="shelfTime" class="next-radio-input"></span></label>定时上架</label></span>
+      <span class="radio-item"><label><label dir="ltr"><span class="next-radio"><span class="next-radio-inner"></span><input type="radio" name="shelfTime" class="next-radio-input"></span></label>放入仓库</label></span>
+    </span></div>
+  </div>
+</div>
+<button onclick="window.submitCalls++">提交宝贝信息</button><button onclick="window.draftCalls++">保存草稿</button>
+<script>
+// 人工构造的模型页面，不是淘宝页面归档，也不使用账户、Cookie 或远端脚本。
+window.uploadCalls = 0;
+window.submitCalls = 0; window.draftCalls = 0;
+function openGallery(row, slot) {
+  window.imageTarget=row;window.imageTargetSlot=slot;
+  document.getElementById('mediaPopup').hidden=false;document.getElementById('gallery').hidden=false;
+}
+function closeGallery(){document.getElementById('mediaPopup').hidden=true;document.getElementById('gallery').hidden=true}
+function selectFreight(value){document.querySelector('.template input').value=value;document.querySelector('.template .next-select-values').textContent=value;document.getElementById('freightOptions').hidden=true}
+for(let index=0;index<5;index++){
+  const slot=document.createElement('div'),empty=document.createElement('button');
+  slot.className='sell-component-material-item-view';empty.className='image-empty';empty.textContent='+';
+  empty.onclick=()=>openGallery(null,slot);slot.append(empty);document.getElementById('mainImages').append(slot);
+}
+function addRow() {
+  // ⚠️ 结构与**真实平台**对齐（实测 E-237/E-240）：
+  //   行：li.sell-component-material-item-option.has-upload-img（内含 .sell-color-item-wrap）
+  //   图片落点：.sell-color-option-image-upload（空态 .sell-color-option-image-empty）
+  //   规格名：input[placeholder="输入规格"]，**失焦后才提交**（真机如此，失焦前
+  //           添加按钮 disabled、图片落点无反应）
+  const row = document.createElement('li');
+  row.className = 'sell-component-common-sale-props-option-item has-upload-img';
+  const wrap = document.createElement('div');
+  wrap.className = 'sell-color-item-wrap';
+  const upload = document.createElement('div');
+  upload.className = 'sell-color-option-image-upload';
+  const empty = document.createElement('div');
+  empty.className = 'sell-color-option-image-empty';
+  upload.append(empty);
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.placeholder = '输入规格';
+  name.addEventListener('blur', () => {
+    row.dataset.name = name.value;
+    const add = document.querySelector('#drawer .sell-color-item-container button.add');
+    if (add) add.disabled = !name.value.trim();
+  });
+  upload.onclick = () => {
+    // 真机上规格名未失焦时这个落点**没有反应**——夹具保持一致，避免测试放过这类错误
+    if (row.dataset.name !== name.value || !name.value.trim()) return;
+    openGallery(row, upload);
+  };
+  const button = document.createElement('button');
+  button.className = 'color-delete-icon';
+  button.textContent = '删除';
+  wrap.append(upload, name, button);
+  row.append(wrap);
+  document.getElementById('names').append(row);
+}
+function addCard(name, url) {
+  // 卡片结构与真实图库一致：checkbox.value = pictureId，img.src 带 O1CN 资源标识。
+  // （按 ID 选图用的就是 `input[type=checkbox]` 的 value。）
+  window.selectCalls = 0;
+  const card = document.createElement('div');
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  // 真实平台的 pictureId 是 10 位以上的数字串（选图表达式只采信这个形态），
+  // 夹具从文件名取数字后不足 10 位的左补零对齐。
+  box.value = (name.replace(/[^\d]/g, '') || '1').padStart(10, '0');
+  const img = document.createElement('img');
+  img.alt = name; img.src = url;
+  label.append(box, img, document.createTextNode(name));
+  const pick = url => {
+    window.selectCalls += 1;   // 埋点：选中回调走了几次（排查"选了但没写进槽位"）
+    if (!window.imageTargetSlot) return;
+    const image = document.createElement('img'); image.src = url;
+    window.imageTargetSlot.replaceChildren(image);
+    if (window.imageTarget) window.imageTarget.dataset.image = url;
+  };
+  // ⚠️ **checkbox 不参与指针事件**：`label` 包着 checkbox 时，原生 label 语义会把
+  //    label 的点击**再转发**给控件，于是"点一次 label"会走两条路径、选中回调执行两次
+  //    （实测点一次 `label.click()` 监听器计数就 +2）。真实平台的图库卡片是
+  //    `div > label > (checkbox, img)`，checkbox 只作数据载体；夹具保持同样语义：
+  //    统一由 label 的处理器决定选中，checkbox 仅提供 `value`（= pictureId）。
+  box.style.pointerEvents = 'none';
+  label.onclick = event => {
+    if (event && event.target === box) return;
+    event.preventDefault();
+    box.checked = true;
+    pick(url);
+  };
+  // 按 ID 选图走的是"点 checkbox"这条路（`page._PICK_MEDIA_BY_ID_EXPRESSION`），
+  // 所以这里也要让 `checkbox.click()` 能完成选中——真实平台就是这样的。
+  box.addEventListener('click', () => { box.checked = true; pick(url); });
+  card.className = 'PicList_pic_background card';
+  card.append(label);
+  document.getElementById('gallery').append(card);
+}
+// 默认目录渲染：与真实选图器一致——空目录渲染「暂无图片」占位
+// （2026-10-07 真机探针：空目录渲染完成后出现可见的 [class*="empty"] 占位）。
+// 各测试可覆盖 window.renderFolder / window.cardsByFolder，但占位语义要保持。
+window.cardsByFolder = window.cardsByFolder || {};
+window.renderFolder = function () {
+  const gallery = document.getElementById('gallery');
+  gallery.replaceChildren();
+  const rows = (window.cardsByFolder || {})[window.currentFolder] || [];
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'next-empty';
+    empty.textContent = '暂无图片';
+    gallery.append(empty);
+    return;
+  }
+  for (const row of rows) addCard(row.name, row.url);
+};
+function confirmRows() {
+  const table=document.createElement('table');
+  // 故意逆序，防止适配器把 SKU 图片/价格按行号误配。
+  for (const row of Array.from(document.querySelectorAll('#names li')).reverse()) {
+    const tr=document.createElement('tr'); tr.className='sku-table-row';
+    const spec=document.createElement('td');spec.textContent=row.dataset.name || '';
+    if(row.dataset.image){const img=document.createElement('img');img.src=row.dataset.image;spec.append(img)}
+    tr.append(spec,document.createElement('td'));
+    for(const unit of ['元','件']){const td=document.createElement('td'),input=document.createElement('input');td.append(document.createTextNode(unit),input);tr.append(td)}
+    table.append(tr);
+  }
+  document.getElementById('skuTable').replaceChildren(table);
+  document.getElementById('drawer').hidden=true;
+}
+addRow();
+</script></body></html>

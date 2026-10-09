@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-04T23:33:00.682658+08:00",
+  "scope": "offline brand/category handler, local media models, frozen archive and deployed binary only",
+  "tests": {
+    "default_brand_and_media": 24,
+    "category_first": 20,
+    "taobao_package": 1174,
+    "taobao_skipped": 7,
+    "taobao_subtests": 325,
+    "business_safety": 243,
+    "shared_frontend": 51,
+    "docs": 23,
+    "docs_subtests": 11,
+    "expression_builders": 50,
+    "expression_builder_calls": 60
+  },
+  "new_cases_included_in_package_total": true,
+  "default_brand_requested": "无品牌",
+  "model_brand_alias_carried_to_final_readback": true,
+  "explicit_brand_uses_exact_candidate": true,
+  "model_next_click_count": 1,
+  "snapshot_digest_checked_before_upload_entry": true,
+  "main_image_identity_checks_full_url_and_order": true,
+  "sha256": "efb215a694afb1a8ad631a89ebf05e8601f8f56cd912fc73921d12cdeed9ab72",
+  "platform_controls_still_candidate": true,
+  "production_candidate_controls": 8,
+  "live_taobao_tested": false,
+  "whole_form_required_fields_confirmed": false,
+  "deselected_environment_dependent_tests": [
+    "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+    "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+  ]
+}

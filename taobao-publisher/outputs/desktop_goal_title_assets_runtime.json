@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-04T01:30:11.241578+08:00",
+  "scope": "local health, deployed binaries and served static frontend only",
+  "health_success": true,
+  "release_backend_matches_build": true,
+  "sha256": "e10d8c2a0a0c1f003eebc87da12d0c62d804729fde072eec72181e07b4345bcd",
+  "frontend_uses_common_action_label": true,
+  "frontend_uses_common_upload_overlay": true,
+  "frontend_has_no_taobao_only_action_row": true,
+  "frontend_uses_taobao_title_counter": true,
+  "application_processes": 1,
+  "backend_processes": 2,
+  "live_taobao_task_started_by_tools": false,
+  "account_identity_read_by_tools": false
+}

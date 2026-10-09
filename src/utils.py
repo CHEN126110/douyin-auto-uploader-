@@ -12,7 +12,6 @@ from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener, urlopen
 from DrissionPage import ChromiumOptions, ChromiumPage  # type: ignore
-from flask_jwt_extended import create_access_token
 import logging
 from src import constants
 from typing import Union, Optional, List, Dict, Any, Callable
@@ -21,6 +20,8 @@ import psutil
 from PIL import Image
 from contextlib import contextmanager
 from src.runtime_paths import get_data_dir, get_runtime_root
+# 保留旧导入路径，返回结构统一由轻量模块定义。
+from src.sidecar.responses import api_error, api_ok
 
 # 导入Chrome管理器
 try:
@@ -288,6 +289,48 @@ def infer_sock_height_value(category_text: str, fallback=None) -> str:
         return ''
 
 
+# 在「字段区域」元素内部批量判定哪条候选选择器命中可见且未 disabled 的元素。
+# 语义与 app.py 的 _VISIBLE_SELECTOR_PROBE_JS 一致，区别是这个探针以 area 为
+# 上下文节点求值（候选选择器都是 .// 开头的相对路径）。
+_FIELD_ACTION_PROBE_JS = r'''
+const selectors = arguments[0] || [];
+for (let i = 0; i < selectors.length; i++) {
+    let nodes = [];
+    try {
+        const found = document.evaluate(
+            selectors[i], this, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let j = 0; j < found.snapshotLength; j++) nodes.push(found.snapshotItem(j));
+    } catch (err) {
+        continue;
+    }
+    for (let k = 0; k < nodes.length; k++) {
+        const node = nodes[k];
+        if (!node || node.nodeType !== 1) continue;
+        if (!(node.offsetParent || node.getClientRects().length > 0)) continue;
+        if (String(node.className || '').toLowerCase().indexOf('disabled') !== -1) continue;
+        return i;
+    }
+}
+return -1;
+'''
+
+
+def _probe_field_action_index(area, xpaths):
+    """一次 JS 判定哪条候选选择器在 area 内命中。
+
+    返回命中下标；全部落空返回 -1；JS 不可用返回 None（调用方回退逐个探测）。
+    """
+    if not xpaths:
+        return -1
+    try:
+        index = area.run_js(_FIELD_ACTION_PROBE_JS, list(xpaths))
+    except Exception:
+        return None
+    if isinstance(index, bool) or not isinstance(index, (int, float)):
+        return None
+    return int(index)
+
+
 def click_field_action(new_tab, field_id: str, action_text: str, timeout: float = 1.0) -> bool:
     try:
         areas = new_tab.eles(f'xpath://div[@attr-field-id="{field_id}"]', timeout=timeout)
@@ -303,9 +346,14 @@ def click_field_action(new_tab, field_id: str, action_text: str, timeout: float 
         f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]/ancestor::div[contains(@class,"style_modifyButton__")][1]',
         f'xpath:.//*[contains(normalize-space(text()),"{action_text}")]',
     ]
+    probe_xpaths = [
+        item[6:] if item.startswith('xpath:') else item for item in selectors
+    ]
 
-    def _find_target(area, probe_timeout: float):
-        for selector in selectors:
+    def _find_target(area, probe_timeout: float, order=None):
+        positions = range(len(selectors)) if order is None else order
+        for position in positions:
+            selector = selectors[position]
             try:
                 target = area.ele(selector, timeout=probe_timeout)
             except Exception:
@@ -323,19 +371,40 @@ def click_field_action(new_tab, field_id: str, action_text: str, timeout: float 
             return target
         return None
 
+    def _find_with_probe(area, probe_timeout: float):
+        """先用一次 JS 判定命中的那条选择器并把它排到最前，再走原来的逐条探测。
+
+        DrissionPage 的 `ele()` 在**未命中时会阻塞满 timeout**，所以「5 条候选
+        逐个试」的落空成本是 5 × timeout（原实现 5 × 0.12 ≈ 0.6 秒）。而
+        `_wait_until` 的判据本身就是这个探测，单轮 0.25 秒让轮询间隔完全失效 ——
+        实测 `媒体上传阶段/主图视频` 在「没有可用按钮」时空转 3133ms 就是这么来的。
+
+        兜底语义完全不变：JS 只是把命中项提到最前（其余仍按原顺序保留），
+        JS 不可用或全部落空时与原来逐条探测等价。
+        """
+        hit = _probe_field_action_index(area, probe_xpaths)
+        if hit is not None and hit > 0:
+            order = [hit] + [pos for pos in range(len(selectors)) if pos != hit]
+            return _find_target(area, probe_timeout, order)
+        return _find_target(area, probe_timeout)
+
     for area in areas:
         try:
             area.scroll.to_center()
         except Exception:
             pass
-        target = _find_target(area, 0.12)
+        target = _find_with_probe(area, 0.12)
         if not target:
             try:
                 area.hover()
             except Exception:
                 pass
-            _wait_until(lambda: _find_target(area, 0.05) is not None, timeout=0.3, interval=0.03)
-            target = _find_target(area, 0.05)
+            _wait_until(
+                lambda: _find_with_probe(area, 0.05) is not None,
+                timeout=0.3,
+                interval=0.03,
+            )
+            target = _find_with_probe(area, 0.05)
         if not target:
             continue
         try:
@@ -1789,19 +1858,70 @@ def _find_first_visible_upload_label(tab, selectors, timeout=0.3, require_enable
     return None
 
 
+# 行容器定位：先用一次 JS 在页内算出「含规格图上传入口的最近祖先」在第几层。
+# 不能再用 `sku_anchor.parent('xpath:ancestor::...')`：DrissionPage 的 parent()
+# 会在传入 locator 前再拼一层相对前缀，`ancestor::` 轴因此变成
+# `./ancestor::ancestor::*[...]` 非法 XPath，异常被 except 吞掉 ——
+# 那两条「优先策略」其实从来没有生效过，一直靠下面的 10 层硬走在兜。
+_SKU_ROW_SCOPE_DEPTH_JS = r'''
+const hasTrigger = (n) => {
+    if (!n || n.nodeType !== 1 || !n.querySelector) return false;
+    if (n.querySelector('div[class*="material-upload-button"]')) return true;
+    return n.querySelectorAll('label input[type="file"]').length > 0;
+};
+let node = this.parentElement;
+let depth = 1;
+while (node && depth <= 12) {
+    if (hasTrigger(node)) return depth;
+    node = node.parentElement;
+    depth += 1;
+}
+return 0;
+'''
+
+# 行容器内「规格图上传入口」的判定 XPath（供 _find_sku_upload_trigger_in_scope 与
+# 上面的 JS 探针共用同一套语义，避免两处漂移）。
+_SKU_UPLOAD_TRIGGER_XPATH = (
+    'xpath:.//div[contains(@class,"material-upload-button")]'
+    ' | .//label[.//input[@type="file"]]'
+)
+
+
 def _find_sku_row_scope(sku_anchor):
+    """定位 SKU 行容器（含规格图上传入口的最近祖先）。
+
+    旧实现自底向上逐层调 `_find_sku_upload_trigger_in_scope`，而后者每次要跑
+    3 条候选选择器 × `eles(timeout=0.12)`，一条全落空就付满 0.36s；
+    真正的行容器通常在第 3 层以上，于是每设一个规格值固定烧掉约 1.4s
+    （15 个规格值 ≈ 21 秒，是 SKU 阶段最大的单笔浪费）。
+
+    改为先用一次 run_js 在页内算好层数，再用同样次数的 `parent()` 取回句柄：
+    判据与旧实现一致，成本从「层数 × 选择器条数 × timeout」压到
+    「一次往返 + 层数次廉价 parent()」。
+    """
     if not sku_anchor:
         return None
-    for selector in (
-        'xpath:ancestor::*[.//div[contains(@class,"material-button") and contains(@class,"material-upload-button")]][1]',
-        'xpath:ancestor::*[contains(@class,"index-module_")][1]',
-    ):
-        try:
-            scope = sku_anchor.parent(selector)
-        except Exception:
-            scope = None
-        if scope and _find_sku_upload_trigger_in_scope(scope):
-            return scope
+
+    depth = 0
+    try:
+        depth = int(sku_anchor.run_js(_SKU_ROW_SCOPE_DEPTH_JS) or 0)
+    except Exception:
+        depth = 0
+
+    if depth:
+        node = sku_anchor
+        for _ in range(depth):
+            try:
+                node = node.parent()
+            except Exception:
+                node = None
+            if not node:
+                break
+        # 页内判定与 DrissionPage 的可见性判据偶有出入，用真实句柄复核一次
+        if node and _find_sku_upload_trigger_in_scope(node):
+            return node
+
+    # JS 不可用（或层数算偏）时的回退：沿用旧的自底向上硬走
     node = sku_anchor
     for _ in range(10):
         try:
@@ -1818,21 +1938,20 @@ def _find_sku_row_scope(sku_anchor):
 def _find_sku_upload_trigger_in_scope(row_scope):
     if not row_scope:
         return None
-    for selector in (
-        'xpath:.//div[contains(@class,"material-button") and contains(@class,"material-upload-button")][1]',
-        'xpath:.//div[contains(@class,"material-upload-button")][1]',
-        'xpath:.//label[.//input[@type="file"]][1]',
-    ):
+    try:
+        # 三条候选合并成一条 XPath：原来是串行探测，全部落空要付
+        # 3 × timeout = 0.36s，而这是每设一个规格值都会被调用的热点。
+        # 原来的第一条（material-button AND material-upload-button）是第二条的
+        # 严格子集，合并后不会漏掉任何目标。
+        elements = row_scope.eles(_SKU_UPLOAD_TRIGGER_XPATH, timeout=0.12)
+    except Exception:
+        return None
+    for item in elements or []:
         try:
-            elements = row_scope.eles(selector, timeout=0.12)
+            if item and item.states.is_displayed:
+                return item
         except Exception:
-            elements = []
-        for item in elements:
-            try:
-                if item and item.states.is_displayed:
-                    return item
-            except Exception:
-                continue
+            continue
     return None
 
 
@@ -1909,14 +2028,6 @@ def _sku_resolve_local_upload_label(new_tab, row_scope, sku_anchor, hover_target
     return None
 
 
-def api_ok(msg, data=None):
-    return {'success': True, 'msg': msg, 'data': data}
-
-
-def api_error(msg, data=None):
-    return {'success': False, 'msg': msg, 'data': data}
-
-
 def table_api(count, data):
     return {
         'code': 0,
@@ -1945,6 +2056,11 @@ def is_valid_phone_number(phone_number):
 
 
 def update_payload(username, remember):
+    # flask_jwt_extended 原本在模块顶部导入，实测给 `import src.utils` 平白加了约 0.3s
+    # 冷启动（它整条依赖链只为这一个函数服务，且这个函数全仓无调用方）。
+    # 改成用到才导入：不改变任何行为，只是不再让所有 import src.utils 的人替它买单。
+    from flask_jwt_extended import create_access_token
+
     if username:
         constants.payload = {
             'name': username
@@ -2053,7 +2169,15 @@ def is_logged_in_fxg_target_url(url: str) -> bool:
 def select_logged_in_fxg_debug_browser(
     browsers: List[Dict[str, Any]],
     targets_by_address: Dict[str, List[Dict[str, Any]]],
+    preferred_profile: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
+    """在已开调试端口的浏览器里挑一个「已登录抖店」的复用。
+
+    ``preferred_profile`` 是用户当前选中的店铺 profile 目录名。多店铺场景下
+    这一项必须压过其它所有加分项：否则用户切到 B 店，复用逻辑却挑中还开着的
+    A 店浏览器，界面显示 B 而商品发到 A，且不会有任何报错。
+    """
+    preferred = str(preferred_profile or '').strip().lower()
     candidates: List[Dict[str, Any]] = []
     for browser in browsers or []:
         address = _normalize_debug_address(str(browser.get('debug_address') or ''))
@@ -2072,6 +2196,8 @@ def select_logged_in_fxg_debug_browser(
                 continue
             profile_text = f"{browser.get('user_data_dir') or ''} {browser.get('profile_directory') or ''}".lower()
             score = 0
+            if preferred and preferred in profile_text:
+                score += 1000
             if 'upload-browser-profile' in profile_text:
                 score += 100
             if 'chrome-fxg-cdp' in profile_text:
@@ -2237,10 +2363,76 @@ def attach_existing_debug_browser(debug_address: str, existing_only: bool = True
     return page
 
 
-def _get_persistent_browser_user_data_path(profile_name: str = "upload-browser-profile") -> str:
-    safe_profile = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(profile_name or "upload-browser-profile")).strip("-")
+_DEFAULT_BROWSER_PROFILE_NAME = "upload-browser-profile"
+
+# 每份账号信息独占一个调试端口。
+# DrissionPage 的 ChromiumOptions 默认固定用 127.0.0.1:9222，而它遇到「端口上已有浏览器」
+# 时是**接管**那个浏览器，不是另开一个——传进来的 user_data_dir 会被完全忽略。
+# 表现就是「点了添加店铺，打开的还是原来那家店」（2026-09-06 实测）。
+_SHOP_BROWSER_PORT_START = 9500
+_SHOP_BROWSER_PORT_END = 9599
+_LEGACY_BROWSER_PORT = 9222
+
+
+def _is_local_port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(('127.0.0.1', port)) != 0
+
+
+def _resolve_browser_port_for_profile(
+    profile_dir: str,
+    profile_name: str,
+    running: Optional[List[Dict[str, Any]]] = None,
+    port_is_free: Optional[Callable[[int], bool]] = None,
+) -> int:
+    """给某份账号信息挑一个调试端口。
+
+    这份账号信息的浏览器已经开着就接管它（同一家店不该开两个窗口）；
+    否则挑一个没人用的端口，绝不落到别人已经占着的端口上——
+    落上去就会接管别人的浏览器，等于打开了另一家店。
+    """
+    target = os.path.normcase(os.path.abspath(profile_dir))
+    occupied = set()
+    if running is None:
+        try:
+            running = discover_debuggable_browsers(verify=False)
+        except Exception:
+            running = []
+    is_free = port_is_free or _is_local_port_free
+    for browser in running:
+        address = _normalize_debug_address(str(browser.get('debug_address') or ''))
+        if not address:
+            continue
+        try:
+            port = int(address.rsplit(':', 1)[-1])
+        except Exception:
+            continue
+        occupied.add(port)
+        existing_dir = str(browser.get('user_data_dir') or '')
+        if existing_dir and os.path.normcase(os.path.abspath(existing_dir)) == target:
+            return port
+
+    # 历史上只有一份账号信息，它一直在 9222；保持不变，免得旧的复用/扫描逻辑找不到它。
+    candidates = []
+    if profile_name == _DEFAULT_BROWSER_PROFILE_NAME:
+        candidates.append(_LEGACY_BROWSER_PORT)
+    candidates.extend(range(_SHOP_BROWSER_PORT_START, _SHOP_BROWSER_PORT_END + 1))
+
+    for port in candidates:
+        if port not in occupied and is_free(port):
+            return port
+    raise Exception('没有可用的浏览器调试端口，请先关掉一些浏览器窗口再试')
+
+
+def _get_persistent_browser_user_data_path(profile_name: str = _DEFAULT_BROWSER_PROFILE_NAME) -> str:
+    # slug 化与 src/shop_session.slugify_profile_name 保持同一套规则：
+    # 上层已经 slug 过，这里只是防御性兜底，不能产生第二种命名。
+    safe_profile = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(profile_name or _DEFAULT_BROWSER_PROFILE_NAME)).strip("-")
     if not safe_profile:
-        safe_profile = "upload-browser-profile"
+        safe_profile = _DEFAULT_BROWSER_PROFILE_NAME
     data_dir = get_data_dir(create=True)
     base_dir = data_dir if data_dir is not None else (get_runtime_root() / "runtime")
     profile_dir = base_dir / safe_profile
@@ -2248,10 +2440,19 @@ def _get_persistent_browser_user_data_path(profile_name: str = "upload-browser-p
     return str(profile_dir)
 
 
-def get_page(index_url):
-    """创建ChromiumPage实例,支持自动Chrome管理"""
+def get_page(index_url, profile_name: Optional[str] = None):
+    """创建ChromiumPage实例,支持自动Chrome管理
+
+    ``profile_name`` 决定用哪个 Chrome 用户数据目录，也就是用哪个店铺的登录态。
+    不传时沿用历史上唯一的 ``upload-browser-profile``，保证老用户升级后
+    原来的登录态继续可用。
+    """
     co = ChromiumOptions()
-    persistent_user_data_path = _get_persistent_browser_user_data_path()
+    resolved_profile = profile_name or _DEFAULT_BROWSER_PROFILE_NAME
+    persistent_user_data_path = _get_persistent_browser_user_data_path(resolved_profile)
+    debug_port = _resolve_browser_port_for_profile(persistent_user_data_path, resolved_profile)
+    co.set_local_port(debug_port)
+    logger.info(f"[浏览器] profile={resolved_profile} port={debug_port}")
     
     # [修复] 智能Chrome路径检测与下载
     try:
@@ -2302,6 +2503,7 @@ def get_page(index_url):
         try:
             logger.info("[处理] 尝试使用默认配置...")
             co_fallback = ChromiumOptions()
+            co_fallback.set_local_port(debug_port)
             co_fallback.set_pref(arg='credentials_enable_service', value=False)
             co_fallback.set_paths(user_data_path=persistent_user_data_path)
             co_fallback.set_user("Default")
@@ -2580,8 +2782,11 @@ def get_white_pic(record, sku_list, with_source: bool = False):
                 'is_fallback': is_fallback,
             }
         return path
-    """获取白底图,支持多种格式和文件名"""
-    # 使用硬编码的默认格式
+    """用户选择优先；未指定时沿用自动发现与 SKU 备用规则。"""
+    if getattr(record, 'white_bg_path', None):
+        from .product_media import selected_white_bg
+        return _result(selected_white_bg({'path': record.path, 'white_bg_path': record.white_bg_path}), False)
+    # 未指定图片时使用原有的格式和文件名约定。
     supported_formats = ['.jpg', '.jpeg', '.png', '.webp']
     
     # 尝试不同的文件名和格式
@@ -3923,7 +4128,42 @@ def _wait_for_first_visible_in_scope(scope, selectors, timeout=0.6, interval=0.0
     return None
 
 
+# 一次往返判定「页面上是否还有上传在进行中」。
+# 用页内 XPath 求值而不是遍历 body 全部元素：fxg 发布页 DOM 有上万个节点，
+# JS 里逐个读 textContent 反而比原来的两次 ele 还慢。
+# `//*[not(*)][normalize-space(text())="上传中"]` 与 DrissionPage 的
+# `ele('上传中')`（无前缀 = 精确文本匹配）语义一致，不做成"包含"以免误判变多、
+# 把 wait 卡在"永远忙"上。
+_UPLOAD_BUSY_PROBE_JS = r'''
+const icon = document.querySelector('span[class*="ecom-g-btn-loading-icon"]');
+if (icon && (icon.offsetParent || icon.getClientRects().length > 0)) return true;
+const found = document.evaluate(
+    '//*[not(*)][normalize-space(text())="上传中"]',
+    document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+for (let i = 0; i < found.snapshotLength; i++) {
+    const node = found.snapshotItem(i);
+    if (node && (node.offsetParent || node.getClientRects().length > 0)) return true;
+}
+return false;
+'''
+
+
 def _is_upload_busy(tab):
+    """是否有上传进行中。一次 JS 往返，替代原来的两次串行探测。
+
+    原实现两次 `ele(timeout=0.1)` 在**未命中时各阻塞满 0.1 秒**，而它是多个
+    轮询判据的组成部分（`_wait_for_upload_complete`、主图视频/AI 面板等待、
+    SKU 阶段每条之间的空转）—— 实测 509 次调用里 481 次踩满 0.2 秒，
+    单条商品累计约 2 秒纯空转。
+
+    JS 不可用时回退原来的两次探测，功能不依赖该优化。
+    """
+    try:
+        busy = tab.run_js(_UPLOAD_BUSY_PROBE_JS)
+    except Exception:
+        busy = None
+    if isinstance(busy, bool):
+        return busy
     try:
         if tab.ele('xpath://span[contains(@class,"ecom-g-btn-loading-icon")]', timeout=0.1):
             return True
@@ -4268,8 +4508,6 @@ def set_sku_info(new_tab, index, sku, remark):
 
         row_scope = _find_sku_row_scope(sku_anchor)
         hover_target = row_scope or sku_anchor
-        before_row_image_count = _count_scope_visible_images(row_scope)
-        before_row_image_signatures = _collect_scope_visible_image_signatures(row_scope)
 
         step_start = _time.time()
         upload_button = _sku_resolve_local_upload_label(new_tab, row_scope, sku_anchor, hover_target)
@@ -4316,8 +4554,16 @@ def set_sku_info(new_tab, index, sku, remark):
                 step_start = _time.time()
                 new_tab.wait.upload_paths_inputted()
                 timer_record('SKU阶段', f'{index + 1}-触发上传', 0, _time.time() - step_start, True)
-                settle_timer_start = _time.time()
-                # 已触发上传, 快速检查后立即继续下一个SKU(页面异步处理)
+                # 已触发上传, 快速检查后立即继续下一个SKU(页面异步处理)。
+                #
+                # ⚠️ 这个 0.3s 是**纯盲等**：这里没有任何「平台已收到并处理完图片」的
+                # 判据，`upload_paths_inputted()` 只确认文件交给了 input。
+                # 实测每个规格值都要付这 0.3 秒（15 个规格值约 4.5 秒），是本阶段
+                # 剩余最大的一笔固定开销，但**在没有判据之前不要删**：
+                # 它挡的是「上一个 SKU 的图片还在处理时就去操作下一个 SKU 的级联菜单」。
+                # 要安全地拿掉，得先找到可观测的就绪信号（例如该行的规格图缩略图
+                # 出现 / 上传中态由真转假），并用真实发布验证 15 个规格值连续通过。
+                # 详见 docs/发布失败根因与提速诊断_2026-10-01.md §8.3。
                 _time.sleep(0.3)  # 给上传触发留时间
         timer_record('SKU阶段', f'{index + 1}-上传触发完成', 0, _time.time() - step_start, True)
         timer_record('SKU阶段', f'{index + 1}-上传并收尾', 0, _time.time() - step_start, True)

@@ -1,0 +1,57 @@
+{
+  "recorded_at": "2026-10-05T19:08:34.391126+08:00",
+  "scope": "targeted cache lookup changes, isolated pipeline, build and local runtime",
+  "previous_goal_turn_classification": "progress",
+  "pre_fix_reproduction": {
+    "failed": 2,
+    "passed": 1,
+    "observed_lookup_sizes": [
+      2,
+      2,
+      4,
+      4
+    ],
+    "required_lookup_sizes": [
+      4,
+      4
+    ]
+  },
+  "related_regression": {
+    "passed": 64,
+    "subtests_passed": 2,
+    "files": [
+      "test_media_cache_scan_efficiency.py",
+      "test_media_directory_flow.py",
+      "test_media_batch_lookup.py",
+      "test_one_product_media_upload.py",
+      "test_media_stage_integrity.py",
+      "test_platform_rejection.py"
+    ]
+  },
+  "publish_safety_regression": {
+    "passed": 75
+  },
+  "documentation_regression": {
+    "passed": 23,
+    "subtests_passed": 11
+  },
+  "package_selfcheck_passed": true,
+  "full_package_regression_repeated_this_turn": false,
+  "previous_full_package_regression": "desktop_single_upload_validation.json",
+  "pipeline_model": {
+    "artifact": "media_cache_scan_handoff.json",
+    "files": 9,
+    "main_slots": 5,
+    "stages": 11,
+    "upload_calls": 1,
+    "lookup_calls": 2,
+    "saved_draft_or_submitted": false
+  },
+  "frozen_build": "desktop_cache_scan_build.json",
+  "runtime": "desktop_cache_scan_runtime.json",
+  "source_utf8_and_syntax_checked": true,
+  "live_platform_tested": false,
+  "whole_form_coverage": "partial",
+  "goal_complete": false,
+  "current_runtime_feedback_requested": true
+}

@@ -1,0 +1,74 @@
+{
+  "scope": "一口价规则、属性一次展开、SKU 批量配图和桌面普通启动",
+  "evidence_levels": {
+    "source_and_isolated_browser": "verified",
+    "taobao_batch_dom": "candidate"
+  },
+  "tests": {
+    "passed": 262,
+    "subtests_passed": 73,
+    "warnings": 3,
+    "sku_no_reupload_followup_passed": 4,
+    "real_platform_tested": false
+  },
+  "build": {
+    "checked_at": "2026-10-08T21:17:52.887468+08:00",
+    "frozen_modules_match_source": {
+      "price_policy": true,
+      "sku_batch": true,
+      "required_attrs": true,
+      "form_adapters": true,
+      "stages": true,
+      "page": true
+    },
+    "capture_fix_preserved": {
+      "_capture_taobao_tmall_product_for_store": true,
+      "_extract_taobao_ice_data": true,
+      "_extract_taobao_tmall_product_snapshot": true,
+      "_import_capture_product_record": true,
+      "import_capture_result": true,
+      "start_capture": true,
+      "run_capture_task": true
+    },
+    "source_manifest_files": 82,
+    "archive_entries": 634,
+    "backend_sha256": "c86d60ccabfe31c4189ee4f2b5bf700f871c6e21098ea2f5ad1a0dd60db056c7"
+  },
+  "runtime": {
+    "checked_at": "2026-10-08T21:16:21.4291124+08:00",
+    "startup_check_exit_code": 0,
+    "shortcut_used": true,
+    "window_observed_seconds": 4.8,
+    "health_ok_seconds": 8.27,
+    "gui_processes": 1,
+    "backend_bootloader_and_worker_processes": 2,
+    "compiler_processes_seen": [],
+    "vite_1420_seen": false,
+    "backend_sha256": "c86d60ccabfe31c4189ee4f2b5bf700f871c6e21098ea2f5ad1a0dd60db056c7",
+    "desktop_sha256": "dcbc6b51d8aec42e205ed2edfa4575a45c74763e57fdde96a2e45d94ad56c8b4",
+    "stderr_log_start_bytes": 0,
+    "real_taobao_flow_tested": false
+  },
+  "frontend_build": "vue-tsc + vite build passed",
+  "desktop_build": "npm run tauri:build -- --no-bundle passed",
+  "listing_price_examples": {
+    "9.9": 20,
+    "9.1": 19,
+    "9.5": 19
+  },
+  "sku_prices_unchanged": true,
+  "batch_fixture": {
+    "sku_rows": 5,
+    "different_images": true,
+    "shared_image": true,
+    "open_count": 1,
+    "confirmation_count": 1,
+    "selection_count": 5,
+    "reuploads": 0
+  },
+  "repeated_shortcut_launch": {
+    "tested": false,
+    "reason": "Tool approval rejected the additional action: blocked by policy"
+  },
+  "live_taobao_boundary": "Browser Use site restriction remains; no alternate tool access, draft save or submission."
+}

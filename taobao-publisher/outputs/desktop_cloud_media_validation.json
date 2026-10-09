@@ -1,0 +1,38 @@
+{
+  "checked_at": "2026-10-05T21:29:29.420495+08:00",
+  "scope": "offline tests, isolated browser models and local deployment only",
+  "taobao_suite": {
+    "passed": 1320,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "excluded_live_environment_tests": [
+      "ObjectiveAuditScriptTest::test_it_runs_clean",
+      "CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ]
+  },
+  "media_and_publish_safety_tests_passed": 88,
+  "targeted_tree_cache_and_docs_passed": 34,
+  "targeted_docs_subtests_passed": 11,
+  "common_frontend_behavior_tests_passed": 79,
+  "media_frontend_async_tests_passed": 5,
+  "vue_typecheck_and_vite_build_passed": true,
+  "package_selfcheck_passed": true,
+  "build_archive_audit_passed": true,
+  "normal_launcher_runtime_audit_passed": true,
+  "live_taobao_accessed": false,
+  "live_upload_saved_draft_or_submitted": false,
+  "whole_form_confirmed": false,
+  "backend_sha256": "9003096823528fcd65856f63dc2d9762284c9a463a2ba83220d2982ff50809c9",
+  "source_hashes": {
+    "src/product_media.py": "c45de9d90e2b381f6158a3a50566b8e7d39387c24ab1844dc5280565b79cc674",
+    "taobao-publisher/taobao_publish/media_library.py": "9dc4f48fe738daf39dd2b793f3b487d4b03fd90836b7a58b2f8f9b6d51893b19",
+    "taobao-publisher/taobao_publish/page.py": "616792f409f34bd0af193d59e6300986dfa4be07132bc4b8acdd6ecbceaaccc9",
+    "taobao-publisher/taobao_publish/form_adapters.py": "5e430dcecb89ccdf3e023206849e42350c432928fb071a6e10acc43d89d6f047",
+    "taobao-publisher/taobao_publish/stages.py": "914fce094e66745e6852154c124138a95488a0fbec8aad34d475619f2733a59e",
+    "taobao-publisher/taobao_publish/pipeline.py": "2c0548226d01efc412489d7bf6952e2e98646bdeec59f82a70c84ca8aae08975",
+    "tauri-app/src/components/ProductMediaManager.vue": "2dd46e8575d36f9bf289a53a801977ff7d3c7dbc84a32368aa5455162a70f6f1",
+    "tauri-app/src/stores/productStore.ts": "470d055548b75c8791dceaa3ec46720a98f8227867a4b939e1c20df0fd62c914",
+    "tests/test_product_media.py": "bcab9e99b3b4b22dd5a837902ad50bdbb32351fc090b3c06f71ac6e2eec56ea4",
+    "taobao-publisher/tests/test_cloud_media_tree.py": "e0dc502a12a4354f0aa1bb01a227d39128bf13f0e067cec335abc5a19a994e3d"
+  }
+}

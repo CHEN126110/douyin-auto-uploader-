@@ -1,0 +1,19 @@
+{
+  "source": "user_supplied_image_and_error_text",
+  "image_file": "user_media_subdirectory_selection_20261005.png",
+  "sha256": "62a73a16f4d7d2403ed55f5b70569241139e9a2728edbc149a29e185821e900f",
+  "size": [
+    1761,
+    621
+  ],
+  "scope": "visual_evidence_and_user_runtime_report_only",
+  "visible_facts": [
+    "商品父目录下有SKU、主图、详情页",
+    "主图目录被选中后显示5张主图",
+    "显示文件名为主图_01.jpg至主图_05.jpg，位置顺序不是编号顺序"
+  ],
+  "user_report": "本批上传队列已接收，但21张素材未找到，预期名称为tb_1_main_1等带内容摘要的文件名",
+  "does_not_prove": "截图为手动目录方法说明，不能据此认定平台将程序上传文件改回了原名",
+  "current_dom_not_read": true,
+  "visual_review": "只包含图片空间商品素材与用户标注，未见登录凭据或个人联系方式；保留原图未编辑"
+}

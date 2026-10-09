@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>合成素材中心页（隔离测试用）</title>
+<!--
+  与真实素材中心页**同形**的最小页面，用来离线验证「自动建目录」那一段。
+
+  形状来自真机取证（不是猜的）：
+  * 目录树节点：外层 <li class="next-tree-node" value="<folderId>" name="<目录名>">，
+    内层 <div role="treeitem" aria-selected aria-expanded>（E-282/E-285）
+  * **树里没有「全部图片」节点**，树根就是那一层（E-291）
+  * 回到根只能走面包屑 ul.next-breadcrumb 的第一项（E-292）
+  * 「新建文件夹」是页面上的唯一按钮；点它才渲染出输入框与「确定」（_CREATE_FOLDER_EXPRESSION）
+
+  **纯本地**：不加载任何外部资源，不发起任何网络请求。
+-->
+<style>
+  body { font: 13px/1.6 sans-serif; margin: 16px; }
+  #tree-wrap { height: 320px; overflow: auto; border: 1px solid #ddd; padding: 6px; }
+  .next-tree { list-style: none; margin: 0; padding-left: 14px; }
+  .next-tree-node-inner { display: block; padding: 2px 4px; cursor: pointer; }
+  .next-tree-node-inner.next-selected { background: #e6f0ff; }
+  .next-tree-node-label { display: inline-block; }
+  .next-tree-switcher { display: inline-block; width: 12px; }
+  #create-dialog { display: none; border: 1px solid #999; padding: 10px; margin-top: 8px; }
+  #create-dialog.open { display: block; }
+</style>
+</head>
+<body>
+
+<ul class="next-breadcrumb" id="crumb"></ul>
+
+<button type="button" id="create-btn">新建文件夹</button>
+
+<div id="tree-wrap">
+  <ul class="next-tree next-node-indent" role="tree" popupcontainer="synthetic"></ul>
+</div>
+
+<div class="next-dialog" id="create-dialog">
+  <input type="text" id="folder-name" placeholder="请输入文件夹名称">
+  <button type="button" id="create-ok">确定</button>
+</div>
+
+<script>
+(function () {
+  var ROOT_NAME = "全部图片";
+  // ⚠️ 用 **BigInt** 递增：平台 folderId 是 19 位数字，超过 JS 安全整数范围
+  // （2^53-1 ≈ 9.007e15），用普通 number 递增会**加不动**，
+  // 于是两个新目录拿到同一个 id——那会让"回读"看起来对、其实分不清谁是谁。
+  var seq = 9000000000000000000n;
+  var selected = [];                       // 当前选中的完整路径（[] = 根那一层）
+
+  // 初始数据：一个商品目录 + 它的一个用途子目录；**没有「全部图片」节点**
+  var data = [
+    {name: "ID-1", value: "111", children: [
+      {name: "主图", value: "222", children: []}
+    ]},
+    {name: "智能创作", value: "333", children: []}
+  ];
+
+  function findNode(nodes, path) {
+    if (!path.length) { return null; }
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].name === path[0]) {
+        return path.length === 1 ? nodes[i] : findNode(nodes[i].children || [], path.slice(1));
+      }
+    }
+    return null;
+  }
+
+  function render() {
+    var tree = document.querySelector(".next-tree");
+    tree.innerHTML = "";
+    function build(list, path) {
+      var ul = document.createElement("ul");
+      ul.className = "next-tree";
+      list.forEach(function (item) {
+        var full = path.concat([item.name]);
+        var li = document.createElement("li");
+        li.className = "next-tree-node";
+        li.setAttribute("role", "presentation");
+        li.setAttribute("value", item.value);
+        li.setAttribute("name", item.name);
+        li.setAttribute("level", String(full.length));
+
+        var inner = document.createElement("div");
+        inner.className = "next-tree-node-inner" +
+          (same(full, selected) ? " next-selected" : "");
+        inner.setAttribute("role", "treeitem");
+        inner.setAttribute("aria-level", String(full.length));
+        inner.setAttribute("aria-selected", same(full, selected) ? "true" : "false");
+        inner.setAttribute("aria-expanded", "true");   // 子节点**已渲染**（本页不做懒加载）
+
+        var sw = document.createElement("span");
+        sw.className = "next-tree-switcher next-noline next-open";
+        inner.appendChild(sw);
+
+        var label = document.createElement("div");
+        label.className = "next-tree-node-label next-tree-node-label-selectable";
+        label.textContent = item.name;
+        inner.appendChild(label);
+
+        inner.addEventListener("click", function () { selected = full; render(); });
+
+        li.appendChild(inner);
+        if (item.children && item.children.length) { li.appendChild(build(item.children, full)); }
+        ul.appendChild(li);
+      });
+      return ul;
+    }
+    tree.appendChild(build(data, []));
+    renderCrumb();
+    window.__synthetic_state = {selected: selected.slice(), data: data};
+  }
+
+  function renderCrumb() {
+    var crumb = document.getElementById("crumb");
+    crumb.innerHTML = "";
+    var parts = [ROOT_NAME].concat(selected);
+    parts.forEach(function (name, index) {
+      var li = document.createElement("li");
+      li.className = "next-breadcrumb-item";
+      var span = document.createElement("span");
+      span.className = "next-breadcrumb-text" +
+        (index === parts.length - 1 ? " activated" : "");
+      span.textContent = name;
+      if (index === 0) {
+        // 点「全部图片」= 回到根那一层
+        span.addEventListener("click", function () { selected = []; render(); });
+      } else {
+        span.addEventListener("click", function () { selected = parts.slice(1, index + 1); render(); });
+      }
+      li.appendChild(span);
+      crumb.appendChild(li);
+    });
+  }
+
+  function same(a, b) {
+    return a.length === b.length && a.every(function (v, i) { return v === b[i]; });
+  }
+
+  document.getElementById("create-btn").addEventListener("click", function () {
+    document.getElementById("create-dialog").classList.add("open");
+    document.getElementById("folder-name").focus();
+  });
+
+  document.getElementById("create-ok").addEventListener("click", function () {
+    var name = document.getElementById("folder-name").value.trim();
+    if (!name) { return; }
+    var parent = findNode(data, selected);
+    var list = selected.length ? (parent.children = parent.children || []) : data;
+    if (findNode(list, [name])) {           // 同名已存在：平台行为未取证，这里保持不重复建
+      document.getElementById("create-dialog").classList.remove("open");
+      return;
+    }
+    list.push({name: name, value: String(seq++), children: []});    document.getElementById("create-dialog").classList.remove("open");
+    document.getElementById("folder-name").value = "";
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

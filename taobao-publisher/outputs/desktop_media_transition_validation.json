@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-10-05T21:51:15.949686+08:00",
+  "scope": "isolated software tests and local desktop deployment",
+  "previous_goal_turn": "progress",
+  "current_goal_turn": "progress",
+  "full_goal_complete": false,
+  "full_suite": {
+    "passed": 1329,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "excluded_live_environment_tests": [
+      "ObjectiveAuditScriptTest::test_it_runs_clean",
+      "CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ]
+  },
+  "targeted_final_passed": 47,
+  "targeted_final_subtests_passed": 20,
+  "publish_safety_passed": 75,
+  "selfcheck_passed": true,
+  "builders_checked": 54,
+  "builder_calls_checked": 66,
+  "runtime_matches_build": true,
+  "backend_sha256": "eebb08e52b366ed6c51bb8f73971b936724ed61c82830a1183c49ba2db5da588",
+  "live_taobao_accessed": false,
+  "live_upload_saved_draft_or_submitted": false,
+  "source_hashes": {
+    "taobao-publisher/taobao_publish/page.py": "a28b0a53ea3617b8d667ae90937fa4a5a302e12efc65d5d4a34a468b4971e887",
+    "taobao-publisher/taobao_publish/media_library.py": "22c25b4e9df6d1f5427ac3d67f21f348ea3b7053023efabadaccbe4764d76883",
+    "taobao-publisher/taobao_publish/selfcheck.py": "e156dec531ca45a4e694d4cbd3886badad47a0bd0e1a7d96c819ca8534f6e312",
+    "taobao-publisher/tests/test_media_directory_transition.py": "cb45703677ac396e8841865693dee9b3e6ccc09cfd1297534c685aeb4961b5f9",
+    "taobao-publisher/tests/test_select_ambiguity_guard.py": "cae9ff2c52eb4dec5ba0e9090f0b679f1a300157dbcccac7347d8fc669bcfe8d",
+    "taobao-publisher/tests/test_media_batch_lookup.py": "b3b3b01c0c50c80527e168b4f88e8a6304a90b668c98567df8f988f2e9d522e2",
+    "taobao-publisher/tests/test_shared_media_lookup.py": "c6b7abb78d10510b9ed2c0d2ac81f08fe458a7815a8b64d640b490e156ab5721"
+  }
+}

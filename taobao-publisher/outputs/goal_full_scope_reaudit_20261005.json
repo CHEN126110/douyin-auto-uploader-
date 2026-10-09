@@ -1,0 +1,267 @@
+{
+  "checked_at": "2026-10-05T11:21:17.530554+08:00",
+  "scope": "full original objective; local source, package, runtime and isolated evidence only",
+  "goal_completion_proven": false,
+  "recommended_goal_status": "blocked",
+  "previous_goal_turn_classification": "progress",
+  "same_blocker_consecutive_preceding_goal_turns_confirmed": 3,
+  "preceding_turns": [
+    {
+      "evidence": "E-179..E-182",
+      "artifact": "outputs/desktop_required_controls_validation.json",
+      "classification": "progress",
+      "verified_limit_field": "live_taobao_filling_executed",
+      "same_blocking_condition_present": true
+    },
+    {
+      "evidence": "E-183..E-185",
+      "artifact": "outputs/desktop_capture_attributes_validation.json",
+      "classification": "progress",
+      "verified_limit_field": "live_taobao_tested",
+      "same_blocking_condition_present": true
+    },
+    {
+      "evidence": "E-186..E-188",
+      "artifact": "outputs/desktop_media_batch_validation.json",
+      "classification": "progress",
+      "verified_limit_field": "live_platform_tested",
+      "same_blocking_condition_present": true
+    }
+  ],
+  "blocking_condition": "当前淘宝工作台及完整必填事实无法由现有工具合法读取；核心剩余适配与真实验收需要新的页面或商品事实",
+  "static_candidate_level_is_not_itself_a_blocker": true,
+  "known_agent_validation_jobs_waiting": [],
+  "user_platform_task_list_read": false,
+  "application_kept_running": true,
+  "runtime_sha256": "d08b4732cab297656f8150878c36b2de82f4beacd5c72281400cd5a6b7f66130",
+  "local_health_success": true,
+  "local_deployment_matches_build": true,
+  "current_regression": {
+    "passed": 1281,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "deselected": [
+      "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+      "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ]
+  },
+  "active_runtime_controls_needing_current_platform_evidence": [
+    {
+      "key": "sku.custom_mode",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_rows",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_input",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_add",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.image_slot",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.table_image",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "detail.editor",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "media.directory_tree",
+      "level": "candidate",
+      "source": "用户2026-10-05说明父目录与主图/SKU/详情页子目录；test_media_directory_flow.py仅证明本地原生目录树模型"
+    },
+    {
+      "key": "media.directory_node",
+      "level": "candidate",
+      "source": "用户2026-10-05说明父目录与主图/SKU/详情页子目录；test_media_directory_flow.py仅证明本地原生目录树模型"
+    }
+  ],
+  "archived_page_images": [
+    "tb_category_cascade_20261003.png",
+    "tb_publish_form_sales_20261003.png",
+    "tb_publish_form_top_20261003.png"
+  ],
+  "production_required_reader": {
+    "scope": "visible_publish_rows_required",
+    "completePage": false
+  },
+  "requirements": [
+    {
+      "id": "shared_frontend",
+      "requirement": "淘宝/抖音共用编辑、SKU、上传入口和进度，不新增专用固定区或设置向导",
+      "status": "completion_unproven",
+      "available_evidence_scope": "当前前端源码、79组隔离交互、运行静态页面标记",
+      "evidence": [
+        "tauri-app/src/views/ProductManager.vue",
+        "tests/frontend_publish_flow.cjs",
+        "outputs/desktop_click_browser_runtime.json"
+      ],
+      "missing_authoritative_evidence": "当前商品在真实平台完整交互尚未验证；共同组件与调用路由已验证"
+    },
+    {
+      "id": "account_browser",
+      "requirement": "平台随账户绑定，启动或复用隔离浏览器并保持登录",
+      "status": "completion_unproven",
+      "available_evidence_scope": "真实Flask函数隔离回归及冻结启动/并发保护核对",
+      "evidence": [
+        "../src/shop_session.py",
+        "../tests/test_shop_platform_api.py",
+        "outputs/desktop_click_browser_build.json"
+      ],
+      "missing_authoritative_evidence": "当前淘宝账户的实际浏览器、登录与后续导航没有本轮现场证据"
+    },
+    {
+      "id": "category_and_brand",
+      "requirement": "搜索发品、匹配类目、默认无品牌并进入下一步",
+      "status": "completion_unproven",
+      "available_evidence_scope": "本地原生类目模型与下一步/品牌回读反例",
+      "evidence": [
+        "tests/test_category_first_pipeline.py",
+        "tests/test_default_brand_and_media_content.py"
+      ],
+      "missing_authoritative_evidence": "当前页面的类目候选、品牌控件和跳转仍需现场确认"
+    },
+    {
+      "id": "media_directories",
+      "requirement": "进入商品父目录及主图/SKU/详情子目录，高效查找与上传",
+      "status": "completion_unproven",
+      "available_evidence_scope": "隔离目录树、原生文件输入、批量队列和整批图库查询",
+      "evidence": [
+        "taobao_publish/media_library.py",
+        "tests/test_media_directory_flow.py",
+        "tests/test_media_batch_lookup.py"
+      ],
+      "missing_authoritative_evidence": "当前目录树或文件夹卡片形态、点击方式、上传目的地和云端文件夹创建/合并规则未验证"
+    },
+    {
+      "id": "main_images",
+      "requirement": "主图完整上传、按要求位置和顺序入位",
+      "status": "completion_unproven",
+      "available_evidence_scope": "5个主图位置、部分缓存及内容身份的隔离联跑",
+      "evidence": [
+        "outputs/media_batch_five_main_handoff.json",
+        "tests/test_media_batch_lookup.py"
+      ],
+      "missing_authoritative_evidence": "真实上传服务与当前页面主图入位、顺序核对尚未验证"
+    },
+    {
+      "id": "sku_names_images",
+      "requirement": "完整销售规格及各自SKU图准确对应",
+      "status": "completion_unproven",
+      "available_evidence_scope": "当前候选配置的原生规格输入、按身份匹配行和图片回读",
+      "evidence": [
+        "taobao_publish/form_adapters.py",
+        "tests/test_runtime_native_controls.py"
+      ],
+      "missing_authoritative_evidence": "当前淘宝自定义模式、规格行及图片入口是否符合支持结构未验证"
+    },
+    {
+      "id": "prices_stock_titles",
+      "requirement": "用户编辑的标题、售价和库存准确传到平台并回读",
+      "status": "completion_unproven",
+      "available_evidence_scope": "版本绑定、真实本地SQLite/HTTP保存、逐行值与标题边界回归",
+      "evidence": [
+        "../tests/test_product_save_snapshot.py",
+        "tests/test_media_stage_integrity.py"
+      ],
+      "missing_authoritative_evidence": "当前表格控件与平台实际约束仍需相应真实验证"
+    },
+    {
+      "id": "captured_facts",
+      "requirement": "采集资料可支撑必填填写，不编造缺失商品事实",
+      "status": "completion_unproven",
+      "available_evidence_scope": "明确来源的属性存储、版本绑定、五类必填属性精确匹配",
+      "evidence": [
+        "taobao_publish/captured_attributes.py",
+        "taobao_publish/attribute_fill.py",
+        "outputs/captured_attribute_pipeline_handoff.json"
+      ],
+      "missing_authoritative_evidence": "当前商品实际可用参数未知；旧记录没有自动补造参数；复合材质/资质尚需真实事实与控件"
+    },
+    {
+      "id": "all_required_and_logistics",
+      "requirement": "填写平台全部必填项及物流信息",
+      "status": "incomplete",
+      "available_evidence_scope": "已识别的可见必填控件检查；运费模板取明确值或当前页已选项",
+      "evidence": [
+        "taobao_publish/required_fields.py",
+        "taobao_publish/stages.py"
+      ],
+      "missing_authoritative_evidence": "完整必填清单、折叠/动态区段、复合控件及店铺物流真实选项缺失"
+    },
+    {
+      "id": "detail_editor",
+      "requirement": "详情图片按顺序写入实际编辑器并回读",
+      "status": "completion_unproven",
+      "available_evidence_scope": "原生HTML编辑区的隔离填写与内容核对",
+      "evidence": [
+        "taobao_publish/form_adapters.py",
+        "tests/test_runtime_native_controls.py"
+      ],
+      "missing_authoritative_evidence": "当前编辑器形态未验证，iframe或私有编辑器尚无已确认适配"
+    },
+    {
+      "id": "failure_cancel_reporting",
+      "requirement": "隔离并发、明确失败、取消和如实报告结果",
+      "status": "completion_unproven",
+      "available_evidence_scope": "相关安全回归、进度/结果共同前端79组隔离验证",
+      "evidence": [
+        "../tests/test_sidecar_upload_safety.py",
+        "tests/frontend_publish_flow.cjs"
+      ],
+      "missing_authoritative_evidence": "真实平台取消及异常恢复表现未验证；不得以100%替代整页必填证明"
+    },
+    {
+      "id": "stop_before_submit",
+      "requirement": "本次淘宝只填写，停在提交前，不保存草稿或提交",
+      "status": "completion_unproven",
+      "available_evidence_scope": "授权门、冻结代码和模型零草稿/提交记录",
+      "evidence": [
+        "taobao_publish/authorization.py",
+        "outputs/media_batch_five_main_handoff.json"
+      ],
+      "missing_authoritative_evidence": "本地约束已验证；真实提交前整页填写验收仍未完成"
+    },
+    {
+      "id": "real_publication",
+      "requirement": "最终稳定发布及平台成功结果核对",
+      "status": "deferred_by_user_scope",
+      "available_evidence_scope": "只有提交授权门及明确未实证的提交处理器",
+      "evidence": [
+        "taobao_publish/stages.py"
+      ],
+      "missing_authoritative_evidence": "先完成提交前真实验收，实际提交还需要用户明确授权；本轮不以此为当前填写阻塞原因"
+    }
+  ],
+  "source_sha256": {
+    "taobao_publish/media_library.py": "28a606e5e0387f2d0dd751cb1f3f6d15443b1d3f58089a0866b40e8b9261638f",
+    "taobao_publish/page.py": "413caf7fb7b04e041afec4446afdeeb940625d38663593a5577b13733f74246c",
+    "taobao_publish/stages.py": "f5257f7eee627d94b98730769dfb72836d8d27d0f29f0b7c11dfbe845bf468b4",
+    "taobao_publish/required_fields.py": "67def95ce78eb03fc024fb5b5c2de4419752288fcaed703c02d7e0c5b58a487b",
+    "taobao_publish/verification.py": "61290185c9971a473eb21d86d3ff9e88f6f46ef30c95a2c3ef98a2b233f12799",
+    "taobao_publish/attribute_fill.py": "7c0d10c57888f212be259d75cc584a377111fff05ece7a31d74c6c95b82d39c7",
+    "contracts/selectors.json": "d261565a288664fc2dc2f4da66844663c556f9dedeff7f0b8f7f3b77fa6f8c81"
+  },
+  "next_needed_evidence": [
+    "用户提供更新版本实际停点/错误文字及相应去敏控件资料",
+    "或工具访问策略明确允许的当前淘宝执行环境"
+  ],
+  "live_platform_actions_performed": false,
+  "original_objective_preserved": true
+}

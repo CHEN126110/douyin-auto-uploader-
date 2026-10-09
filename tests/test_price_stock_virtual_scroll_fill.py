@@ -201,6 +201,15 @@ class FakeRow:
     def ele(self, selector, timeout=None):
         self._alive()
         self.table.count('row.ele_input')
+        if 'attr-column-field_price' in selector or 'attr-column-field_stock_info' in selector:
+            # 允许测试注入「本轮输入框定位不到」：真实环境里 to_center() 触发的
+            # 行重挂载会让刚取到的句柄短暂失效，代码据此 continue 交给下一轮重扫。
+            flaky = getattr(self.table, 'missing_input_once', None)
+            key = self._data['key']
+            if flaky and flaky.get(key, 0) > 0:
+                flaky[key] -= 1
+                self.table.count('row.missing_input')
+                return None
         if 'attr-column-field_price' in selector:
             return FakeInput(self.table, self.index, 'price')
         if 'attr-column-field_stock_info' in selector:
@@ -419,3 +428,133 @@ def test_missing_row_reports_visible_rows_for_diagnosis():
     message = str(exc_info.value)
     assert '根本不存在的SKU+均码' in message, '报错应指明是哪个 SKU 没填上'
     assert '页面当前可见行' in message, '报错应附带页面实际渲染的行，用于定位根因'
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-01 实盘故障回归
+# ---------------------------------------------------------------------------
+
+def _flat_table(names, sizes, viewport=2000.0, row_height=100.0, render_delay=0.05, base_key=3000):
+    """构造一张一屏放得下的价格库存表（不需要滚动）。"""
+    rows = [
+        {'key': str(base_key + i), 'name': name, 'size': sizes[i], 'price': '', 'stock': ''}
+        for i, name in enumerate(names)
+    ]
+    return VirtualTable(rows, viewport=viewport, row_height=row_height, render_delay=render_delay), rows
+
+
+def test_source_size_differs_from_page_uniform_size():
+    """颜色规格值带源平台真实尺码、页面码数轴写死「均码」时，仍必须写入。
+
+    实盘：商品 ID-1078276270149 连败 5 次，报
+    `价格库存滚动未推进，剩余SKU未填写：榛子蝴蝶结 / 36-40、灰紫格纹 / 36-40、…`。
+    失败现场截图与 DOM 快照都显示：这些行的颜色分类规格值就是完整 SKU 名、
+    码数轴是「均码」，行与价格/库存输入框都在 DOM 里。
+
+    根因：`_configure_sku_structure` 把码数轴**写死为「均码」**，
+    而 sku_list 的名字带着源平台真实尺码，旧的尺码守卫
+    `expected_size != row_size → False` 因此必然判不等，
+    整批 SKU 永远匹配不上页面行。
+    """
+    names = ['榛子蝴蝶结 / 36-40', '灰紫格纹 / 36-40', '塞纳灰格纹 / 36-40']
+    table, rows = _flat_table(names, ['均码'] * len(names))
+    sku_list = [{'name': name, 'price': '20.99'} for name in names]
+    record = types.SimpleNamespace(repo=100, name='ID-1078276270149', id=1)
+
+    fill = _load_fill_function(table)
+    fill(FakeTab(), record, sku_list, '包邮')
+
+    for index, sku in enumerate(sku_list):
+        assert rows[index]['price'] == sku['price'], f'第{index + 1}行({sku["name"]})价格未写入'
+        assert rows[index]['stock'] == '100', f'第{index + 1}行({sku["name"]})库存未写入'
+
+
+def test_multi_spec_name_joined_by_slash_is_matched():
+    """多规格连写的名字（`均码/长绒棉/抗起球/独立包装`）不能被当成尺码而否决。"""
+    names = [
+        '男袜高橡筋款 / 均码/长绒棉/抗起球/独立包装',
+        '男袜平板款 / 均码/长绒棉/抗起球/独立包装',
+    ]
+    table, rows = _flat_table(names, ['均码'] * len(names))
+    sku_list = [{'name': name, 'price': '12.5'} for name in names]
+    record = types.SimpleNamespace(repo=100, name='ID-X', id=1)
+
+    fill = _load_fill_function(table)
+    fill(FakeTab(), record, sku_list, '包邮')
+
+    for index, sku in enumerate(sku_list):
+        assert rows[index]['price'] == sku['price'], f'第{index + 1}行价格未写入'
+
+
+def test_plus_separated_name_matches_page_row():
+    """文件夹导入把文件名里的 "-" 换成 "+"，页面行也用 "+" 连接时必须匹配。
+
+    见 app.py `_derive_sku_name`：`candidate.replace('-', '+')`，
+    所以库里的 SKU 名同时存在「颜色 / 尺码」和「颜色+尺码」两种写法。
+    """
+    names = ['S2636组合A+均码', 'S2636组合B+均码', 'S2636组合E+均码']
+    table, rows = _flat_table(names, ['均码'] * len(names), base_key=1300)
+    sku_list = [{'name': name, 'price': '20.99'} for name in names]
+    record = types.SimpleNamespace(repo=100, name='ID-1079741832833', id=1)
+
+    fill = _load_fill_function(table)
+    fill(FakeTab(), record, sku_list, '包邮')
+
+    for index, sku in enumerate(sku_list):
+        assert rows[index]['price'] == sku['price'], f'第{index + 1}行价格未写入'
+
+
+def test_skipped_row_is_retried_when_table_needs_no_scrolling():
+    """表格一屏放得下（max_top == 0）时，被瞬态跳过的行必须靠原地重扫补上。
+
+    实盘：商品 ID-1081080198595 的表格 10 行全部渲染、价格/库存输入框都在 DOM 里，
+    末尾数行却始终没被写入，最终报「价格库存滚动未推进」。
+
+    根因是恢复路径不可达：`next_top <= current_top` 且 `current_top == 0` 时，
+    旧实现直接 raise，于是循环体里那句
+    「本轮跳过、交给下一轮以新句柄重扫」的承诺永远不会兑现——
+    任何一次瞬态重渲染都变成硬失败，且报错文案把「输入框没定位到」
+    说成「滚动未推进」，把排查方向带偏。
+
+    本用例锁死该契约：只要本轮还有行被消解，就必须允许原地重扫。
+    """
+    names = [f'第{i}款 / 均码' for i in range(4)]
+    table, rows = _flat_table(names, ['均码'] * len(names))
+    assert table.max_top() == 0, '用例前提：表格一屏放得下，无需滚动'
+
+    sku_list = [{'name': name, 'price': '9.9'} for name in names]
+    record = types.SimpleNamespace(repo=100, name='ID-1081080198595', id=1)
+
+    # 第 3 行的输入框在第一次定位时拿不到（模拟 to_center() 触发的重挂载）
+    table.missing_input_once = {rows[2]['key']: 1}
+
+    fill = _load_fill_function(table)
+    fill(FakeTab(), record, sku_list, '包邮')
+
+    for index, sku in enumerate(sku_list):
+        assert rows[index]['price'] == sku['price'], f'第{index + 1}行价格未写入（瞬态失效后未重扫）'
+        assert rows[index]['stock'] == '100'
+
+
+def test_permanently_unlocatable_input_still_fails_fast():
+    """输入框**始终**定位不到时必须明确失败，不能靠重扫无限打转。
+
+    重试是有限的：只有「本轮还有行被消解」才允许再扫，且最多 `_stall_retry_limit` 次。
+    """
+    names = [f'第{i}款 / 均码' for i in range(4)]
+    table, rows = _flat_table(names, ['均码'] * len(names))
+
+    sku_list = [{'name': name, 'price': '9.9'} for name in names]
+    record = types.SimpleNamespace(repo=100, name='ID-X', id=1)
+    table.missing_input_once = {rows[2]['key']: 999}
+
+    fill = _load_fill_function(table)
+    with pytest.raises(Exception) as exc_info:
+        fill(FakeTab(), record, sku_list, '包邮')
+
+    message = str(exc_info.value)
+    assert '第3款' in message, '报错应指明是哪个 SKU 没填上'
+    assert '输入框' in message, '报错应区分「行已渲染但输入框没定位到」与「行没渲染」'
+    # 已填好的行不该被重扫打乱
+    assert rows[0]['price'] == '9.9' and rows[1]['price'] == '9.9'
+

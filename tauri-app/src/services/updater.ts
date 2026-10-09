@@ -17,13 +17,33 @@ import { invoke } from "@tauri-apps/api/core";
 import { ElMessage, ElMessageBox, ElLoading } from "element-plus";
 
 const BACKEND_URL = "http://127.0.0.1:5001";
+let updateInProgress = false;
+
+/** 下载后、停止后端前检查，不能依赖弹窗中的人工提醒。 */
+async function assertBackendIdle(): Promise<void> {
+  const running = await invoke<boolean>("check_backend_status");
+  // 后端没有启动时仍允许通过更新修复应用。
+  if (!running) return;
+  const response = await fetch(`${BACKEND_URL}/internal/update-readiness`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error("无法确认后台任务状态，请稍后重新更新");
+  const body = await response.json();
+  if (body?.success !== true || typeof body?.data?.ready !== "boolean") {
+    throw new Error("后台任务状态无效，未停止服务或安装更新");
+  }
+  if (!body.data.ready) {
+    throw new Error("采集、发布或图片处理任务仍在进行，请任务结束后再更新");
+  }
+}
 
 /** 更新前优雅停掉 python-backend，避免覆盖安装时 exe 文件被占用导致失败 */
 async function gracefullyStopBackend(): Promise<void> {
-  try {
-    await fetch(`${BACKEND_URL}/internal/terminate`, { method: "POST" });
-  } catch {
-    // 后端可能已经停了，或本就未启动，忽略
+  if (!(await invoke<boolean>("check_backend_status"))) return;
+  // Rust 侧负责优雅停止、等待和必要的进程清理，释放安装文件占用。
+  await invoke("stop_python_backend");
+  if (await invoke<boolean>("check_backend_status")) {
+    throw new Error("后端尚未停止，未开始安装更新");
   }
 }
 
@@ -37,6 +57,16 @@ function formatMB(bytes: number): string {
  *                    检查出错也不打扰用户。
  */
 export async function checkForUpdate(opts?: { silent?: boolean }): Promise<void> {
+  if (updateInProgress) return;
+  updateInProgress = true;
+  try {
+    await performUpdate(opts);
+  } finally {
+    updateInProgress = false;
+  }
+}
+
+async function performUpdate(opts?: { silent?: boolean }): Promise<void> {
   const silent = opts?.silent ?? false;
 
   let update;
@@ -60,7 +90,7 @@ export async function checkForUpdate(opts?: { silent?: boolean }): Promise<void>
   try {
     await ElMessageBox.confirm(
       `发现新版本 ${update.version}\n\n更新说明：${update.body || "（无）"}\n\n` +
-        `提示：更新需要下载完整安装包（含后端，体积较大），更新前请先确保没有正在进行的采集 / 发布任务。`,
+        `更新会下载完整安装包。安装前将检查后台任务，任务结束后才能安装；安装时软件会关闭。`,
       "发现新版本",
       {
         confirmButtonText: "立即更新",
@@ -102,6 +132,7 @@ export async function checkForUpdate(opts?: { silent?: boolean }): Promise<void>
       }
     });
 
+    await assertBackendIdle();
     // 只有覆盖安装才需要释放 python-backend.exe 的文件占用
     loading.setText("正在停止后端服务...");
     await gracefullyStopBackend();
@@ -113,8 +144,8 @@ export async function checkForUpdate(opts?: { silent?: boolean }): Promise<void>
       // 安装失败必须把后端拉回来，否则用户停在「应用开着但什么都干不了」的状态
       try {
         await invoke("start_python_backend");
-      } catch {
-        // 拉不起来就只能靠用户重启应用，这里不再叠加二次报错
+      } catch (restartError: any) {
+        throw new Error(`安装失败，后端恢复也失败，请重新启动软件：${restartError?.message || restartError}`);
       }
       throw installError;
     }

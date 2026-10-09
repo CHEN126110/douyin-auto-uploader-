@@ -1,0 +1,19 @@
+{
+  "health_verified": true,
+  "legacy_account_platform": "douyin",
+  "account_status": "no_browser",
+  "taobao_readiness_verified": true,
+  "automatic_publish_ready": false,
+  "wrong_platform_request_status": 409,
+  "stale_account_request_status": 409,
+  "taobao_automatic_publish_status": 409,
+  "publish_tasks_created": 0,
+  "window_account_menu_verified": true,
+  "window_add_dialog_platform_selection_verified": true,
+  "ui_validation_created_accounts": 0,
+  "test_result": {
+    "passed": 769,
+    "skipped": 1,
+    "subtests_passed": 57
+  }
+}

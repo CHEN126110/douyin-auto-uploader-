@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-10-05T22:47:22.753732+08:00",
+  "scope": "isolated source, directory receipts and DOM handoff",
+  "targeted_initial": {
+    "passed": 71
+  },
+  "desktop_api_and_publish_safety": {
+    "passed": 88
+  },
+  "targeted_final": {
+    "passed": 43,
+    "subtests_passed": 12
+  },
+  "static_selfcheck": {
+    "ok": true,
+    "builders": 54,
+    "calls": 66
+  },
+  "full_run": {
+    "passed": 1468,
+    "failed": 4,
+    "skipped": 7,
+    "subtests_passed": 334,
+    "reason": "Static declaration changed during concurrent workspace development; affected checks passed in final targeted run.",
+    "fixed_version_full_pass": false
+  },
+  "shared_workspace_concurrent_development_confirmed": true,
+  "default_desktop_batch_preparation_connected": false,
+  "browser_protocol_platform_verified": false,
+  "live_platform_tested_by_this_session": false,
+  "deployment_updated_in_this_phase": false,
+  "source_sha256": {
+    "taobao-publisher/taobao_publish/media_manifest.py": "3794e3022a2ac83da36dbefeabeb73407c07d40f1ae94f70ad88ed3f51c65299",
+    "taobao-publisher/taobao_publish/form_adapters.py": "5da9537c3bfaebc5e1ddc1838a85ff3f742e5d7d72bb503c53100aae816d86b0",
+    "taobao-publisher/taobao_publish/stages.py": "b89c178d0e655a8c2a52d18151a80847dd0f9c456ad4a76c62b6b01fe3e42af0",
+    "taobao-publisher/taobao_publish/pipeline.py": "ef7c5ebed4a2e83f882fd7051bd50738c3f319538d68fab00577df2f95735371",
+    "src/product_media.py": "bed0952bdff5ffb14b2332c3edca284360a2bb1c6983cf78f0504530eab51e80",
+    "taobao-publisher/tests/test_prepared_media_manifest.py": "8e169d398deaa5d362b1d30984093f7631d3b636cdff2d5a2bce27bccce0e4be",
+    "taobao-publisher/tests/test_upload_product_bridge.py": "4c5bae42779c86d890df5e21465e7ccf3fb6ca9107e014f7eb67a853caf100ff"
+  }
+}

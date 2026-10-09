@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-04T23:47:49.002080+08:00",
+  "scope": "offline required-field receipt guard, actual frontend source execution, frozen pure function and local runtime",
+  "previous_goal_turn_classification": "progress",
+  "tests": {
+    "form_verification": 28,
+    "taobao_package": 1176,
+    "taobao_skipped": 7,
+    "taobao_subtests": 325,
+    "business_safety": 243,
+    "shared_frontend": 70,
+    "docs": 23,
+    "docs_subtests": 11
+  },
+  "new_cases_included_in_package_total": true,
+  "before_fix_empty_and_contradictory_receipts_accepted": true,
+  "before_fix_frontend_missing_receipt_displayed_success": true,
+  "frozen_code_rejects_empty_and_contradictory_receipts": true,
+  "frontend_checks_concrete_required_and_readback_receipts": true,
+  "frontend_taobao_legacy_success_is_not_full_fill_proof": true,
+  "frontend_submit_stop_message_cannot_claim_listing_success": true,
+  "sha256": "5580840edaba31326175462cb7333f4850dcb30d42eced528190a05331f06478",
+  "frontend_proof_module_sha256": "a70966b8fd5e2679707f9345c46f505a2779727c1e1aad975fd21673081fa54c",
+  "production_candidate_controls": 8,
+  "whole_form_reader_still_partial": true,
+  "synthetic_complete_receipt_only": true,
+  "live_taobao_tested": false,
+  "whole_form_required_fields_confirmed": false,
+  "deselected_environment_dependent_tests": [
+    "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+    "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+  ]
+}

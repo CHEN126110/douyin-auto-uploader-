@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>合成选图器（隔离测试用）</title>
+<!--
+  只建模「图片空间选图器」里**卡片的真实结构**，用来离线验证
+  `page.pick_media_by_id` 的**准确度**：按 pictureId 命中唯一一张、不误点别的、
+  已选中的不反选、有歧义就拒绝。
+
+  结构取自真机（`page.py` 的 `MEDIA_IMAGE_CARD` 与 ID 判据）：
+    * 卡片      `div.PicList_pic_background`
+    * 勾选框    `input[type="checkbox"]`，`value` 就是 **pictureId**（10 位以上纯数字）
+    * 预览图    `img[src]`，地址里带 `O1CN…` 资源号
+  另加两张**不该被选中**的干扰卡片（同名 ID 的两张、以及一张隐藏卡片）。
+
+  **纯本地**：无外部资源、无网络请求。
+-->
+<style>
+  body { font: 13px/1.5 sans-serif; margin: 12px; }
+  .PicList_pic_background { display: inline-block; border: 1px solid #ddd; margin: 6px; padding: 6px; }
+  .PicList_pic_background img { width: 60px; height: 60px; background: #eef; display: block; }
+  .hidden-card { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ① 目标卡片：未选中，应当被选中 -->
+<div class="PicList_pic_background" data-note="target">
+  <label><input type="checkbox" value="1111111111111111111">
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01target0001_!!2214966481149.jpg"></label>
+</div>
+
+<!-- ② 已经选中的卡片：**不许再点**（再点会取消） -->
+<div class="PicList_pic_background" data-note="already-checked">
+  <label><input type="checkbox" value="2222222222222222222" checked>
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01already0002_!!2214966481149.jpg"></label>
+</div>
+
+<!-- ③ 禁用的卡片：不许点 -->
+<div class="PicList_pic_background" data-note="disabled">
+  <label aria-disabled="true"><input type="checkbox" value="3333333333333333333" disabled>
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01disabled03_!!2214966481149.jpg"></label>
+</div>
+
+<!-- ④ 同一个 pictureId 出现两次：必须**拒绝猜**，且不许点任何一张 -->
+<div class="PicList_pic_background" data-note="dup-a">
+  <label><input type="checkbox" value="4444444444444444444">
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01dup00004_!!2214966481149.jpg"></label>
+</div>
+<div class="PicList_pic_background" data-note="dup-b">
+  <label><input type="checkbox" value="4444444444444444444">
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01dup00004_!!2214966481149.jpg"></label>
+</div>
+
+<!-- ⑤ 隐藏卡片：不可见即不可交互 -->
+<div class="PicList_pic_background hidden-card" data-note="hidden">
+  <label><input type="checkbox" value="5555555555555555555">
+    <img src="https://img.alicdn.com/imgextra/i4/2214966481149/O1CN01hidden005_!!2214966481149.jpg"></label>
+</div>
+
+<script>
+  // 真机的勾选框由 React 托管。这里把点击记录下来，测试据此断言
+  // "点了哪几张、有没有多点"，而不是只看最终 checked——被反选的卡片
+  // 最终状态和"从未点过"是一样的，光看状态会漏掉这种错。
+  window.__clicks = [];
+  document.querySelectorAll('input[type="checkbox"]').forEach(function (box) {
+    box.addEventListener('click', function () { window.__clicks.push(box.value); });
+  });
+</script>
+</body>
+</html>

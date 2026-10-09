@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-04T23:46:40.135368+08:00",
+  "scope": "local health, deployed binaries and served static frontend only",
+  "health_success": true,
+  "release_backend_matches_build": true,
+  "sha256": "5580840edaba31326175462cb7333f4850dcb30d42eced528190a05331f06478",
+  "frontend_uses_common_action_label": true,
+  "frontend_uses_common_upload_overlay": true,
+  "frontend_has_no_taobao_only_action_row": true,
+  "frontend_uses_taobao_title_counter": true,
+  "frontend_saves_current_snapshot": true,
+  "frontend_binds_saved_revision": true,
+  "frontend_requires_whole_form_proof": true,
+  "frontend_validates_required_receipts": true,
+  "frontend_uses_explicit_custom_sku_mode": true,
+  "application_processes": 1,
+  "backend_processes": 2,
+  "live_taobao_task_started_by_tools": false,
+  "account_identity_read_by_tools": false
+}

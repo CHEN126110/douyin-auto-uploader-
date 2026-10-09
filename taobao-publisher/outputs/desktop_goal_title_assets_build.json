@@ -1,0 +1,49 @@
+{
+  "checked_at": "2026-10-04T01:27:02.102539+08:00",
+  "scope": "offline frozen backend code, runtime imports and build manifest",
+  "sha256": "e10d8c2a0a0c1f003eebc87da12d0c62d804729fde072eec72181e07b4345bcd",
+  "size_bytes": 146200943,
+  "checks": {
+    "start_calls_browser_bootstrap": true,
+    "bootstrap_uses_account_lifecycle": true,
+    "bootstrap_uses_current_account": true,
+    "start_preserves_in_flight_guard": true,
+    "account_change_covers_taobao": true,
+    "fill_only_argument": true,
+    "submit_stop_argument": true,
+    "http_text_gate_reads_contract": true,
+    "weighted_title_precheck": true,
+    "weighted_title_write_guard": true,
+    "asset_path_guard": true,
+    "square_assets_preserved": true,
+    "sku_image_role_projection": true
+  },
+  "required_runtime_modules": [
+    "taobao_publish",
+    "taobao_publish.authorization",
+    "taobao_publish.cdp",
+    "taobao_publish.constants",
+    "taobao_publish.contracts",
+    "taobao_publish.desktop",
+    "taobao_publish.errors",
+    "taobao_publish.local_source",
+    "taobao_publish.locating",
+    "taobao_publish.mapping",
+    "taobao_publish.models",
+    "taobao_publish.page",
+    "taobao_publish.pipeline",
+    "taobao_publish.preflight",
+    "taobao_publish.sanitize",
+    "taobao_publish.stages",
+    "taobao_publish.text_rules"
+  ],
+  "runtime_modules_verified": 17,
+  "contracts_verified": [
+    "field_mapping.json",
+    "selectors.json",
+    "rules.json",
+    "publish_item.schema.json"
+  ],
+  "source_manifest_files_verified": 62,
+  "live_platform_fill_executed": false
+}

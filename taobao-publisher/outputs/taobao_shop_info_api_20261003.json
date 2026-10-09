@@ -1,0 +1,57 @@
+{
+  "artifact": "taobao_shop_info_api",
+  "date": "2026-10-03",
+  "platform": "taobao",
+  "discovery_method": "CDP 观察发布工作台自身的网络请求（不是猜接口名）",
+  "discovery_scripts": [
+    "taobao-publisher/tmp/review/observe_workbench_requests.py",
+    "taobao-publisher/tmp/review/capture_shop_info_api.py"
+  ],
+  "sensitive_values_redacted": true,
+  "redaction_note": "不记录任何 cookie 值、签名、时间戳、账户 ID、店铺 ID 数值或店铺名原文。只记录接口名、请求形态与响应字段结构。",
+  "observed_page": "https://item.upload.taobao.com/sell/ai/category.htm",
+  "api": {
+    "name": "mtop.taobao.jdy.resource.shop.info.get",
+    "version": "1.0",
+    "host": "https://h5api.m.taobao.com",
+    "method": "GET",
+    "response_type": "originaljsonp",
+    "query_params": [
+      "jsv", "appKey", "t", "sign", "api", "v", "type", "dataType",
+      "ttid", "data", "callback", "jsonpIncPrefix", "timeout"
+    ],
+    "app_key": "12574478",
+    "jsv": "2.6.1",
+    "ttid": "客户端标识，形如 <数字>@taobao_WEB_<版本>；字面值不复述（见下方 guard_note）",
+    "guard_note": "ttid 的字面值会被 assert_clean 的邮箱正则误判（它含 @ 与点号）。这是守卫从严的正常代价，不是泄漏；产物里不要复述该字面值。",
+    "business_data": "{} （空对象）",
+    "sign_algorithm": "md5(token & t & appKey & data)，token 取自浏览器的 mtop 签名 cookie",
+    "token_cookie_name": "见 src/shop_session.py 的常量；此处不复述 cookie 名（脱敏守卫会拦）",
+    "consistency": "appKey 与 jsv 同 taobao-publish/taobao_publish/mtop.py 的常量逐字相同；sign 算法一致。未搬用抖店任何结论。"
+  },
+  "response_structure": {
+    "ret": "数组，成功时为 SUCCESS::...",
+    "data.result.shopName": "string — 店铺名",
+    "data.result.shopId": "int — 店铺 ID（实测 9 位）",
+    "data.result.nick": "string — 会员名",
+    "data.result.displayNick": "string — 显示用会员名",
+    "data.result.tbSeller": "bool",
+    "data.result.tmallSeller": "bool",
+    "data.result.sub": "bool — 是否子账号",
+    "data.result.isMainAccount": "bool",
+    "data.result.shopStatus": "string",
+    "data.result.mainCategory": "string",
+    "other_fields_count": "另有 approvalStatus / avatar / level / shopDomainUrl / shopRankInfo / tbSellerNps 等约 25 个字段，未逐一取证用途"
+  },
+  "what_this_proves": [
+    "淘宝的店铺名可以在已登录的浏览器上读到，无需卖家中心页面",
+    "淘宝的「账户 ID」（cookie unb）与「店铺 ID」（接口 shopId）是两个不同的字段",
+    "该接口对页面而言是 JSONP，但也可以从 Python 侧带 cookie 直接请求"
+  ],
+  "what_this_does_not_prove": [
+    "运费模板接口（仍是 unknown，见 06-阻塞项.md B-04）",
+    "该接口在未登录或 token 过期时的行为细节（只覆盖了 FAIL_SYS_TOKEN_EXOIRED 的字符串识别）",
+    "data.result 之外字段的稳定性"
+  ],
+  "implementation": "src/shop_session.py:read_taobao_shop_info / _call_taobao_shop_info"
+}

@@ -113,7 +113,23 @@ def default_automation_config() -> Dict[str, Any]:
         'qualification_certificate_path': None,
         'runtime_category_keyword': None,
         'runtime_matrix_keywords': None,
+        # 提交模式：publish = 直接提交上架，stop = 全部填好后停下不提交
+        'publish_submit_mode': 'publish',
     }
+
+
+def resolve_publish_submit_mode(configured: Optional[str]) -> str:
+    """解析提交模式：'publish' 直接提交上架，'stop' 全部填好后停下不提交。
+
+    这里不按「是不是打包产物」自动切换。本项目的开发命令是
+    `tauri dev -- --release`，Rust 按 release 编译、sidecar 用的也是冻结后的
+    python-backend.exe，所以 `sys.frozen` 在日常开发时同样为真，
+    拿它区分开发与正式安装只会得出错误结论。提交与否由用户显式配置决定。
+
+    历史配置里的 'auto' 按直接发布处理，保持升级后行为与设置界面一致。
+    """
+    mode = str(configured or '').strip().lower()
+    return 'stop' if mode == 'stop' else 'publish'
 
 
 class Config():
@@ -213,6 +229,7 @@ class AutomationConfig:
     runtime_matrix_keywords: Optional[str] = None
     publish_mode: str = "dom"  # "protocol" | "official" | "dom"
     capture_mode: str = "dom"  # "protocol" | "dom" — 采集方式
+    publish_submit_mode: str = "publish"  # "publish" 直接提交上架 | "stop" 填好后停下不提交
 
     def __post_init__(self):
         defaults = default_automation_config()
@@ -353,6 +370,9 @@ class SettingsManager:
             'taobao_tmall_mode': _normalize_mode(raw_prefs.get('taobao_tmall_mode'), legacy_capture_mode),
         }
 
+        # 提交模式：只决定「走到提交前停下」还是「真实提交上架」。
+        publish_submit_mode = resolve_publish_submit_mode(data.get('publish_submit_mode'))
+
         return {
             'shipping_template': shipping_template,
             'shipping_templates': shipping_templates,
@@ -366,6 +386,7 @@ class SettingsManager:
             # 旧字段：保留兼容，新调用方应使用 capture_preferences 分平台读取
             'capture_mode': legacy_capture_mode,
             'capture_preferences': capture_preferences,
+            'publish_submit_mode': publish_submit_mode,
         }
     
     def load_settings(self) -> UserSettings:

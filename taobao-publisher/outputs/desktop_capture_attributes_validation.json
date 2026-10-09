@@ -1,0 +1,65 @@
+{
+  "scope": "source, isolated tests, frozen build, local runtime and schema metadata",
+  "recorded_at": "2026-10-05T11:01:30.730353+08:00",
+  "package_regression": {
+    "passed": 1265,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "command": "python -m pytest taobao-publisher/tests -q (two live-environment/database cases explicitly deselected)",
+    "deselected": [
+      "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+      "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ]
+  },
+  "business_safety_and_storage_regression": {
+    "passed": 254,
+    "peewee_deprecation_warnings": 10,
+    "files": [
+      "test_capture_attribute_storage.py",
+      "test_product_save_snapshot.py",
+      "test_taobao_desktop_api.py",
+      "test_shop_platform_api.py",
+      "test_publish_preflight_safety.py",
+      "test_sidecar_upload_safety.py",
+      "test_upload_brand_safety.py",
+      "test_upload_browser_profile.py"
+    ]
+  },
+  "focused_native_and_readback_regression": {
+    "passed": 38
+  },
+  "common_frontend_behavior": {
+    "command": "node taobao-publisher/tests/frontend_publish_flow.cjs",
+    "passed": 79
+  },
+  "frontend_build": {
+    "command": "npm run build",
+    "typecheck_passed": true,
+    "vite_build_passed": true
+  },
+  "documentation_regression": {
+    "passed": 23,
+    "subtests_passed": 11
+  },
+  "package_selfcheck": {
+    "command": "python -m taobao_publish check --json",
+    "passed": true
+  },
+  "source_review": {
+    "only_intended_capture_functions_changed_since_previous_binary": true,
+    "utf8_readback": true,
+    "positional_model_argument_order_preserved": true
+  },
+  "frozen_build": "desktop_capture_attributes_build.json",
+  "running_binary": "desktop_capture_attributes_runtime.json",
+  "local_pipeline_model": "captured_attribute_pipeline_handoff.json",
+  "live_taobao_tested": false,
+  "actual_product_attributes_backfilled": false,
+  "platform_upload_draft_or_submit_performed_by_tools": false,
+  "remaining": [
+    "current consumer-page parameter structure coverage unverified",
+    "current merchant-page media and required-field workflow unverified",
+    "whole-form required coverage remains partial",
+    "old records contain no newly invented attribute values"
+  ]
+}

@@ -1,0 +1,3519 @@
+{
+  "probe": "tb_image_space_upload_endpoint_probe",
+  "generated_at": "2026-10-05T22:34:43+08:00",
+  "readonly": true,
+  "policy": {
+    "http_methods": [
+      "GET"
+    ],
+    "cookies_sent": false,
+    "login_state_used": false,
+    "min_interval_seconds_per_host": 1.0,
+    "max_requests": 80,
+    "notes": "只读探针；不触发上传/保存/提交；产物必须过 taobao_publish.sanitize 才能进 captures/"
+  },
+  "route": "all",
+  "route_a": {
+    "description": "公开前端资源静态分析（只 GET，不登录、不带 cookie）",
+    "seeds": [
+      {
+        "name": "sucai_selector_ng_shell",
+        "url": "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true",
+        "expect": "publish_page_media_iframe_app",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "content_type": "text/html; charset=utf-8",
+        "bytes": 2889,
+        "final_host": "market.m.taobao.com",
+        "final_path": "/app/crs-qn/sucai-selector-ng/index",
+        "login_redirect": false,
+        "title": "图片选择器",
+        "references_media_iframe_app": true,
+        "referenced_assets": [
+          "https://g.alicdn.com/code/lib/alifd__next/1.25.49/next.min.js",
+          "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/index.js",
+          "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/vendor.js",
+          "https://gw.alipayobjects.com/os/lib/react-router-dom/5.2.0/umd/react-router-dom.min.js",
+          "https://o.alicdn.com/crs-qn/microapp-loader/MicroLoader.js"
+        ],
+        "referenced_asset_count": 5
+      },
+      {
+        "name": "sucai_home",
+        "url": "https://sucai.taobao.com/",
+        "expect": "wangpu_sucai_library_not_picture_space",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "content_type": "text/html;charset=GBK",
+        "bytes": 4316,
+        "final_host": "sucai.taobao.com",
+        "final_path": "/",
+        "login_redirect": false,
+        "title": "��ҳ-TOP�ز���-�Ա���",
+        "references_media_iframe_app": false,
+        "referenced_assets": [
+          "https://g.alicdn.com/AWSC/Bee/index.js",
+          "https://g.alicdn.com/alilog/mlog/aplus_v2.js",
+          "https://g.alicdn.com/cell/cell-lib-cps/0.0.6/index.js",
+          "https://g.alicdn.com/jstracker/sdk-assests/5.1.27/index.js",
+          "https://g.alicdn.com/shop/pc-shop-webapp/0.0.42/js/main.js",
+          "https://g.alicdn.com/shop/pc-shop-webapp/0.0.42/js/p_defautindex-index.js",
+          "https://o.alicdn.com/UnionCps/tktrace/cps.js",
+          "https://o.alicdn.com/tbpc/securitySDK/securitySDK.umd.js"
+        ],
+        "referenced_asset_count": 8
+      },
+      {
+        "name": "sc_home",
+        "url": "https://sc.taobao.com/",
+        "expect": "unverified_alias",
+        "ok": false,
+        "status": 404,
+        "error": "HTTPError 404",
+        "content_type": null,
+        "bytes": 0,
+        "final_host": "sc.taobao.com",
+        "final_path": null,
+        "login_redirect": false,
+        "title": null,
+        "references_media_iframe_app": false,
+        "referenced_assets": [],
+        "referenced_asset_count": 0
+      }
+    ],
+    "assets": [
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_selector_ng_shell",
+        "url": "https://g.alicdn.com/code/lib/alifd__next/1.25.49/next.min.js",
+        "host": "g.alicdn.com",
+        "path": "/code/lib/alifd__next/1.25.49/next.min.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 1121261,
+        "sha256_16": "125ddc1a0f37c80f"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_selector_ng_shell",
+        "url": "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/index.js",
+        "host": "g.alicdn.com",
+        "path": "/crs-qn/sucai-selector-ng/0.0.82/js/index.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 31685,
+        "sha256_16": "b290fed718cf4cf3"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_selector_ng_shell",
+        "url": "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/vendor.js",
+        "host": "g.alicdn.com",
+        "path": "/crs-qn/sucai-selector-ng/0.0.82/js/vendor.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 324931,
+        "sha256_16": "b97d6fbbaebd6ab8"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_selector_ng_shell",
+        "url": "https://o.alicdn.com/crs-qn/microapp-loader/MicroLoader.js",
+        "host": "o.alicdn.com",
+        "path": "/crs-qn/microapp-loader/MicroLoader.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 25055,
+        "sha256_16": "24eca5402ec80471"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/AWSC/Bee/index.js",
+        "host": "g.alicdn.com",
+        "path": "/AWSC/Bee/index.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 34890,
+        "sha256_16": "c6dde433c6b3cfdc"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/alilog/mlog/aplus_v2.js",
+        "host": "g.alicdn.com",
+        "path": "/alilog/mlog/aplus_v2.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 15565,
+        "sha256_16": "949eef4590db70f7"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/cell/cell-lib-cps/0.0.6/index.js",
+        "host": "g.alicdn.com",
+        "path": "/cell/cell-lib-cps/0.0.6/index.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 5520,
+        "sha256_16": "814995d7518a98f1"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/jstracker/sdk-assests/5.1.27/index.js",
+        "host": "g.alicdn.com",
+        "path": "/jstracker/sdk-assests/5.1.27/index.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 33328,
+        "sha256_16": "4649cccd8df3a5a1"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/shop/pc-shop-webapp/0.0.42/js/main.js",
+        "host": "g.alicdn.com",
+        "path": "/shop/pc-shop-webapp/0.0.42/js/main.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 284963,
+        "sha256_16": "fa7a03b4f3036bb3"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://g.alicdn.com/shop/pc-shop-webapp/0.0.42/js/p_defautindex-index.js",
+        "host": "g.alicdn.com",
+        "path": "/shop/pc-shop-webapp/0.0.42/js/p_defautindex-index.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 837117,
+        "sha256_16": "c4e94d391aea03ba"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://o.alicdn.com/UnionCps/tktrace/cps.js",
+        "host": "o.alicdn.com",
+        "path": "/UnionCps/tktrace/cps.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 1364,
+        "sha256_16": "6ab8c22da01678d7"
+      },
+      {
+        "stage": "shell_asset",
+        "source_page": "sucai_home",
+        "url": "https://o.alicdn.com/tbpc/securitySDK/securitySDK.umd.js",
+        "host": "o.alicdn.com",
+        "path": "/tbpc/securitySDK/securitySDK.umd.js",
+        "ok": true,
+        "status": 200,
+        "error": null,
+        "bytes": 172393,
+        "sha256_16": "ee02d7b0c521387a"
+      }
+    ],
+    "micro_modules": [
+      {
+        "name": "sucai-tu-selector",
+        "version": "0.0.86",
+        "discovered_from": [
+          "sucai_selector_ng_shell:index.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.86/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.86/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-tu-selector#0.0.86",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/158.ff6eb57b.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 77122,
+            "sha256_16": "d93c20654b9758a3"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-tu-selector#0.0.86",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/709.fec26edc.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 364501,
+            "sha256_16": "ba6efea5914b6ca1"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-tu-selector#0.0.86",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/main.3e68b1c3.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 104052,
+            "sha256_16": "5993d1578362a667"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-tu-selector#0.0.86",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/cropper.9ca34501.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 4293,
+            "sha256_16": "d364c4b7dc8391de"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-tu-selector#0.0.86",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/953.8e475567.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 28544,
+            "sha256_16": "41a274bd00906b69"
+          }
+        ],
+        "exposed_modules": [
+          "main"
+        ],
+        "chunk_urls_derived": 5
+      },
+      {
+        "name": "sucai-center-components",
+        "version": "0.0.50",
+        "discovered_from": [
+          "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/122.7660d1b3.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 90130,
+            "sha256_16": "80c91536abe84f29"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/205.1c8c0e8d.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 200844,
+            "sha256_16": "197c84ef559cc012"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/244.8a74ee37.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 129968,
+            "sha256_16": "3aa02b0625052b3d"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/255.b04de31d.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 35414,
+            "sha256_16": "1c334fc0f46f2eef"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/sucaiVideo.c29becb7.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 117351,
+            "sha256_16": "56a961ffbc7e0db2"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/sucaiTu.100b0899.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 195139,
+            "sha256_16": "56a0edb4f877c2a5"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/566.2bf99add.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 336695,
+            "sha256_16": "d6245393d201a7c2"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/591.65d5f69e.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 7856,
+            "sha256_16": "167ddbc9ce349b6b"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 130257,
+            "sha256_16": "04e11e10102c5f14"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/667.2a152a81.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 68901,
+            "sha256_16": "829db43a1b1736a0"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/708.02820f4e.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 909791,
+            "sha256_16": "ba48ea4cfd28de6b"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/831.8ed2a23f.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 94043,
+            "sha256_16": "e3061a4520692348"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/badImgManage.a4abbb78.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 6849,
+            "sha256_16": "3453b4ef1d71dd1f"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-center-components#0.0.50",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/976.c39500ed.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 13371,
+            "sha256_16": "733551402d4390ee"
+          }
+        ],
+        "exposed_modules": [
+          "sucaiTu"
+        ],
+        "chunk_urls_derived": 14
+      },
+      {
+        "name": "qn-item-selector-mod",
+        "version": "0.0.14",
+        "discovered_from": [
+          "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+          "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/qn-item-selector-mod/0.0.14/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/qn-item-selector-mod/0.0.14/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [],
+        "exposed_modules": [
+          "main"
+        ],
+        "chunk_urls_derived": 0
+      },
+      {
+        "name": "qnmod_empty",
+        "version": "0.0.1",
+        "discovered_from": [
+          "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+          "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/qnmod_empty/0.0.1/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/qnmod_empty/0.0.1/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [],
+        "exposed_modules": [
+          "main"
+        ],
+        "chunk_urls_derived": 0
+      },
+      {
+        "name": "sucai-batch-upload",
+        "version": "0.0.17",
+        "discovered_from": [
+          "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+          "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/sucai-batch-upload/0.0.17/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/sucai-batch-upload/0.0.17/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/305.9a3837dd.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 13479,
+            "sha256_16": "d6f653156d888f7e"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/354.ec0bc791.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 63870,
+            "sha256_16": "37fcd18c2b2ebc60"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/baseUpload.46f35108.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 1279,
+            "sha256_16": "8585ee7f4611f125"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/722.0713483a.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 1280197,
+            "sha256_16": "d8dfaf6d54509d37"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/main.032a8e7d.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 550,
+            "sha256_16": "1f8b9b3664524fef"
+          },
+          {
+            "stage": "micro_module_chunk",
+            "module": "sucai-batch-upload#0.0.17",
+            "path": "/merchant-micro-mods/sucai-batch-upload/0.0.17/js/846.8c00dced.chunk.js",
+            "ok": true,
+            "status": 200,
+            "bytes": 41448,
+            "sha256_16": "fe7e820afe20eb9f"
+          }
+        ],
+        "exposed_modules": [
+          "main"
+        ],
+        "chunk_urls_derived": 6
+      },
+      {
+        "name": "sucai-tu-shop-auth",
+        "version": "0.0.6",
+        "discovered_from": [
+          "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+          "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+        ],
+        "public_path": "https://g.alicdn.com/merchant-micro-mods/sucai-tu-shop-auth/0.0.6/",
+        "remote_entry": "https://g.alicdn.com/merchant-micro-mods/sucai-tu-shop-auth/0.0.6/js/remoteEntry.js",
+        "remote_entry_status": 200,
+        "chunks": [],
+        "exposed_modules": [
+          "main"
+        ],
+        "chunk_urls_derived": 0
+      }
+    ],
+    "evidence": {
+      "upload_related_urls": [
+        {
+          "url": "https://stream-upload.taobao.com/api/upload.api",
+          "host": "stream-upload.taobao.com",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 4
+        },
+        {
+          "url": "https://mediafront.taobao.com/business/agreement/sign.json",
+          "host": "mediafront.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "url": "https://mediafront.taobao.com/business/firsthint/close.json",
+          "host": "mediafront.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "url": "https://mediafront.taobao.com/business/levelchangedhint/close.json",
+          "host": "mediafront.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "url": "https://stream-upload.taobao.com/api/collect_client_upload_rt.api",
+          "host": "stream-upload.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "url": "https://tadget.taobao.com/picture/waterMarkX.htm",
+          "host": "tadget.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "url": "https://g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50",
+          "host": "g.alicdn.com",
+          "sources": [
+            "sucai-center-components#0.0.50#667.2a152a81.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "url": "https://pre-stream.taobao.com/api/upload.api",
+          "host": "pre-stream.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "url": "https://qn.taobao.com/home.html/",
+          "host": "qn.taobao.com",
+          "sources": [
+            "sucai_selector_ng_shell:MicroLoader.js"
+          ],
+          "count": 1
+        },
+        {
+          "url": "https://sucai.wangpu.taobao.com",
+          "host": "sucai.wangpu.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "url": "https://sucai.wangpu.taobao.com/select.htm",
+          "host": "sucai.wangpu.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ],
+          "count": 1
+        }
+      ],
+      "mtop_apis": [
+        {
+          "api": "mtop.aliyun.fc.api.loginOptional",
+          "sources": [
+            "sucai_selector_ng_shell:MicroLoader.js"
+          ]
+        },
+        {
+          "api": "mtop.config.subDomain",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.buyerresourcemtopwriteservice.applycoupon",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cloudvideo.video.query",
+          "sources": [
+            "sucai-center-components#0.0.50#708.02820f4e.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cp.aiprocess.api.execuate",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cp.aiprocess.api.job.query",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cp.aiprocess.api.job.submit",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cp.aiprocess.api.stats",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.cp.aiprocess.api.uploadtoken",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.mediacenter.pc.image.upload.complete",
+          "sources": [
+            "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.mediacenter.pc.image.upload.config",
+          "sources": [
+            "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.mediacenter.pc.image.upload.init",
+          "sources": [
+            "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.memberbenefit.activity.apply",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.membercenter.homepage.getJoinMemberThreshold",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.membercenter.joinauthinfo.get",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.membercenter.member.bind",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.multi.advertisement.get",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.multi.unified.gray",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.next.station.pop",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.dir.add",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.dir.move",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.dir.query",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.dir.rename",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.delete",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.delete.task.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.query",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.ref.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.stop.delete",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.sucai.type.update",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.file.tu.upload",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.image.source.url.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.pic.convert",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.pic.ref.info",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.pic.rename",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.pic.replace",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.trash.file.clear",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.trash.file.recover",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.user.storage.query",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.user.tag.add",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.picturecenter.console.user.upload.config.query",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.node.aigc.img.sr.cmd",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.node.aigc.img.web.batch.sync.change.size",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.node.img.bad.detect",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.node.img.warm.up",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quality.picture.data.check",
+          "sources": [
+            "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quality.picture.fix",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quality.picture.pop.pull",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quality.picture.query",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quick.item.customized.offline.result.pull",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quick.user.switch.info.query",
+          "sources": [
+            "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quick.video.cover.gen",
+          "sources": [
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.qn.copilot.quick.video.cover.gen.query",
+          "sources": [
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.delete.batch",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.group.add",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.group.delete",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.group.list",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.group.remove",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.group.update",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.groupname.update",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.info.update",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.list",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.recycle.delete",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.recycle.restore",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.material.reference.get",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.pic.protocol.query",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.pic.protocol.sign",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.user.info.query",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.video.long.term.url",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.seller.content.video.publish",
+          "sources": [
+            "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.shop.simple.fetch",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.shop.simple.item.fetch",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.shop.simple.searchword.fetch",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.social.follow.dingyue.add",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.social.follow.dingyue.remove",
+          "sources": [
+            "sucai_home:p_defautindex-index.js"
+          ]
+        },
+        {
+          "api": "mtop.taobao.yungw.pop.setting",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ]
+        }
+      ],
+      "multipart_or_upload_note": {
+        "formdata_append_fields": [
+          "_tb_token_=***REDACTED***",
+          "data",
+          "file",
+          "index",
+          "markInfo",
+          "name",
+          "pic_file",
+          "water"
+        ],
+        "protocol_params_seen": {
+          "pixel": 92,
+          "fileType": 48,
+          "bizCode": 42,
+          "watermark": 32,
+          "fileName": 31,
+          "uploadId": 24,
+          "dirId": 16,
+          "folderId": 15,
+          "clientType": 11,
+          "_input_charset": 9,
+          "fileSize": 8,
+          "appkey": 6,
+          "hideUserId": 6,
+          "appKey": 4,
+          "partList": 4,
+          "picCompress": 4,
+          "resizeWidth": 3,
+          "autoCompress": 2,
+          "sha256": 2,
+          "sliceSize": 2,
+          "uploadUrlList": 2,
+          "sliceNum": 1
+        }
+      },
+      "upload_panel_class_names": [
+        "UploadPanel_actions__lavTs",
+        "UploadPanel_baseConfigItem__h2XCu",
+        "UploadPanel_baseConfig__9CMnA",
+        "UploadPanel_commonIcon__fvbW5",
+        "UploadPanel_configText__sTkcI",
+        "UploadPanel_descCommon__nV5rP",
+        "UploadPanel_emptyPanel__98Opi",
+        "UploadPanel_errorIcon__ZiBp6",
+        "UploadPanel_fileContent__x3RgE",
+        "UploadPanel_fileDesc__",
+        "UploadPanel_fileImg__m1sNF",
+        "UploadPanel_fileItem__5hncQ",
+        "UploadPanel_fileName__SwiUE",
+        "UploadPanel_fileSizeSpan__Synhw",
+        "UploadPanel_fileState__L5vWY",
+        "UploadPanel_footerBtn__DYAxp",
+        "UploadPanel_highDefinitionRepairLineSplit__q62Z7",
+        "UploadPanel_highDefinitionRepairLine__tlB",
+        "UploadPanel_highTxt__7KXw",
+        "UploadPanel_inMaterialCenter__P4jZc",
+        "UploadPanel_loadingIcon__te5ZV",
+        "UploadPanel_options__9G3k4",
+        "UploadPanel_progressLine__9a",
+        "UploadPanel_progressText__sHbn7",
+        "UploadPanel_progress__3ntpM",
+        "UploadPanel_renderHighDefinitionRepairIcon__d8HLH",
+        "UploadPanel_successIcon__1QUAW",
+        "UploadPanel_uploadAction__YNLQu",
+        "UploadPanel_uploadBoardFormItem__Fc9vQ",
+        "UploadPanel_uploadBoard__BZbwY",
+        "UploadPanel_uploadBtn__kpCfu",
+        "UploadPanel_uploadButton__UKi",
+        "UploadPanel_uploadConfig__mMqHE",
+        "UploadPanel_uploadDirSelect__mde8O",
+        "UploadPanel_uploadFileList__2v48x",
+        "UploadPanel_uploadFormat__ppPUn",
+        "UploadPanel_uploadListPanel__X1MnR",
+        "UploadPanel_uploadPanel__zMeoR",
+        "UploadPanel_uploadPart__OUBdn",
+        "UploadPanel_uploadRadioLabel__0ZrYa",
+        "UploadPanel_uploadRadioLink__GznbM",
+        "UploadPanel_uploadRadioText__ZqTwb",
+        "UploadPanel_uploadRadio__Zx3Bd",
+        "UploadPanel_uploadTips__zPE9f"
+      ],
+      "router_hints": [
+        "https://qn.taobao.com/home.html/",
+        "https://sucai.wangpu.taobao.com",
+        "https://sucai.wangpu.taobao.com/select.htm"
+      ]
+    },
+    "clue_counts": {
+      "endpoint_counts": {
+        "upload_path": 5,
+        "upload_api_word": 5,
+        "upload_host": 13,
+        "mtop_call": 91,
+        "upload_fn": 39,
+        "folder_id": 86,
+        "api_path": 1,
+        "sucai_or_qsm_host": 13,
+        "upload_panel_class": 44,
+        "appkey_value": 6
+      },
+      "marker_counts": {
+        "formdata_new": 18,
+        "formdata_any": 95,
+        "multipart": 26,
+        "picture": 252,
+        "sucai_word": 320,
+        "tb_token_read": 6,
+        "formdata_append": 19,
+        "drag_drop_dirs": 1,
+        "accept_image": 0,
+        "slice_upload": 29
+      },
+      "texts_scanned": 35
+    },
+    "notes": [
+      "跳过非白名单 host 资源：https://gw.alipayobjects.com/os/lib/react-router-dom/5.2.0/umd/react-router-dom.min.js",
+      "微模块展开停止于 ***REDACTED***（--max-modules=6 或请求预算用尽）",
+      "微模块展开停止于 ***REDACTED***（--max-modules=6 或请求预算用尽）",
+      "微模块展开停止于 ***REDACTED***（--max-modules=6 或请求预算用尽）"
+    ],
+    "clues": {
+      "endpoint_hits": {
+        "upload_path": [
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 24260,
+            "context": "<sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 125713,
+            "context": "_\"),d=(null===t||void 0===t||null===(o=t.name)||void 0===o?void 0:o.slice(0,20))||(0,s.Ak)(20),u.append(\"name\",\"\".concat(d,\".jpeg\")),u.append(\"file\",n,\"\".concat(d,\".jpeg\")),e.abrupt(\"return\",(0,c.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",u,{},{params:(0,r.A)({_input_charset:\"utf-8\",appkey:\"qnaigc\",folderId:\"0\",picCompress:!0,watermark:!1},i)},!0).then((function(e){return e.success,e})).catch((function(e){return Promise.reject("
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 477,
+            "context": "seState)(t),n=(0,r.A)(e,2),i=n[0],a=n[1];return[i,(0,o.useCallback)((function(t){a(\"boolean\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upl"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://pre-stream.taobao.com/api/upload.api\"",
+            "offset": 537,
+            "context": "llback)((function(t){a(\"boolean\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.co"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 32332,
+            "context": "ment(c.Form,{inline:!0,className:s.A.uploadConfig,value:{}},r().createElement(d.A,{setNewGroupId:R,selectedGroupId:p}),r().createElement(i.A,null))))}},86007:(e,t,n)=>{n.d(t,{SP:()=>a});var a={upload:\"https://stream-upload.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.co"
+          }
+        ],
+        "upload_api_word": [
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "/api/upload",
+            "offset": 24293,
+            "context": "<sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "/api/upload",
+            "offset": 125746,
+            "context": "===(o=t.name)||void 0===o?void 0:o.slice(0,20))||(0,s.Ak)(20),u.append(\"name\",\"\".concat(d,\".jpeg\")),u.append(\"file\",n,\"\".concat(d,\".jpeg\")),e.abrupt(\"return\",(0,c.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",u,{},{params:(0,r.A)({_input_charset:\"utf-8\",appkey:\"qnaigc\",folderId:\"0\",picCompress:!0,watermark:!1},i)},!0).then((function(e){return e.success,e})).catch((function(e){return Promise.re"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "/api/upload",
+            "offset": 510,
+            "context": ",a=n[1];return[i,(0,o.useCallback)((function(t){a(\"boolean\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_clien"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "/api/upload",
+            "offset": 567,
+            "context": "n\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taob"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "/api/upload",
+            "offset": 32365,
+            "context": "s.A.uploadConfig,value:{}},r().createElement(d.A,{setNewGroupId:R,selectedGroupId:p}),r().createElement(i.A,null))))}},86007:(e,t,n)=>{n.d(t,{SP:()=>a});var a={upload:\"https://stream-upload.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taob"
+          }
+        ],
+        "upload_host": [
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 24260,
+            "context": "<sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\"",
+            "offset": 60753,
+            "context": "cat(320);if(0===e)return n?\"\".concat(t,\"?t=\").concat(r):\"\".concat(t,\"_\").concat(a,\"?t=\").concat(r);var o=t.split(\"///redaction/getFrozenImage.do?path=\")[1].split(\"&height=160&width=160&\")[0];return n?\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\".concat(o,\"&t=\").concat(r):\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\".concat(o,\"_160x160q90&t=\").concat(r)},h=function(e){if(\"string\"!==typeof e)return\"\";var t=e.split(\".\");return t"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\"",
+            "offset": 60841,
+            "context": ".concat(r);var o=t.split(\"///redaction/getFrozenImage.do?path=\")[1].split(\"&height=160&width=160&\")[0];return n?\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\".concat(o,\"&t=\").concat(r):\"https://tadget.taobao.com/redaction/getFrozenImage.do?path=\".concat(o,\"_160x160q90&t=\").concat(r)},h=function(e){if(\"string\"!==typeof e)return\"\";var t=e.split(\".\");return t.pop(),t.join()},y=function(e){return\"string\"!==typeof e?\"\":null===e||void 0===e?void 0:"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 125713,
+            "context": "_\"),d=(null===t||void 0===t||null===(o=t.name)||void 0===o?void 0:o.slice(0,20))||(0,s.Ak)(20),u.append(\"name\",\"\".concat(d,\".jpeg\")),u.append(\"file\",n,\"\".concat(d,\".jpeg\")),e.abrupt(\"return\",(0,c.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",u,{},{params:(0,r.A)({_input_charset:\"utf-8\",appkey:\"qnaigc\",folderId:\"0\",picCompress:!0,watermark:!1},i)},!0).then((function(e){return e.success,e})).catch((function(e){return Promise.reject("
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 477,
+            "context": "seState)(t),n=(0,r.A)(e,2),i=n[0],a=n[1];return[i,(0,o.useCallback)((function(t){a(\"boolean\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upl"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://pre-stream.taobao.com/api/upload.api\"",
+            "offset": 537,
+            "context": "llback)((function(t){a(\"boolean\"===typeof t?t:function(t){return!t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.co"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://tadget.taobao.com/picture/waterMarkX.htm\"",
+            "offset": 602,
+            "context": "t})}),[a])]}},48428:(t,e,n)=>{\"use strict\";n.d(e,{SP:()=>r});var r={upload:\"https://stream-upload.taobao.com/api/upload.api\",preUpload:\"https://pre-stream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\",agreement:\"https://mediafron"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/upload.api\"",
+            "offset": 32332,
+            "context": "ment(c.Form,{inline:!0,className:s.A.uploadConfig,value:{}},r().createElement(d.A,{setNewGroupId:R,selectedGroupId:p}),r().createElement(i.A,null))))}},86007:(e,t,n)=>{n.d(t,{SP:()=>a});var a={upload:\"https://stream-upload.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.co"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "\"https://tadget.taobao.com/picture/waterMarkX.htm\"",
+            "offset": 32400,
+            "context": "teElement(d.A,{setNewGroupId:R,selectedGroupId:p}),r().createElement(i.A,null))))}},86007:(e,t,n)=>{n.d(t,{SP:()=>a});var a={upload:\"https://stream-upload.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\",agreement:\"https://mediafron"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\"",
+            "offset": 32468,
+            "context": "(i.A,null))))}},86007:(e,t,n)=>{n.d(t,{SP:()=>a});var a={upload:\"https://stream-upload.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\",agreement:\"https://mediafront.taobao.com/business/agreement/sign.json\",closeFirstAlertStorage:\"https://mediafront"
+          }
+        ],
+        "mtop_call": [
+          {
+            "source": "sucai_selector_ng_shell:MicroLoader.js",
+            "match": "mtop.aliyun.fc.api.loginOptional",
+            "offset": 19393,
+            "context": "t){var n=Date.now()-a,o=G(r,!0);return o?(ue(\"qn-index-er\",ae.EXP,[ye.SUCCESS,e,1,n]),o):(ue(\"qn-index-er\",ae.EXP,[ye.FAIL,e,t.message||t,0]),Promise.reject(t))}))}function ge(e,t){return fe?we({api:\"mtop.aliyun.fc.api.loginOptional\",data:{fcGroup:\"mc-center\",fcName:\"disasterRecoveryController-handleDisaster\",fcArgs:'{\"containerName\":\"'.concat(e,'\",\"appName\":\"').concat(t,'\"}')}}).then((function(e){var t,n;return e.success&&e.dat"
+          },
+          {
+            "source": "sucai_home:p_defautindex-index.js",
+            "match": "mtop.config.subDomain",
+            "offset": 18453,
+            "context": "error\",value:function(e){this.errorImpl(e)}}]),e}();(0,eS._)(eP,\"sharedReportInfo\",{});var eA=new eP;ex&&(null===(M=window)||void 0===M?void 0:null===(A=M.lib)||void 0===A?void 0:A.mtop)&&(window.lib.mtop.config.subDomain=\"wapa\");var eM=function(e,t,n){return new Promise(function(o,r){var i,a,c,l,s=Date.now();e&&\"string\"==typeof e||r(Error(\"api\\u53C2\\u6570\\u4E0D\\u80FD\\u4E3A\\u7A7A\"));var u=(0,ev._)({api:e,type:\"GET\",v:"
+          },
+          {
+            "source": "sucai_home:p_defautindex-index.js",
+            "match": "mtop.taobao.shop.simple.fetch",
+            "offset": 21127,
+            "context": "_)(this,e)}return(0,eC._)(e,null,[{key:\"firstScreenFetch\",value:function(e){return(0,eg._)(function(){var t;return(0,ey.Jh)(this,function(n){switch(n.label){case 0:return n.trys.push([0,2,,3]),[4,eM(\"mtop.taobao.shop.simple.fetch\",(0,ev._)({shopId:eD,sellerId:ej},null!=e?e:{}))];case 1:return t=n.sent(),eL(\"/ShopPC.newDefaultPage.first_screen_traffic\",\"EXP\",(0,ev._)({shopId:eD,sellerId:ej},null!=e?e:{})),[2,t];case 2:throw n."
+          },
+          {
+            "source": "sucai_home:p_defautindex-index.js",
+            "match": "mtop.taobao.buyerresourcemtopwriteservice.applycoupon",
+            "offset": 21551,
+            "context": "ow n.sent();case 3:return[2]}})})()}},{key:\"collectCouponFetch\",value:function(e){return(0,eg._)(function(){return(0,ey.Jh)(this,function(t){switch(t.label){case 0:return t.trys.push([0,2,,3]),[4,eM(\"mtop.taobao.buyerresourcemtopwriteservice.applycoupon\",{uuid:e,supplierId:ej,couponInstanceSource:44},{v:\"3.0\"})];case 1:return[2,t.sent().error];case 2:throw t.sent();case 3:return[2]}})})()}},{key:\"followShopFetch\",value:function(e){return(0,eg._)(fun"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "mtop.taobao.picturecenter.console.user.storage.query",
+            "offset": 46463,
+            "context": "),o=(i(13342),i(58998),i(98419),i(42274),i(72806)),c=i(57536),l=i(70895),u=i(45687),s=i(20660),d=i(6377),p=i(63075),v=p.Dn.scene,f=(p.Dn.folderId,(0,o._F)());const m={getUserInfo:function(){return f(\"mtop.taobao.picturecenter.console.user.storage.query\",{})},getPicDir:function(e){return f(\"mtop.taobao.picturecenter.console.dir.query\",e?{catId:e,skipPermissionCheck:\"kefu\"===v}:{skipPermissionCheck:\"kefu\"===v})},getPicFile:function(e){return f(\"mtop."
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "mtop.taobao.picturecenter.console.dir.query",
+            "offset": 46554,
+            "context": "60),d=i(6377),p=i(63075),v=p.Dn.scene,f=(p.Dn.folderId,(0,o._F)());const m={getUserInfo:function(){return f(\"mtop.taobao.picturecenter.console.user.storage.query\",{})},getPicDir:function(e){return f(\"mtop.taobao.picturecenter.console.dir.query\",e?{catId:e,skipPermissionCheck:\"kefu\"===v}:{skipPermissionCheck:\"kefu\"===v})},getPicFile:function(e){return f(\"mtop.taobao.picturecenter.console.file.query\",(0,a.A)((0,a.A)({},e),{},{skipPermissionC"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "mtop.taobao.picturecenter.console.file.query",
+            "offset": 46710,
+            "context": "query\",{})},getPicDir:function(e){return f(\"mtop.taobao.picturecenter.console.dir.query\",e?{catId:e,skipPermissionCheck:\"kefu\"===v}:{skipPermissionCheck:\"kefu\"===v})},getPicFile:function(e){return f(\"mtop.taobao.picturecenter.console.file.query\",(0,a.A)((0,a.A)({},e),{},{skipPermissionCheck:\"kefu\"===v}))},getFileRefQuery:function(e){return f(\"mtop.taobao.picturecenter.console.pic.ref.info\",{fileIds:e})},smartCropPic:function(e){e.bizType;va"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "mtop.taobao.qn.copilot.quality.picture.query",
+            "offset": 20460,
+            "context": "n(20286),i=n(96431),l=n(19607),o=(n(49419),n(64649),n(9866),n(43155),n(94037),n(16681),n(77575),n(9447),n(11782),n(21505),n(99572),n(30266)),c=n(16151),s=n(70895),u=(0,c._F)(),d=function(e){return u(\"mtop.taobao.qn.copilot.quality.picture.query\",(0,l.A)((0,l.A)({},e),{},{qualityStatusList:JSON.stringify(e.qualityStatusList)})).catch((function(){return{result:{data:[],_requestError:!0}}}))},m={},p=function(){var e=(0,i.A)((0,a.A)().mark((fun"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "mtop.taobao.qn.copilot.quality.picture.fix",
+            "offset": 23890,
+            "context": "his,arguments)}}(),e.next=4,o([-1],[]);case 4:return e.abrupt(\"return\",e.sent);case 5:case\"end\":return e.stop()}}),e)})));return function(t){return e.apply(this,arguments)}}(),f=function(e){return u(\"mtop.taobao.qn.copilot.quality.picture.fix\",(0,l.A)((0,l.A)({},e),{},{targetItemIdList:JSON.stringify(e.targetItemIdList)}),{type:o.mJ?\"GET\":\"POST\"})},_=function(){var e=(0,i.A)((0,a.A)().mark((function e(t,n){var r,i,l,o,c;return(0,a.A)().wr"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "mtop.taobao.picturecenter.console.pic.ref.info",
+            "offset": 24203,
+            "context": "mIdList)}),{type:o.mJ?\"GET\":\"POST\"})},_=function(){var e=(0,i.A)((0,a.A)().mark((function e(t,n){var r,i,l,o,c;return(0,a.A)().wrap((function(e){for(;;)switch(e.prev=e.next){case 0:return e.next=2,u(\"mtop.taobao.picturecenter.console.pic.ref.info\",{fileIds:t},{hideError:!0}).then((function(e){return(null===e||void 0===e?void 0:e.result)||[]})).catch((function(e){return r=e,[]}));case 2:return null!==(i=e.sent)&&void 0!==i&&i.length||!n||i.pus"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "match": "mtop.taobao.seller.content.material.group.list",
+            "offset": 4358,
+            "context": "e:t.innerText=e,t.innerHTML}(e)).replace(y,(function(e){return\"<a href='\".concat(e,\"' target='_blank' rel='noopener noreferrer'>\").concat(e,\"</a>\")})):\"\"},b=n(2543),w=h();const k=function(){return w(\"mtop.taobao.seller.content.material.group.list\",{})},x=function(e){var t=(0,u.A)((0,u.A)({},e),{},{appKey:42,type:\"mobile\",hideInvalidVideo:!1});return w(\"mtop.taobao.seller.content.material.list\",function(e){return(0,b.pickBy)(e,(function(e){ret"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "match": "mtop.taobao.seller.content.material.list",
+            "offset": 4513,
+            "context": "b=n(2543),w=h();const k=function(){return w(\"mtop.taobao.seller.content.material.group.list\",{})},x=function(e){var t=(0,u.A)((0,u.A)({},e),{},{appKey:42,type:\"mobile\",hideInvalidVideo:!1});return w(\"mtop.taobao.seller.content.material.list\",function(e){return(0,b.pickBy)(e,(function(e){return void 0!==e}))}(t))},N=function(){return w(\"mtop.taobao.multi.advertisement.get\",{types:arguments.length>0&&void 0!==arguments[0]?arguments[0]:\"11"
+          }
+        ],
+        "upload_fn": [
+          {
+            "source": "sucai_selector_ng_shell:next.min.js",
+            "match": "uploadFile",
+            "offset": 144042,
+            "context": "n e&&e.value!==t.value&&!t.uploading?{value:Array.isArray(e.value)?e.value:[]}:null},t.prototype.selectFiles=function(e){var t=e.length?Array.prototype.slice.call(e):[e];this.onSelect(t)},t.prototype.uploadFiles=function(e){this.state.uploading=!0;var t=e.filter(function(e){return\"selected\"===e.state&&(e.state=\"uploading\",!0)}).map(function(e){return e.originFileObj});t.length&&this.uploaderRef.startUpload("
+          },
+          {
+            "source": "sucai_selector_ng_shell:next.min.js",
+            "match": "startUpload",
+            "offset": 144240,
+            "context": "e.uploadFiles=function(e){this.state.uploading=!0;var t=e.filter(function(e){return\"selected\"===e.state&&(e.state=\"uploading\",!0)}).map(function(e){return e.originFileObj});t.length&&this.uploaderRef.startUpload(t)},t.prototype.startUpload=function(){this.uploadFiles(this.state.value)},t.prototype.replaceFiles=function(e,t){var n=(0,I.getFileItem)(e,this.state.value);n&&(t.uid=e.uid,n.originFileObj=t)},t.pro"
+          },
+          {
+            "source": "sucai_selector_ng_shell:next.min.js",
+            "match": "startUpload",
+            "offset": 144268,
+            "context": "is.state.uploading=!0;var t=e.filter(function(e){return\"selected\"===e.state&&(e.state=\"uploading\",!0)}).map(function(e){return e.originFileObj});t.length&&this.uploaderRef.startUpload(t)},t.prototype.startUpload=function(){this.uploadFiles(this.state.value)},t.prototype.replaceFiles=function(e,t){var n=(0,I.getFileItem)(e,this.state.value);n&&(t.uid=e.uid,n.originFileObj=t)},t.prototype.isUploading=function("
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "handleUpload",
+            "offset": 27874,
+            "context": "1930),n(98419),n(51609)),r=n.n(l),a=n(70895),c=n(80796),o=n(44937),s=n(45687),u=n(12922),d=n(63075),m=n(96536),p=n(46942),f=n.n(p),v=a.Select.OptionGroup,_=a.Select.Option;const h=function(e){var t=e.handleUpload,n=e.userInfo,p=s.A.useModel,h=p(\"pic\"),g=(0,i.A)(h,2),y=g[0],x=g[1],E=p(\"app\"),A=((0,i.A)(E,2)[1],y.hideInvalidPics),w=(0,l.useState)(!!d.Dn.itemId),b=(0,i.A)(w,2),I=(b[0],b[1]),P=(0,l.useState)(d.Dn"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "handleUpload",
+            "offset": 83816,
+            "context": ":\"100%\",position:\"absolute\",background:\"rgba(255,255,255,0.5)\",zIndex:fe()?\"99\":\"-1\",width:\"100%\",height:\"100%\"}}),s().createElement(\"div\",{className:x.A.headSearch},s().createElement(m.A,{userInfo:C,handleUpload:function(){de.set(!0),setTimeout(function(){var e,t,n;null!==me&&void 0!==me&&null!==(e=me.current)&&void 0!==e&&e.startUpload&&(null===me||void 0===me||null===(t=me.current)||void 0===t||null===(n=t"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "startUpload",
+            "offset": 83944,
+            "context": "ment(\"div\",{className:x.A.headSearch},s().createElement(m.A,{userInfo:C,handleUpload:function(){de.set(!0),setTimeout(function(){var e,t,n;null!==me&&void 0!==me&&null!==(e=me.current)&&void 0!==e&&e.startUpload&&(null===me||void 0===me||null===(t=me.current)||void 0===t||null===(n=t.startUpload)||void 0===n||n.call(t))},30)}})),\"normal\"===D.listMode?s().createElement(v.A,{filterPics:$||{},isPicInvalidFun:A."
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "handleUpload",
+            "offset": 79298,
+            "context": "location.host),o.Select.Option,o.Select.OptionGroup,o.Tag.Group,o.MenuButton.Item);function d(e){var t=e.showCheckAll,n=(e.showPageDisplay,e.togglePageDisplay,e.seTtimeText),c=e.buttonContentList,d=e.handleUpload,m=e.checkedList,p=(e.onSelectFiltersChange,e.whetherRecycleBin),f=e.menusList,v=(e.showAddNewFolder,e.toggleAddNewFolder,e.onDeleteCreationTableId,e.statusValue),g=(e.setStatusValue,e.userInfo),h=(e."
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "handleUpload",
+            "offset": 139625,
+            "context": "||Z||Et,checked:ue},\"\\u5168\\u9009\"),\" \"),r().createElement(v.A,{seTtimeText:Vt,sucaiStorage:ot,setSucaiStorage:lt,setSearchStateValue:it,whetherAdvanced:$e,isBabyOrNot:Z,copyList:$t,setIsBabyOrNot:te,handleUpload:Ht.toggle,checkedList:me,showCheckAll:de,showPageDisplay:fe,togglePageDisplay:ye,buttonContentList:Qt,onSelectFiltersChange:De,whetherRecycleBin:qe,menusList:en,showAddNewFolder:oe,toggleAddNewFolder"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "handleUpload",
+            "offset": 143695,
+            "context": "Element(\"div\",{className:b.A.ImgControl},r().createElement(v.A,{seTtimeText:Vt,sucaiStorage:ot,setSucaiStorage:lt,setSearchStateValue:it,whetherAdvanced:$e,isBabyOrNot:Z,copyList:$t,setIsBabyOrNot:te,handleUpload:Ht.toggle,checkedList:me,showCheckAll:de,showPageDisplay:fe,togglePageDisplay:ye,buttonContentList:Qt,onSelectFiltersChange:De,whetherRecycleBin:qe,menusList:en,showAddNewFolder:oe,toggleAddNewFolder"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "startUpload",
+            "offset": 32263,
+            "context": "loadComplete,N=(0,c.useRef)(null),D=(0,m.debounce)((function(){var e;null===(e=document.getElementById(\"sucai-tu-upload\"))||void 0===e||e.click()}),300);(0,c.useImperativeHandle)(t,(function(){return{startUpload:function(){D()}}}));var F=(0,c.useState)(!1),T=(0,s.A)(F,2),M=T[0],R=T[1],U=(0,g.A)(\"qn_sucai_storage\",{defaultValue:{autoClose:!1}}),B=(0,s.A)(U,2),L=B[0],O=B[1],q=(0,c.useContext)(d.A),z=q.userInfo"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "uploadPic",
+            "offset": 32751,
+            "context": "UserId:(null===z||void 0===z?void 0:z.removeUid)||!1,browse_button:\"sucai-tu-upload\",filters:C||{max_file_size:\"20mb\"},afterUploadComplete:function(e){a(),P&&P(e)},defaultFolder:e.defaultFolder}),Y=H.uploadPicDir,V=H.uploadConfig,X=H.files,G=H.uploadState,K=H.hasError,Q=H.failUploadedFileNumber,Z=(H.loadingSDK,H.setUploadConfig),J=H.setUploadPicDir,$=H.initUpload,ee=H.onResetUpload,te=H.onTraverseFileTree,"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "uploadFile",
+            "offset": 36682,
+            "context": "ll===re||void 0===re?void 0:re.label;for(var n=e.dataTransfer.items,a=0;a<n.length;a++){var r=n[a].webkitGetAsEntry();r&&te(r,t)}}(e)},className:A.A.uploadPart},u().createElement(\"div\",{className:A.A.uploadFileList},ae.map((function(e){return u().createElement(y.A,{key:e.id,file:e,tuUploadDirId:null===Y||void 0===Y?void 0:Y.dirId,onDeleteItem:function(e){oe(e)},filters:C})}))),u().createElement(p.Button,{re"
+          }
+        ],
+        "folder_id": [
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "folderId",
+            "offset": 24382,
+            "context": "visibility:!0,message:\"\\u88c1\\u526a\\u56fe\\u7247\\u4e0a\\u4f20\\u4e2d\"}),(0,_.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",n,{},{params:{_input_charset:\"utf-8\",appkey:\"tu\",autoCompress:!1,folderId:null===e||void 0===e?void 0:e.pictureCategoryId,picCompress:!0,resizeWidth:!1,watermark:!1,width:0,hideUserId:(null===ee||void 0===ee?void 0:ee.removeUid)||!1}}).then(function(t){return t.success?((0"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 24421,
+            "context": "fe\\u7247\\u4e0a\\u4f20\\u4e2d\"}),(0,_.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",n,{},{params:{_input_charset:\"utf-8\",appkey:\"tu\",autoCompress:!1,folderId:null===e||void 0===e?void 0:e.pictureCategoryId,picCompress:!0,resizeWidth:!1,watermark:!1,width:0,hideUserId:(null===ee||void 0===ee?void 0:ee.removeUid)||!1}}).then(function(t){return t.success?((0,y.BI)(\"upload_img_status\",y.Y5.EXP,[E.i.SUCCESS"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "folderId",
+            "offset": 46400,
+            "context": "y:()=>m,RD:()=>g,Uq:()=>h});var n=i(47492),r=i(46706),a=i(12836),o=(i(13342),i(58998),i(98419),i(42274),i(72806)),c=i(57536),l=i(70895),u=i(45687),s=i(20660),d=i(6377),p=i(63075),v=p.Dn.scene,f=(p.Dn.folderId,(0,o._F)());const m={getUserInfo:function(){return f(\"mtop.taobao.picturecenter.console.user.storage.query\",{})},getPicDir:function(e){return f(\"mtop.taobao.picturecenter.console.dir.query\",e?{catId:"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 9334,
+            "context": "urn e.a(2);case 5:e.n=7;break;case 6:e.p=6,M=e.v,console.error(\"AI\\u52a3\\u56fe\\u68c0\\u6d4b\\u67e5\\u8be2\\u5931\\u8d25:\",M);case 7:if(W.length>=1&&z.userSearchAction&&\"underFolder\"===N&&(c=W.slice(-1)[0].pictureCategoryId,o=(0,g.X)(y.A),(0,g.T)(y.A,(0,a.A)((0,a.A)({},o),{},{cachedTreeSelectKey:[c]}))),s=[],u=0,m=0,!(z.selectedPics.length<=5&&ae&&ne)){e.n=13;break}if(p=(0,w.lf)({picItems:W}),h=p.mapData,A=p.filteredPic"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "folderId",
+            "offset": 26264,
+            "context": "9)),r=n.n(l),a=n(70895),c=n(80796),o=n(45687),s=n(28349),u=n(8757),d=n(2543),m=n(63075);const p=function(e){var t=o.A.useModel,n=e.setOrderDisable,p=e.setInputValue,f=e.inputValue,v=m.Dn.scene,_=m.Dn.folderId,h=\"kefu\"===v,g=t(\"pic\"),y=(0,i.A)(g,2),x=y[0],E=y[1],A=x.searchKey,w=x.firstAutoSearch,b=((0,l.useRef)(null),[{type:1,label:\"\\u56fe\\u7247\",value:\"pic\",placeholder:\"\\u641c\\u7d22\\u56fe\\u7247\\u540d\\u79f"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 69121,
+            "context": "u6587\\u4ef6\",dataIndex:\"name\",cell:function(e,t,i){return function(e){var t=L?(0,_.LV)(e):n(e);return c().createElement(\"div\",{className:p.A[\"Presentation_main-label\"],id:1===e.fileType?e.pictureId:e.pictureCategoryId},c().createElement(\"div\",{className:p.A.checkbox},c().createElement(s.Checkbox,{disabled:1===(null===e||void 0===e?void 0:e.status)||!t.passed,value:null===e||void 0===e?void 0:e.pictureId,checked:(0"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#cropper.9ca34501.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 3870,
+            "context": "loneDeep)(e.map(function(e){return{id:Math.random().toString().slice(2),pictureId:Math.random().toString().slice(2),name:P(20),fullUrl:e.fullUrl,pixel:\"\".concat(e.width,\"x\").concat(e.height),status:0,pictureCategoryId:H,pictureCategoryName:B}}))}(s);d(e),_(!0),v.current=!0}else console.error(\"\\u88c1\\u526a\\u53c2\\u6570\\u9519\\u8bef: \\u6570\\u636e\\u6e90\\u4e2d\\u5b58\\u5728\\u65e0\\u6548\\u9879\");else console.warn(\"\\u88c1\\u5"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 28521,
+            "context": ",d=[],m={status:1},p=null===a||void 0===a?void 0:a.some((function(e){return e.status===m.status})),a&&(null===a||void 0===a||a.forEach((function(e){0===e.fileType?s.push(null===e||void 0===e?void 0:e.pictureCategoryId):(c.push(null===e||void 0===e?void 0:e.pictureId),d.push(null===e||void 0===e?void 0:e.ref))}))),v=d.some((function(e){return!0===e})),i?b({actionType:u.z$.RECYCLE_BIN,fileIds:c},(function(e){var t=e"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "dirId",
+            "offset": 28885,
+            "context": "Type:u.z$.RECYCLE_BIN,fileIds:c},(function(e){var t=e.fileIds;I(void 0===t?[]:t,o)})):b({actionType:g({type:n,_fileIds:c,isStatus:p,isPicRef:v}),deleteType:f({type:n,isStatus:p,isPicRef:v}),fileIds:c,dirIds:s},(function(e){A(e,l)}));case 9:case\"end\":return e.stop()}}),e)})))).apply(this,arguments)}var A=function(){var e=(0,i.A)((0,r.A)().mark((function e(t,n){var a,i;return(0,r.A)().wrap((function(e){f"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "dirId",
+            "offset": 29255,
+            "context": "return(0,r.A)().wrap((function(e){for(;;)switch(e.prev=e.next){case 0:return e.prev=0,e.next=3,d.Ay.deletePicFile(t);case 3:e.sent.result&&s.Message.success({content:null!==t&&void 0!==t&&null!==(a=t.dirIds)&&void 0!==a&&a.length&&(null===t||void 0===t||null===(i=t.dirIds)||void 0===i?void 0:i.length)>0?\"\\u5220\\u9664\\u4efb\\u52a1\\u521b\\u5efa\\u6210\\u529f\":\"\\u5220\\u9664\\u6210\\u529f\"}),e.next=10;break;case"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 17812,
+            "context": "Material,onClick:function(e){\"function\"===typeof ce&&ce(\"directory\"),\"function\"===typeof se&&se({type:\"directory\"}),\"function\"===typeof fe&&fe()},onContextMenu:function(e){ee(\"single\"),ke({fileType:0,pictureCategoryId:\"0\"}),ie(\"\\u5168\\u90e8\\u7d20\\u6750\"),le(e)}},\"\\u5168\\u90e8\\u7d20\\u6750\"),r().createElement(\"div\",{className:\"\".concat(v.A.treeDom,\" \").concat(g.A.treeDom)},ue.length>0&&r().createElement(c.Tree,{useV"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "pictureCategoryId",
+            "offset": 18496,
+            "context": "directory\",official:null===t||void 0===t||null===(i=t.node)||void 0===i||null===(o=i.props)||void 0===o?void 0:o.official})},onRightClick:function(e){var t,n,a,i,o,l;le(e.event),ie(\"\"),ke({fileType:0,pictureCategoryId:null===e||void 0===e||null===(t=e.node)||void 0===t||null===(n=t.props)||void 0===n?void 0:n.value,name:null===e||void 0===e||null===(a=e.node)||void 0===a||null===(i=a.props)||void 0===i?void 0:i.na"
+          }
+        ],
+        "api_path": [
+          {
+            "source": "sucai-batch-upload#0.0.17#722.0713483a.chunk.js",
+            "match": "\"/api/gateway/bizConfig\"",
+            "offset": 65147,
+            "context": "=4;break}return e.abrupt(\"return\",Promise.reject(r));case 4:return e.prev=4,e.next=7,new Promise((function(e,t){var r=u.o.options,n=r.bizCode,o=r.domain;(0,d.mh)(h.w,\"interface\"),(0,a.DA)({api:\"//\"+o+\"/api/gateway/bizConfig\",data:{bizCode:n},apiType:\"config\"}).then((function(t){return c.q.bizCodeConfig=t,e()}),(function(e){return t(e)}))}));case 7:e.next=12;break;case 9:return e.prev=9,e.t0=e.catch(4),e.abrupt(\"return\",P"
+          }
+        ],
+        "sucai_or_qsm_host": [
+          {
+            "source": "sucai_selector_ng_shell:MicroLoader.js",
+            "match": "\"https://qn.taobao.com/home.html/\"",
+            "offset": 24617,
+            "context": "omponentInventory[n],s=function e(){i.mount({container:Pe(r),customProps:{microModsCollection:l,routerProps:{basename:o},frameworkApi:Object.assign({pushMenu:function e(t){var n=t&&t.path;window.open(\"https://qn.taobao.com/home.html/\".concat(n),\"_top\")},FixPortalContainer:be,registerRequestResponseParser:function e(){}},a)}})};s(),Se=s,Ae(n),re(n,m,o,e?Se:void 0),ue(\"loader_micro_appinfo\",ae.EXP,[0,t,n])}catch(e){ue(\"loader_micro_"
+          },
+          {
+            "source": "sucai-tu-selector#0.0.86#main.3e68b1c3.chunk.js",
+            "match": "\"https://qn.taobao.com/home.htm/material-center/mine-material/sucai-tu?from=sucaitu\"",
+            "offset": 13802,
+            "context": "tart\",flexDirection:\"column\",marginTop:\"-65px\"}},!O&&s().createElement(d.Button,{text:!0,type:\"primary\",component:\"a\",style:{height:\"36px\",marginLeft:18,marginBottom:18},className:u.A.textButton,href:\"https://qn.taobao.com/home.htm/material-center/mine-material/sucai-tu?from=sucaitu\",target:\"_blank\",onClick:function(){(0,f.BI)(f.Bx.ENTER_PIC_SPACE,f.Y5.CLK,[\"pic_space\"])}},s().createElement(\"div\",{style:{width:\"20px\",height:\"20px\",marginRight:\"4px\"}},s().createElement(\"svg\",{clas"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#255.b04de31d.chunk.js",
+            "match": "\"https://sucai.wangpu.taobao.com\"",
+            "offset": 14277,
+            "context": "Crop,\"&handleId=\").concat(r.handleId,\"&needClose=true\")},47355:(e,t,n)=>{n.d(t,{s:()=>p});var a=n(78289),r=(n(49419),n(43155),n(60947),n(51609)),i=n.n(r),l=n(29990),o=n(29931),c=n(70895),s=n(2543),u=[\"https://sucai.wangpu.taobao.com\",\"https://market.wapa.taobao.com\",\"https://market.m.taobao.com\"],d=[\"bmp\",\"png\",\"jpg\",\"jpeg\"];function m(e){var t=e.max,n=void 0===t?1:t,m=e.onClose,p=e.onOk,v=(0,r.useState)(!0),g=(0,a.A)(v,2),f=g[0]"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "match": "\"https://qn\"",
+            "offset": 43143,
+            "context": "r,onClick:function(t){var n;t.stopPropagation();var i={videoDuration:1e3*e.length,coverUrl:e.snapshot,videoUrl:null!==(n=e.originalVideoUrl)&&void 0!==n?n:e.playUrl,contentId:e.contentId};window.open(\"https://qn\".concat(Te.o9.isDaily?\".wapa\":\"\",\".taobao.com/home.htm/material-center/video-production/img2video?from=sucaivideo&pageType=smartCut&video=\").concat(JSON.stringify(i),\"&isOldVerEdit=1\"))}},React.create"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "match": "\"https://sucai.wangpu.taobao.com/select.htm\"",
+            "offset": 80334,
+            "context": "ray(e)?e.filter((function(e){return e.mode===n})):e}var Sn=***REDACTED***{function t(e){var n;return(0,sn.A)(this,t),(n=(0,un.A)(this,t,[e])).state={showUploader:!1,currentImages:[],videos:[],pic:!0,url:\"https://sucai.wangpu.taobao.com/select.htm\",picBaseUrl:\"https://sucai.wangpu.taobao.com/select.htm?type=pic\",videoBaseUrl:\"https://sucai.wangpu.taobao.com/select.htm?type=video\",style:null,list:Nn(n.props.value,n.props.containerid,kn),currentM"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js",
+            "match": "\"https://sucai.wangpu.taobao.com/select.htm?type=pic\"",
+            "offset": 80390,
+            "context": "Sn=***REDACTED*** t(e){var n;return(0,sn.A)(this,t),(n=(0,un.A)(this,t,[e])).state={showUploader:!1,currentImages:[],videos:[],pic:!0,url:\"https://sucai.wangpu.taobao.com/select.htm\",picBaseUrl:\"https://sucai.wangpu.taobao.com/select.htm?type=pic\",videoBaseUrl:\"https://sucai.wangpu.taobao.com/select.htm?type=video\",style:null,list:Nn(n.props.value,n.props.containerid,kn),currentMode:kn,value:[]},n.radioListener=function(e){vart=***REDACTED***;t&"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "\"https://qn\"",
+            "offset": 85627,
+            "context": "nKJgGl1IO0Q24DDK8_!!6000000000882-55-tps-18-20.svg\",click:function(e){window.open(W?\"https://\".concat(E.R2?\"pre-\":\"\",\"quick.taobao.com/picturestudio/singleeditor?from=sucaitu&url=\").concat(e.fullUrl):\"https://qn\".concat(E.R2?\".wapa\":\"\",\".taobao.com/home.htm/material-center/material-edit?from=sucaitu&url=\").concat(e.fullUrl))}},{text:\"\\u56fe\\u751f\\u89c6\\u9891\",imgUrl:\"https://img.alicdn.com/imgextra/i1/O1CN01k"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "\"https://qn\"",
+            "offset": 86036,
+            "context": "01kw8Our21rSbGROFO3_!!6000000007038-55-tps-16-20.svg\",click:function(e){window.open(W?\"https://\".concat(E.R2?\"pre-\":\"\",\"quick.taobao.com/videostudio/img2video?from=sucaitu&imgUrl=\").concat(e.fullUrl):\"https://qn\".concat(E.R2?\".wapa\":\"\",\".taobao.com/home.htm/material-center/video-production/img2video?from=sucaitu&imgUrl=\").concat(e.fullUrl))}}],Y=[{text:\"\\u590d\\u5236\\u94fe\\u63a5\",imgUrl:\"https://img.alicdn.com"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#976.c39500ed.chunk.js",
+            "match": "\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\"",
+            "offset": 752,
+            "context": "ream.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\",agreement:\"https://mediafront.taobao.com/business/agreement/sign.json\",closeFirstAlertStorage:\"https://mediafront.taobao.com/business/firsthint/close.json\",closeLevelChanged:\"https://mediafront.taoba"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\"",
+            "offset": 32550,
+            "context": "load.taobao.com/api/upload.api\",waterMarkAddQuery:\"https://tadget.taobao.com/picture/waterMarkX.htm\",picUploadCollect:\"https://stream-upload.taobao.com/api/collect_client_upload_rt.api\",getPageConfig:\"https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8\",agreement:\"https://mediafront.taobao.com/business/agreement/sign.json\",closeFirstAlertStorage:\"https://mediafront.taobao.com/business/firsthint/close.json\",closeLevelChanged:\"https://mediafront.taoba"
+          }
+        ],
+        "upload_panel_class": [
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "UploadPanel_uploadPanel__zMeoR",
+            "offset": 126999,
+            "context": ":(e,t,n)=>{\"use strict\";n.d(t,{A:()=>a});const a={dialog:\"UploadDialog_dialog__x7mbI\",fullScreen:\"UploadDialog_fullScreen__tRWlk\"}},29350:(e,t,n)=>{\"use strict\";n.d(t,{A:()=>a});const a={uploadPanel:\"UploadPanel_uploadPanel__zMeoR\",uploadConfig:\"UploadPanel_uploadConfig__mMqHE\",baseConfig:\"UploadPanel_baseConfig__9CMnA\",baseConfigItem:\"UploadPanel_baseConfigItem__h2XCu\",configText:\"UploadPanel_configText__sTkcI\",uploadDirSelec"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "UploadPanel_uploadConfig__mMqHE",
+            "offset": 127045,
+            "context": " a={dialog:\"UploadDialog_dialog__x7mbI\",fullScreen:\"UploadDialog_fullScreen__tRWlk\"}},29350:(e,t,n)=>{\"use strict\";n.d(t,{A:()=>a});const a={uploadPanel:\"UploadPanel_uploadPanel__zMeoR\",uploadConfig:\"UploadPanel_uploadConfig__mMqHE\",baseConfig:\"UploadPanel_baseConfig__9CMnA\",baseConfigItem:\"UploadPanel_baseConfigItem__h2XCu\",configText:\"UploadPanel_configText__sTkcI\",uploadDirSelect:\"UploadPanel_uploadDirSelect__mde8O\",uploadRa"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "UploadPanel_baseConfig__9CMnA",
+            "offset": 127090,
+            "context": "creen:\"UploadDialog_fullScreen__tRWlk\"}},29350:(e,t,n)=>{\"use strict\";n.d(t,{A:()=>a});const a={uploadPanel:\"UploadPanel_uploadPanel__zMeoR\",uploadConfig:\"UploadPanel_uploadConfig__mMqHE\",baseConfig:\"UploadPanel_baseConfig__9CMnA\",baseConfigItem:\"UploadPanel_baseConfigItem__h2XCu\",configText:\"UploadPanel_configText__sTkcI\",uploadDirSelect:\"UploadPanel_uploadDirSelect__mde8O\",uploadRadio:\"UploadPanel_uploadRadio__Zx3Bd\",upload"
+          }
+        ],
+        "appkey_value": [
+          {
+            "source": "sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js",
+            "match": "appkey:\"tu\"",
+            "offset": 24354,
+            "context": "oncat(o,\".\").concat(a)),ie({visibility:!0,message:\"\\u88c1\\u526a\\u56fe\\u7247\\u4e0a\\u4f20\\u4e2d\"}),(0,_.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",n,{},{params:{_input_charset:\"utf-8\",appkey:\"tu\",autoCompress:!1,folderId:null===e||void 0===e?void 0:e.pictureCategoryId,picCompress:!0,resizeWidth:!1,watermark:!1,width:0,hideUserId:(null===ee||void 0===ee?void 0:ee.removeUid)||!1}}).then(functio"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js",
+            "match": "appkey:\"tu\"",
+            "offset": 69504,
+            "context": "<sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "appkey:\"tu\"",
+            "offset": 44596,
+            "context": "current)),o={url:\"\",multipart_params:{}},i.jumpXhr){t.next=14;break}l=window.uabModule&&window.uabModule.getUA({Token:***REDACTED***}),s=d.SP.upload,o.url=v.A.stringifyUrl({url:s,query:(0,f.pickBy)({appkey:\"tu\",folderId:i.getNative().parentId||\"0\",watermark:(null===B||void 0===B?void 0:B.watermark)||!1,picCompress:!B.originSize,_input_charset:\"utf-8\"},(function(e){return void 0!==e}))}),l&&(o.multipart_para"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "appkey:\"tu\"",
+            "offset": 49475,
+            "context": "xt=21;break}return y=(new Date).getTime()-re.current,t.prev=13,t.next=16,(0,m.RD)(d.SP.picUploadCollect,\"GET\",{file_Id:(null===g||void 0===g||null===(b=g.id)||void 0===b?void 0:b.toString())||\"\",rt:y,appkey:\"tu\"},{},{},!0);case 16:t.next=21;break;case 18:t.prev=18,t.t0=t.catch(13),console.warn(\"Upload collect failed:\",t.t0);case 21:(0,m.BI)(m.ah.UPLOADSUCCESS,m.Y5.EXP,[\"single\",i,{object:{url:g.fullUrl,fileI"
+          },
+          {
+            "source": "sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js",
+            "match": "appkey:\"qnaigc\"",
+            "offset": 125815,
+            "context": "d(\"name\",\"\".concat(d,\".jpeg\")),u.append(\"file\",n,\"\".concat(d,\".jpeg\")),e.abrupt(\"return\",(0,c.RD)(\"https://stream-upload.taobao.com/api/upload.api\",\"POST\",u,{},{params:(0,r.A)({_input_charset:\"utf-8\",appkey:\"qnaigc\",folderId:\"0\",picCompress:!0,watermark:!1},i)},!0).then((function(e){return e.success,e})).catch((function(e){return Promise.reject(e)})));case 6:case\"end\":return e.stop()}}),e)})));return function(t,"
+          },
+          {
+            "source": "sucai-batch-upload#0.0.17#846.8c00dced.chunk.js",
+            "match": "appkey:\"tu\"",
+            "offset": 35309,
+            "context": "<sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+          }
+        ]
+      },
+      "marker_samples": {
+        "formdata_new": [
+          "[sucai_selector_ng_shell:next.min.js] rogress&&t.upload&&(t.upload.onprogress=function(t){t.total>0&&(t.percent=t.loaded/t.total*100),e.onProgress(t)});var n=new FormData;e.data&&Object.keys(e.data).forEach(function(t){n.append(t,e.data[t])}),e.file instanceof Blob?n.append(e.filename,e.fi",
+          "[sucai_home:main.js] (r.body),i=r.body;else if(r.body instanceof URLSearchParams)i=eU(a=r.body);else if(null==r.body)a=new URLSearchParams,i=new FormData;else try{a=new URLSearchParams(r.body),i=eU(a)}catch(p){return u()}var h={formMethod:c,formAction:s,formEncType:r&&r.fo",
+          "[sucai_home:main.js] .name)}}catch(s){r=!0,o=s}finally{try{n||null==i.return||i.return()}finally{if(r)throw o}}return t}function eU(e){var t=new FormData,n=!0,r=!1,o=void 0;try{for(var a,i=e.entries()[Symbol.iterator]();!(n=(a=i.next()).done);n=!0){var u=(0,A._)(a.value,2)"
+        ],
+        "formdata_any": [
+          "[sucai_selector_ng_shell:next.min.js] ess&&t.upload&&(t.upload.onprogress=function(t){t.total>0&&(t.percent=t.loaded/t.total*100),e.onProgress(t)});var n=new FormData;e.data&&Object.keys(e.data).forEach(function(t){n.append(t,e.data[t])}),e.file instanceof Blob?n.append(e.filename,e.fi",
+          "[sucai_selector_ng_shell:MicroLoader.js] =t.headers||{},r;n.Accept=n.Accept||defaultHeaders.accept[t.type]||defaultHeaders.accept[\"*\"];var o=\"undefined\"!=typeof FormData&&t.data instanceof FormData;for(r in n[contentType]||o||(n[contentType]=t.contentType||defaultHeaders.contentType),n)n.",
+          "[sucai_selector_ng_shell:MicroLoader.js] Accept||defaultHeaders.accept[t.type]||defaultHeaders.accept[\"*\"];var o=\"undefined\"!=typeof FormData&&t.data instanceof FormData;for(r in n[contentType]||o||(n[contentType]=t.contentType||defaultHeaders.contentType),n)n.hasOwnProperty(r)&&\"setReque"
+        ],
+        "multipart": [
+          "[sucai_selector_ng_shell:next.min.js] {display:\"none\"}}),g.default.createElement(\"form\",{ref:this.saveFormRef,method:\"post\",action:this.props.action,encType:\"multipart/form-data\",target:u},g.default.createElement(\"input\",{name:\"_documentDomain\",value:this.domain,type:\"hidden\"}),g.defaul",
+          "[sucai-tu-selector#0.0.86#709.fec26edc.chunk.js] function(t){function e(e){return function(r,n,o){return this.request((0,u.A)(o||{},{method:t,headers:e?{\"Content-Type\":\"multipart/form-data\"}:{},url:r,data:n}))}}h.prototype[t]=e(),h.prototype[t+\"Form\"]=e(!0)});const p=h;r.d(e,[\"A\",0,p])},74062(t,e,",
+          "[sucai-tu-selector#0.0.86#709.fec26edc.chunk.js] ication/x-www-form-urlencoded\")>-1)return(0,u.A)(t,this.formSerializer).toString();if((s=n.A.isFileList(t))||r.indexOf(\"multipart/form-data\")>-1){const e=this.env&&this.env.FormData;return(0,a.A)(s?{\"files[]\":t}:t,e&&new e,this.formSerializer)}}retu"
+        ],
+        "picture": [
+          "[sucai_selector_ng_shell:next.min.js] N.KEYCODE.ENTER&&b()};return y=\"uploading\"===e.state||\"selected\"===e.state&&!p?m.default.createElement(_.default,{type:\"picture\"}):\"error\"===e.state?m.default.createElement(_.default,{type:\"cry\"}):m.default.createElement(\"img\",{src:p,onError:this.",
+          "[sucai_selector_ng_shell:next.min.js] cted\"===v&&!p?m.default.createElement(\"div\",{className:f+\"-list-item-handler\"},m.default.createElement(_.default,{type:\"picture\"}),m.default.createElement(k.default,{text:!0,onClick:function(){return n.handleCancel(e)}},r.card.cancel)):\"error\"===v",
+          "[sucai_selector_ng_shell:next.min.js] p=a(c),h=n(4),m=a(h),g=n(0),v=a(g),y=n(5),b=a(y),C=n(7),x=a(C),E=n(9),w=a(E),S=n(6),_=S.log.warning,T=[\"video\",\"audio\",\"picture\",\"iframe\",\"img\"],k=(o=r=function(e){function t(){return(0,f.default)(this,t),(0,p.default)(this,e.apply(this,arguments)"
+        ],
+        "sucai_word": [
+          "[sucai_selector_ng_shell:index.js] en((function(){window.baxiaCommon&&\"function\"==typeof window.baxiaCommon.init&&window.baxiaCommon.init(r)}))}var To=\"qn_sucai_tu_storage-kefu\",Ro=\"0.0.86\",Go=\"sucai-tu-selector\",No=\"0.0.86\",Mo=\"0.0.7\",Ao=\"sucai-tu-selector-old\",Fo=\"0.0.7\",Do,Bo,",
+          "[sucai_selector_ng_shell:index.js] ction\"==typeof window.baxiaCommon.init&&window.baxiaCommon.init(r)}))}var To=\"qn_sucai_tu_storage-kefu\",Ro=\"0.0.86\",Go=\"sucai-tu-selector\",No=\"0.0.86\",Mo=\"0.0.7\",Ao=\"sucai-tu-selector-old\",Fo=\"0.0.7\",Do,Bo,zo;Lo(),ro({app:{renderComponent:functi",
+          "[sucai_selector_ng_shell:index.js] .baxiaCommon.init(r)}))}var To=\"qn_sucai_tu_storage-kefu\",Ro=\"0.0.86\",Go=\"sucai-tu-selector\",No=\"0.0.86\",Mo=\"0.0.7\",Ao=\"sucai-tu-selector-old\",Fo=\"0.0.7\",Do,Bo,zo;Lo(),ro({app:{renderComponent:function t(){return(0,rn.useEffect)((function(){wind"
+        ],
+        "tb_token_read": [
+          "[sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js] <sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>",
+          "[sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js] <sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>",
+          "[sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js] <sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+        ],
+        "formdata_append": [
+          "[sucai_home:main.js] json:void 0,text:void 0};if(eX(h.formMethod))return{path:n,submission:h};var v=ea(n);return t&&v.search&&e2(v.search)&&a.append(\"index\",\"\"),v.search=\"?\"+a,{path:eo(v),submission:h}}function eT(e,t,n,r,o,a,i,u,l,c,s,f,d,p){var h=p?Object.values(p)[0]:d?Obj",
+          "[sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js] <sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>",
+          "[sucai-tu-selector#0.0.86#158.ff6eb57b.chunk.js] <sample withheld: 命中 captures 守卫的敏感标记名（cookie/header 名）且邻近没有脱敏占位符；原始上下文见 tmp/ 下的 raw 产物>"
+        ],
+        "drag_drop_dirs": [
+          "[sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js]  0:re.value,t.name=null===re||void 0===re?void 0:re.label;for(var n=e.dataTransfer.items,a=0;a<n.length;a++){var r=n[a].webkitGetAsEntry();r&&te(r,t)}}(e)},className:A.A.uploadPart},u().createElement(\"div\",{className:A.A.uploadFileList},ae.map((function(e)"
+        ],
+        "slice_upload": [
+          "[sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js] model)){e.next=20;break}return A=h.model.imageUploadDTO,e.abrupt(\"return\",A);case 20:for(b=h.model,x=b.uploadPolicy,k=b.uploadUrlList,b.uploadId,E=x.sliceSize,w=x.sliceNum,S=[],C=0;C<w;C++)I=C*E,_=Math.min(I+E,t.size),S.push(t.slice(I,_));return e.next=",
+          "[sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js] 0;break}return A=h.model.imageUploadDTO,e.abrupt(\"return\",A);case 20:for(b=h.model,x=b.uploadPolicy,k=b.uploadUrlList,b.uploadId,E=x.sliceSize,w=x.sliceNum,S=[],C=0;C<w;C++)I=C*E,_=Math.min(I+E,t.size),S.push(t.slice(I,_));return e.next=26,Promise.",
+          "[sucai-center-components#0.0.50#PicUpload.5b071f5e.chunk.js] n A=h.model.imageUploadDTO,e.abrupt(\"return\",A);case 20:for(b=h.model,x=b.uploadPolicy,k=b.uploadUrlList,b.uploadId,E=x.sliceSize,w=x.sliceNum,S=[],C=0;C<w;C++)I=C*E,_=Math.min(I+E,t.size),S.push(t.slice(I,_));return e.next=26,Promise.all(S.map(func"
+        ]
+      },
+      "quoted_candidates": [
+        {
+          "literal": "/speedster.image-base.decodeImage",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ],
+          "count": 2
+        },
+        {
+          "literal": "/sucai-center-app/sucai-tu?subTab=badImg",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "/sucai-tu/home?",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50",
+          "sources": [
+            "sucai-center-components#0.0.50#667.2a152a81.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://mediafront.taobao.com/business/agreement/sign.json",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://mediafront.taobao.com/business/firsthint/close.json",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://mediafront.taobao.com/business/levelchangedhint/close.json",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://pre-stream.taobao.com/api/upload.api",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://stream-upload.taobao.com/api/collect_client_upload_rt.api",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://stream-upload.taobao.com/api/upload.api",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://sucai.wangpu.taobao.com",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://sucai.wangpu.taobao.com/select.htm",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://sucai.wangpu.taobao.com/select.htm?type=pic",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://sucai.wangpu.taobao.com/select.htm?type=video",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiVideo.c29becb7.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://tadget.taobao.com/picture/waterMarkX.htm",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "https://unpkg.alibaba-inc.com/@ali/***REDACTED***/build/index.html",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.cp.aiprocess.api.uploadtoken",
+          "sources": [
+            "sucai-batch-upload#0.0.17#722.0713483a.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.dir.add",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.dir.move",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.dir.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.file.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.file.sucai.type.update",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.pic.ref.info",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.user.storage.query",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.picturecenter.console.user.tag.add",
+          "sources": [
+            "sucai-center-components#0.0.50#976.c39500ed.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.qn.copilot.quality.picture.pop.pull",
+          "sources": [
+            "sucai-center-components#0.0.50#sucaiTu.100b0899.chunk.js"
+          ],
+          "count": 1
+        },
+        {
+          "literal": "mtop.taobao.qn.copilot.quality.picture.query",
+          "sources": [
+            "sucai-center-components#0.0.50#255.b04de31d.chunk.js"
+          ],
+          "count": 1
+        }
+      ]
+    },
+    "assets_downloaded": 12,
+    "requests_made": 71
+  },
+  "route_b": {
+    "description": "CDP 被动观察（Network.enable，只记 host+path+method+content-type）",
+    "cdp_port": 9334,
+    "targets": [
+      {
+        "name": "publish_workbench",
+        "url": "https://item.upload.taobao.com/sell/ai/category.htm",
+        "expect": "login_redirect_when_logged_out",
+        "method": "passive_network_observation",
+        "shapes": [
+          {
+            "host": "g.alicdn.com",
+            "path": "/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 2,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/et/1.84.15/et_f.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/fireyejs/1.234.37/fireyejs.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/alilog/mlog/aplus_v2.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/dinamic/barrier-free/0.0.6/aria.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/sd/sufei/0.3.112/app/common/sufei-seed.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/vip/biz-assets/0.2.71/assets/taobao_pc_width_login_new.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/vip/havana-nlogin/0.10.37/index.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/vip/havana-nlogin/0.10.37/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.login_page_show",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.page_show",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.postMessage",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i1/O1CN01z4Whpc1sWXrNMex9p_!!6000000005774-2-tps-236-298.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/webp",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i4/O1CN01fiFpmf1QZ0jfWh9kO_!!6000000001989-2-tps-48-48.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "item.upload.taobao.com",
+            "path": "/sell/ai/category.htm",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": null,
+            "content_type": null,
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "log.mmstat.com",
+            "path": "/v.gif",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "login.taobao.com",
+            "path": "/havanaone/login/login.htm",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "login.taobao.com",
+            "path": "/havanaone/loginLegacy/qrCode/generate.do",
+            "method": "GET",
+            "resource_type": "XHR",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "login.taobao.com",
+            "path": "/havanaone/loginLegacy/qrCode/query.do",
+            "method": "POST",
+            "resource_type": "XHR",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 7,
+            "initiator": "script"
+          },
+          {
+            "host": "login.taobao.com",
+            "path": "/member/login.jhtml",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": null,
+            "content_type": null,
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "main.m.tmall.com",
+            "path": "/app/vip/h5-webapp/third-party-cookie.html",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "o.alicdn.com",
+            "path": "/baxia/baxia-entry-gray/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "s-gm.mmstat.com",
+            "path": "/arms.1.1",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 11,
+            "initiator": "script"
+          },
+          {
+            "host": "s-gm.mmstat.com",
+            "path": "/arms.1.2",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "umdcv4.taobao.com",
+            "path": "/repWd.json",
+            "method": "POST",
+            "resource_type": "Fetch",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          }
+        ],
+        "final_url": "https://login.taobao.com/havanaone/login/login.htm?bizName=taobao&redirectURL=http%3A%2F%2Fitem.upload.taobao.com%2Fsell%2Fai%2Fcategory.htm",
+        "title": "登录",
+        "shape_count": 25,
+        "login_redirect": true
+      },
+      {
+        "name": "sucai_selector_ng_runtime",
+        "url": "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true",
+        "expect": "public_app_shell_runtime_requests",
+        "method": "passive_network_observation",
+        "shapes": [
+          {
+            "host": "at.alicdn.com",
+            "path": "/t/a/font_1613397_l0xkkp06q6.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "at.alicdn.com",
+            "path": "/t/a/font_1613397_l0xkkp06q6.woff2",
+            "method": "GET",
+            "resource_type": "Font",
+            "status": 200,
+            "content_type": "font/woff2",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "at.alicdn.com",
+            "path": "/t/a/font_583095_z60r28dimup.woff2",
+            "method": "GET",
+            "resource_type": "Font",
+            "status": 200,
+            "content_type": "font/woff2",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "at.alicdn.com",
+            "path": "/t/c/font_2421889_3jpokvpq0us.woff2",
+            "method": "GET",
+            "resource_type": "Font",
+            "status": 200,
+            "content_type": "font/woff2",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "at.alicdn.com",
+            "path": "/t/c/font_4837470_vbioya7yrzn.woff2",
+            "method": "GET",
+            "resource_type": "Font",
+            "status": 200,
+            "content_type": "font/woff2",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "cf.aliyun.com",
+            "path": "/nocaptcha/initialize.jsonp",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "text/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 3,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/AWSC/awsc.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/WebUMID/1.93.0/um.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/et/1.84.2/et_f.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/fireyejs/1.234.37/fireyejs.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/AWSC/uab/1.140.0/collina.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/aes/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/alilog/",
+            "method": "GET",
+            "resource_type": "Fetch",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 3,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/alilog/mlog/aplus_v2.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 3,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/code/lib/alifd__next/1.25.49/next.min.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/crs-qn/sucai-selector-ng/0.0.82/css/index.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/crs-qn/sucai-selector-ng/0.0.82/js/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/crs-qn/sucai-selector-ng/0.0.82/js/vendor.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/legao-comp/fusion-theme-npm/@alife/***REDACTED***/",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/css/PicUpload.2a8736ed.chunk.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/122.7660d1b3.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/205.1c8c0e8d.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/566.2bf99add.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/831.8ed2a23f.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/976.c39500ed.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-center-components/0.0.50/js/remoteEntry.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/css/main.a511b1d4.chunk.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/158.ff6eb57b.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/709.fec26edc.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/953.8e475567.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/main.3e68b1c3.chunk.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/merchant-micro-mods/sucai-tu-selector/0.0.86/js/remoteEntry.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/mtb/lib-login/3.6.1/login.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/qn/qn-login-iframe-css/0.0.8/qn-login-iframe.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/qn/qn-login-page/0.0.18/css/index.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/qn/qn-login-page/0.0.18/favicon.png",
+            "method": "GET",
+            "resource_type": "Other",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/qn/qn-login-page/0.0.18/js/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/sd/baxia/2.5.37/baxiaCommon.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/sd/ncpc/nc.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/sd/sufei/0.3.112/app/common/sufei-seed.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "g.alicdn.com",
+            "path": "/vip/havana-login/0.3.9/js/mini-login-embedder-min.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/fsp.1.1",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 2,
+            "initiator": "parser"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.login_page_show",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.page_show",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.postMessage",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 5,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.pwd.loginid.blur",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.pwd.loginid.focus",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "gm.mmstat.com",
+            "path": "/havana-minilogin.hvn_minilogin_page.pwd.password.focus",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "gw.alipayobjects.com",
+            "path": "/os/lib/alife/theme-sellerpc/1.0.0/",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "gw.alipayobjects.com",
+            "path": "/os/lib/react-router-dom/5.2.0/umd/react-router-dom.min.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/x-javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.multi.advertisement.get/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.multi.unified.gray/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.picturecenter.console.dir.query/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.picturecenter.console.file.query/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.picturecenter.console.user.storage.query/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": null,
+            "content_type": null,
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.picturecenter.console.user.upload.config.query/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.taobao.qn.copilot.quick.user.switch.info.query/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": null,
+            "content_type": null,
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "h5api.m.taobao.com",
+            "path": "/h5/mtop.user.getusersimple/1.0/",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "havanalogin.taobao.com",
+            "path": "/mini_login.htm",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "hudong.alicdn.com",
+            "path": "/api/data/v2/fa58413a714749c0aefcfa69719e6dce.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "i.alicdn.com",
+            "path": "/artascope-font/20160419204543/font/roboto-regular.woff2",
+            "method": "GET",
+            "resource_type": "Font",
+            "status": 200,
+            "content_type": "font/woff2",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i1/O1CN018UFN9v1F3u8ZaRnG9_!!6000000000432-2-tps-26-26.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i1/O1CN01ouANh01gOVa9vDMzv_!!6000000004132-55-tps-200-200.svg",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/svg+xml",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i2/O1CN0109BlPd28fGzhhVrYk_!!6000000007959-2-tps-369-126.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i3/O1CN012UzkaQ1z4nEbRJY68_!!6000000006661-55-tps-24-24.svg",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/svg+xml",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i4/O1CN01Tmeqkc24BGZuwnOEQ_!!6000000007352-2-tps-1240-1800.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i4/O1CN01bsN2kl202KS1fnXy1_!!6000000006791-2-tps-1240-1800.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "img.alicdn.com",
+            "path": "/imgextra/i4/O1CN01zq2hzs1yIhe1nZGcK_!!6000000006556-2-tps-36-25.png",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/png",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "log.mmstat.com",
+            "path": "/eg.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "log.mmstat.com",
+            "path": "/v.gif",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "log.mmstat.com",
+            "path": "/y.gif",
+            "method": "GET",
+            "resource_type": "Image",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "loginmyseller.taobao.com",
+            "path": "/",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "main.m.tmall.com",
+            "path": "/app/vip/h5-webapp/third-party-cookie.html",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "market.m.taobao.com",
+            "path": "/app/crs-qn/sucai-selector-ng/index",
+            "method": "GET",
+            "resource_type": "Document",
+            "status": 200,
+            "content_type": "text/html",
+            "count": 1,
+            "initiator": "other"
+          },
+          {
+            "host": "o.alicdn.com",
+            "path": "/baxia/baxia-entry-gray/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "o.alicdn.com",
+            "path": "/crs-qn/microapp-loader/MicroLoader.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "s-gm.mmstat.com",
+            "path": "/arms.1.1",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 4,
+            "initiator": "script"
+          },
+          {
+            "host": "s-gm.mmstat.com",
+            "path": "/arms.1.2",
+            "method": "POST",
+            "resource_type": "Ping",
+            "status": 200,
+            "content_type": "image/gif",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "umdcv4.taobao.com",
+            "path": "/repTw.json",
+            "method": "OPTIONS",
+            "resource_type": "Other",
+            "status": 200,
+            "content_type": null,
+            "count": 1,
+            "initiator": "preflight"
+          },
+          {
+            "host": "umdcv4.taobao.com",
+            "path": "/repTw.json",
+            "method": "POST",
+            "resource_type": "Fetch",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "umdcv4.taobao.com",
+            "path": "/repTw.json",
+            "method": "POST",
+            "resource_type": "XHR",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 2,
+            "initiator": "script"
+          },
+          {
+            "host": "umdcv4.taobao.com",
+            "path": "/repWd.json",
+            "method": "POST",
+            "resource_type": "Fetch",
+            "status": 200,
+            "content_type": "application/json",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "x.alicdn.com",
+            "path": "/vip/havana-nlogin/0.10.37/index.css",
+            "method": "GET",
+            "resource_type": "Stylesheet",
+            "status": 200,
+            "content_type": "text/css",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "x.alicdn.com",
+            "path": "/vip/havana-nlogin/0.10.37/index.js",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "application/javascript",
+            "count": 1,
+            "initiator": "parser"
+          },
+          {
+            "host": "ynuf.aliapp.org",
+            "path": "/service/um.json",
+            "method": "POST",
+            "resource_type": "XHR",
+            "status": 200,
+            "content_type": "text/plain",
+            "count": 1,
+            "initiator": "script"
+          },
+          {
+            "host": "ynuf.aliapp.org",
+            "path": "/w/wu.json",
+            "method": "GET",
+            "resource_type": "Script",
+            "status": 200,
+            "content_type": "text/javascript",
+            "count": 1,
+            "initiator": "script"
+          }
+        ],
+        "final_url": "https://loginmyseller.taobao.com/?from=&f=top&style=&sub=true&redirect_url=https%3A%2F%2Fmarket.m.taobao.com%2Fapp%2Fcrs-qn%2Fsucai-selector-ng%2Findex%3Ftype%3Dpic%26realtime%3Dtrue",
+        "title": "千牛工作台 - 商家一站式经营阵地",
+        "shape_count": 88,
+        "login_redirect": false
+      }
+    ],
+    "limitations": [
+      "只记录请求形态，不记录 header / cookie / postData / 响应体",
+      "不点击任何按钮、不上传文件、不保存草稿、不提交"
+    ],
+    "cdp": {
+      "ok": true,
+      "version": {
+        "Browser": "Chrome/154.0.8037.93",
+        "Protocol-Version": "1.3"
+      }
+    }
+  },
+  "requests_made_total": 71,
+  "guard_self_check": [
+    "ok"
+  ],
+  "conclusions": {
+    "title": "淘宝图片空间（素材中心）上传端点取证结论",
+    "date": "2026-10-05",
+    "scope": "发布页素材中心 iframe / 千牛图片空间所使用的图片上传接口形态",
+    "evidence_boundary": "本文件的每条端点结论都来自**公开前端 bundle 的静态代码**（可复跑脚本 + 已归档产物）。它证明「官方前端确实这样调用」，**不证明**本仓库能在当前登录态下调用成功——运行时返回值、鉴权要求仍属 unknown。",
+    "login_state": {
+      "verdict": "not_logged_in",
+      "level": "verified",
+      "evidence": [
+        "taobao-publisher/scripts/check-profile-login-state.py：.runtime/chrome-taobao-cdp 的 cookie 库共 15 条，只有 4 个匿名会话 cookie（cna / isg / t / 匿名流量标识），无 unb、无成员身份会话 cookie → has_login_identity=false",
+        "CDP 被动观察：https://item.upload.taobao.com/sell/ai/category.htm → 302 → https://login.taobao.com/havanaone/login/login.htm（title=登录）",
+        "CDP 被动观察：https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index 在浏览器里被重定向到 https://loginmyseller.taobao.com/（千牛商家登录），页面加载 havanalogin.taobao.com/mini_login.htm 与扫码 XHR"
+      ]
+    },
+    "host_reachability": {
+      "level": "verified",
+      "check": "GET https://stream-upload.taobao.com/（只请求站点根，**没有**请求 /api/upload.api，不发任何写请求）",
+      "result": "HTTP 200，content-type=text/html;charset=UTF-8，正文 56 字节：\"$model <br> Welcome to TaoBao vfs-stream application!\"",
+      "note": "证明上传网关的 host 真实存在且是淘宝自己的 vfs-stream 应用。它**不**证明 /api/upload.api 在未登录/已登录下的可用性与鉴权要求（那仍需登录态实测）。"
+    },
+    "upload_paths": [
+      {
+        "id": "small_file_multipart",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "method": "POST",
+        "url": "https://stream-upload.taobao.com/api/upload.api",
+        "content_type": "multipart/form-data",
+        "query_params": {
+          "appkey": "tu",
+          "folderId": "图片空间目录 ID；根目录为 \"0\"（i.getNative().parentId || \"0\"）",
+          "watermark": "布尔，来自上传面板配置",
+          "picCompress": "布尔，取反 originSize",
+          "_input_charset": "utf-8"
+        },
+        "body_fields_by_path": [
+          {
+            "path": "本地文件上传（Plupload，jumpXhr=false）",
+            "fields": {
+              "file": "二进制；字段名由 Plupload 内部决定，bundle 里没有 file_data_name / fileVal / formData 配置 → 未取证（Plupload 默认 file）",
+              "ua": "window.uabModule.getUA({Token:***REDACTED***}) 的返回值；仅当 window.uabModule 存在时作为 multipart_params={ua:l} 附加；不是 navigator.userAgent 字面量"
+            },
+            "note": "这条路径 body 里显式配置的只有 ua；water 与令牌字段都没有"
+          },
+          {
+            "path": "裁剪 / 替换（sucaiTu chunk 与 sucai-tu-selector 裁剪分支）",
+            "fields": {
+              "water": "\"false\"（字符串字面量，在 body）",
+              "name": "<文件名>.<ext>（裁剪默认 jpg；sucaiTu 用原扩展名）",
+              "_tb_token_=***REDACTED***": "值取自 cookie（js-cookie get(\"_tb_token_\")）",
+              "file": "Blob / File，append 的第三个参数是 filename"
+            },
+            "note": "water 在 body、watermark 在 query，是两个不同的东西"
+          },
+          {
+            "path": "AI 生成图（appkey=qnaigc）",
+            "fields": {
+              "name": "<文件名前 20 字符>.jpeg",
+              "file": "Blob，filename 同名"
+            },
+            "note": "该路径虽然读了 cookie 里的令牌，但返回值被逗号表达式丢弃 → body 里既没有令牌字段，也没有 water"
+          }
+        ],
+        "query_params_note": "query 里只有业务参数（appkey / folderId / watermark / picCompress / _input_charset，部分路径另有 autoCompress / resizeWidth / width / hideUserId），**没有任何鉴权类 query 参数**（原文里既没有会话 cookie 名，也没有 sign / token / t 这类签名参数；签名类参数只出现在 mtop 调用里，见证据日志 E-005）。鉴权靠 cookie（RD 包装的 axios 带 withCredentials）或显式 FormData 路径 body 里的令牌字段。folderId 在 Plupload 路径恒有（缺省 \"0\"），在显式 FormData 路径是 t?.pictureCategoryId，可能为 undefined（axios 会丢弃 undefined → 存在不带 folderId 的调用形态）。Plupload 路径是否携带 cookie 在 bundle 里无证据 → unknown。",
+        "pre_release_host": "https://pre-stream.taobao.com/api/upload.api",
+        "sources": [
+          "g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/976.c39500ed.chunk.js",
+          "g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js",
+          "g.alicdn.com/merchant-micro-mods/sucai-batch-upload/0.0.17/js/846.8c00dced.chunk.js",
+          "g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.86/js/158.ff6eb57b.chunk.js"
+        ],
+        "notes": [
+          "同一个 URL 常量在 sucai-center-components 与 sucai-batch-upload 两个远端应用里重复出现（SP.upload），说明是图片空间统一的图片上传网关。",
+          "sucai-tu-selector 的裁剪分支把 FormData 里附加 _tb_token_=***REDACTED*** document cookie），并由 axios 以 withCredentials 发送；普通 Plupload 分支的 multipart 里是否也带同名表单字段尚未取证。"
+        ],
+        "unknown_for_runtime": [
+          "未登录/已登录两种情况下 upload.api 的响应结构（success / message / pictureId / fullUrl 字段的实际取值）",
+          "服务端到底校验 cookie 里的会话，还是校验 multipart 里的 _tb_token_=***REDACTED*** 表单字段，还是两者都要",
+          "单文件大小上限、并发上限、是否需要 ua 令牌（缺 ua 是否被拒）"
+        ]
+      },
+      {
+        "id": "big_file_chunked_direct_upload",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "steps": [
+          {
+            "step": 1,
+            "api": "mtop.taobao.mediacenter.pc.image.upload.config",
+            "params": {
+              "bizCode": "tu"
+            },
+            "note": "取上传配置"
+          },
+          {
+            "step": 2,
+            "api": "mtop.taobao.mediacenter.pc.image.upload.init",
+            "params": {
+              "sha256": "<文件 sha256>",
+              "bizCode": "tu",
+              "fileSize": "<字节>",
+              "fileName": "<文件名>",
+              "dirId": "<目录 ID，根为 0>",
+              "clientType": 1,
+              "pixel": "<宽x高>",
+              "fileType": "<图片类型>"
+            },
+            "returns": "model.imageUploadDTO（秒传命中）或 model.uploadPolicy{sliceSize,sliceNum} + model.uploadUrlList + model.uploadId"
+          },
+          {
+            "step": 3,
+            "method": "PUT",
+            "url": "<model.uploadUrlList[i]>（服务端下发，未取证具体 host）",
+            "headers": {
+              "Content-Type": "application/octet-stream"
+            },
+            "note": "XMLHttpRequest.open(\"PUT\", url)；url 含 stream-upload 时 withCredentials=true；响应取 ETag（或 response.object.ETag）作为 part md5"
+          },
+          {
+            "step": 4,
+            "api": "mtop.taobao.mediacenter.pc.image.upload.complete",
+            "version": "1.0",
+            "type": "POST",
+            "params": {
+              "bizCode": "tu",
+              "uploadId": "<init 返回>",
+              "partList": "JSON.stringify(partList.map(JSON.stringify))",
+              "clientType": "1"
+            },
+            "returns": "model.imageUploadDTO"
+          }
+        ],
+        "sources": [
+          "g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js"
+        ],
+        "unknown_for_runtime": [
+          "uploadUrlList 的真实 host 与签名参数（未取证；按红线不落签名 URL）",
+          "分片大小 sliceSize / 片数 sliceNum 的实际取值",
+          "init 返回 429/风控时的降级行为"
+        ]
+      },
+      {
+        "id": "crop_then_upload",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "method": "POST",
+        "url": "https://stream-upload.taobao.com/api/upload.api",
+        "form_data_fields": [
+          "water=false",
+          "name",
+          "_tb_token_=***REDACTED***",
+          "file"
+        ],
+        "query_params": {
+          "_input_charset": "utf-8",
+          "appkey": "tu",
+          "autoCompress": "false",
+          "folderId": "<目录 ID>",
+          "picCompress": "true",
+          "resizeWidth": "false",
+          "watermark": "false",
+          "width": 0,
+          "hideUserId": "<bool>"
+        },
+        "sources": [
+          "g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.86/js/158.ff6eb57b.chunk.js"
+        ],
+        "notes": [
+          "裁剪（AI/手动）后把裁剪结果当作新图片上传，文件名形如 <原名>_<随机数>副本_<ext>，长度截到 50。"
+        ]
+      },
+      {
+        "id": "ai_generated_image_upload",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "method": "POST",
+        "url": "https://stream-upload.taobao.com/api/upload.api",
+        "form_data_fields": [
+          "name=<前 20 字符>.jpeg",
+          "file=<blob>.jpeg"
+        ],
+        "query_params": {
+          "_input_charset": "utf-8",
+          "appkey": "qnaigc",
+          "folderId": "0",
+          "picCompress": "true",
+          "watermark": "false"
+        },
+        "sources": [
+          "g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js"
+        ],
+        "notes": [
+          "同一条网关，换成 appkey=qnaigc 走 AI 生成图通路。"
+        ]
+      },
+      {
+        "id": "watermark_write",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "method": "POST",
+        "url": "https://tadget.taobao.com/picture/waterMarkX.htm",
+        "content_type": "multipart/form-data",
+        "form_data_fields": [
+          "pic_file",
+          "markInfo",
+          "_tb_token_=***REDACTED***"
+        ],
+        "query_params": {
+          "_input_charset": "utf-8"
+        },
+        "sources": [
+          "g.alicdn.com/merchant-micro-mods/sucai-center-components/0.0.50/js/PicUpload.5b071f5e.chunk.js",
+          "sucai-center-components 0.0.50 js/976.c39500ed.chunk.js"
+        ],
+        "notes": [
+          "写接口：给图片空间里的图片加水印。本仓库不实现，仅记录形态。"
+        ]
+      },
+      {
+        "id": "upload_telemetry",
+        "level": "verified",
+        "level_scope": "官方前端代码里确实这样调用（静态证据）",
+        "method": "GET",
+        "url": "https://stream-upload.taobao.com/api/collect_client_upload_rt.api",
+        "query_params": {
+          "file_Id": "<上传返回的图片 ID>",
+          "rt": "<耗时>",
+          "appkey": "tu"
+        },
+        "sources": [
+          "sucai-center-components 0.0.50 js/976.c39500ed.chunk.js",
+          "PicUpload.5b071f5e.chunk.js"
+        ],
+        "notes": [
+          "上传后回传耗时统计，失败被 catch 后仅 warn，不阻断上传。"
+        ]
+      }
+    ],
+    "image_space_mtop_apis": {
+      "level": "verified",
+      "level_scope": "官方前端代码里确实这样调用（静态证据）；实际请求参数/返回未在登录态下取证",
+      "read": [
+        "mtop.taobao.picturecenter.console.user.storage.query",
+        "mtop.taobao.picturecenter.console.dir.query",
+        "mtop.taobao.picturecenter.console.file.query",
+        "mtop.taobao.picturecenter.console.pic.ref.info",
+        "mtop.taobao.picturecenter.console.file.ref.query",
+        "mtop.taobao.picturecenter.console.file.delete.task.query",
+        "mtop.taobao.picturecenter.console.user.upload.config.query",
+        "mtop.taobao.picturecenter.console.image.source.url.query"
+      ],
+      "write": [
+        "mtop.taobao.picturecenter.console.dir.add",
+        "mtop.taobao.picturecenter.console.dir.move",
+        "mtop.taobao.picturecenter.console.dir.rename",
+        "mtop.taobao.picturecenter.console.file.delete",
+        "mtop.taobao.picturecenter.console.file.stop.delete",
+        "mtop.taobao.picturecenter.console.pic.rename",
+        "mtop.taobao.picturecenter.console.pic.replace",
+        "mtop.taobao.picturecenter.console.pic.convert",
+        "mtop.taobao.picturecenter.console.file.sucai.type.update",
+        "mtop.taobao.picturecenter.console.file.tu.upload",
+        "mtop.taobao.picturecenter.console.trash.file.recover",
+        "mtop.taobao.picturecenter.console.trash.file.clear",
+        "mtop.taobao.picturecenter.console.user.tag.add"
+      ],
+      "upload_family": [
+        "mtop.taobao.mediacenter.pc.image.upload.config",
+        "mtop.taobao.mediacenter.pc.image.upload.init",
+        "mtop.taobao.mediacenter.pc.image.upload.complete"
+      ],
+      "sources": [
+        "sucai-tu-selector 0.0.86 js/158.ff6eb57b.chunk.js",
+        "sucai-center-components 0.0.50 js/976.c39500ed.chunk.js"
+      ]
+    },
+    "frontend_inventory": {
+      "publish_page_media_iframe_app": {
+        "url": "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true",
+        "level": "verified",
+        "evidence": "无 cookie 的 HTTP GET 返回 200 + <title>图片选择器</title>；HTML 由脚本自动识别且含 sucai-selector-ng 标记"
+      },
+      "micro_modules": [
+        {
+          "app": "sucai-tu-selector",
+          "version": "0.0.86",
+          "chunks": 5
+        },
+        {
+          "app": "sucai-center-components",
+          "version": "0.0.50",
+          "chunks": 14
+        },
+        {
+          "app": "sucai-batch-upload",
+          "version": "0.0.17",
+          "chunks": 6
+        },
+        {
+          "app": "qn-item-selector-mod",
+          "version": "0.0.14",
+          "chunks": 0
+        },
+        {
+          "app": "qnmod_empty",
+          "version": "0.0.1",
+          "chunks": 0
+        },
+        {
+          "app": "sucai-tu-shop-auth",
+          "version": "0.0.6",
+          "chunks": 0
+        }
+      ],
+      "micro_module_url_rule": "https://{cdnHost}/merchant-micro-mods/{microModName}/{version}/js/remoteEntry.js（来自 o.alicdn.com/crs-qn/microapp-loader/MicroLoader.js）",
+      "chunk_url_rule": "由 remoteEntry.js 里的 webpack runtime r.u= 反解（prefix + {id:name} 映射 + {id:hash} 映射 + 后缀）",
+      "entry_points_seen": [
+        "https://qn.taobao.com/home.htm/material-center/mine-material/sucai-tu（千牛商家图片空间入口）",
+        "https://quick.taobao.com/picturestudio/scene（场景图/图片工坊）",
+        "https://sucai.wangpu.taobao.com/select.htm（旺铺素材库，另一个产品，不是图片空间）"
+      ]
+    },
+    "rejected": [
+      {
+        "claim": "sc.taobao.com 是图片空间入口",
+        "level": "rejected",
+        "how": "无 cookie HTTP GET https://sc.taobao.com/ → 404；不带 bundle、无任何素材中心标记"
+      },
+      {
+        "claim": "sucai.taobao.com 是图片空间（发布页素材中心）",
+        "level": "rejected",
+        "how": "该域返回的是「首页-TOP素材库-阿里巴巴」的 pc-shop-webapp 装饰素材库页面；发布页素材中心 iframe 指向 market.m.taobao.com/app/crs-qn/sucai-selector-ng/index"
+      },
+      {
+        "claim": "图片上传走 mtop 网关（mtop.*.upload*）",
+        "level": "rejected",
+        "how": "图片二进制上传实际走 stream-upload.taobao.com/api/upload.api（multipart）或 uploadUrlList 直传（PUT 分片）；mtop 只承担 config / init / complete 三个编排接口与元数据查询"
+      }
+    ],
+    "blockers": [
+      "9334 调试实例未登录（cookie 库里没有成员身份会话 cookie，只有匿名标识），无法在真实登录态下观察 upload.api 的请求与响应 → 端点的运行时确认、鉴权方式、字段取值全部 unknown",
+      "uploadUrlList（分片直传）的具体 host 与签名形态未取证：必须在登录态下触发一次真实上传才能拿到，且按红线不允许落签名 URL",
+      "是否需要 multipart 内的 _tb_token_=***REDACTED*** 表单字段（普通 Plupload 路径是否携带）未取证"
+    ],
+    "keywords_searched": [
+      "/upload",
+      "upload.api",
+      "uploadImg",
+      "image/upload",
+      "pic/upload",
+      "multipart",
+      "FormData / new FormData",
+      "picture",
+      "sucai",
+      "qsm",
+      "mtop.*",
+      "/pic/",
+      "folderId",
+      "_tb_token_=***REDACTED***",
+      "_csrf",
+      "uploadFile",
+      "batchUpload",
+      "stream-upload",
+      "uploadUrlList",
+      "sliceSize",
+      "UploadPanel_*"
+    ],
+    "repro_commands": [
+      "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
+      "node protocol-research-taobao-20260908/scripts/start-taobao-cdp-chrome.mjs",
+      "python taobao-publisher/scripts/check-profile-login-state.py",
+      "python taobao-publisher/scripts/probe-image-space-upload-endpoint.py --route all --out-raw taobao-publisher/tmp/image-space-endpoint-probe-raw-20261005.json",
+      "cd taobao-publisher; python -m taobao_publish sanitize tmp/image-space-endpoint-probe-raw-20261005.json captures/tb_image_space_endpoint_probe_20261005.json"
+    ]
+  }
+}

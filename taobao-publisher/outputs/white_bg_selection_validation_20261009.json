@@ -1,0 +1,39 @@
+{
+  "checked_at": "2026-10-09T22:43:08.401099+08:00",
+  "local_selection_evidence": "verified",
+  "platform_white_background_slot": "unknown",
+  "policy": [
+    "manual_choice_first",
+    "automatic_rules_when_unset",
+    "invalid_manual_choice_is_reported",
+    "per_product_persistence",
+    "regeneration_preserves_selected_file"
+  ],
+  "regression": {
+    "tests": 214,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "final_selection_tests": {
+    "tests": 22,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend_interactions_passed": 19,
+  "frontend_publish_regression_passed": 79,
+  "frontend_media_regression_passed": 5,
+  "live_platform_upload_tested": false,
+  "runtime": {
+    "runtime_verified": true,
+    "additive_migration_verified": true,
+    "existing_record_fields_unchanged": true,
+    "real_products_keep_automatic_selection": true,
+    "models_ready": true,
+    "selection_api_registered_and_cors_ready": true,
+    "live_platform_upload_tested": false,
+    "backend_sha256": "111fa7608a1362f1dca14efd2b5ef48f38a67358e69ddc6f15d08ac728ec6f89",
+    "desktop_sha256": "e53434098e731aedcc264dc077d9f75dc79dd7023d0b1553ac6cc5d31d7d440a"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "source": "user_supplied_images_2026-10-05",
+  "scope": "visual_evidence_only_no_live_browser_access",
+  "images": [
+    {
+      "file": "user_media_routes_20261005_01.png",
+      "sha256": "7792ac6dccda8f370501d026582ed720134cf539a3c12930817d0ea7ea99f374",
+      "size": [
+        1569,
+        1119
+      ],
+      "visible_fact": "发布图片选择器含全部图片、目录树与本地上传入口"
+    },
+    {
+      "file": "user_media_routes_20261005_02.png",
+      "sha256": "4966f053e557b510a168ffa6fbe7704c643edf9cd6941b15cfa3bbca67de2fc6",
+      "size": [
+        1842,
+        1860
+      ],
+      "visible_fact": "独立素材页有文件夹、上传文件入口与分页"
+    },
+    {
+      "file": "user_media_routes_20261005_03.png",
+      "sha256": "bebcc3a02a11d17dcc99e0d3607488df5dc67b4e82ca63446c84923ba4a75e23",
+      "size": [
+        1776,
+        1149
+      ],
+      "visible_fact": "上传面板可选择上传至全部图片；原图上传已选"
+    },
+    {
+      "file": "user_media_routes_20261005_04.png",
+      "sha256": "5a43f7423a7313461ebc2517b9e083b28e36c88283d2ca307b26b724f5045b0b",
+      "size": [
+        1809,
+        1173
+      ],
+      "visible_fact": "用户向上传区域拖入父文件夹"
+    },
+    {
+      "file": "user_media_routes_20261005_05.png",
+      "sha256": "19fcb4ae7f10a3bc064bdb627f5b8ce376089dba0115f9aa1f48dbdef202c9fd",
+      "size": [
+        1772,
+        1128
+      ],
+      "visible_fact": "结果中有父级和SKU目录与逐图成功标志，但底部仍显示25个文件上传中"
+    }
+  ],
+  "complete_upload_proven": false,
+  "current_dom_selectors_proven": false,
+  "visual_review": "仅保留用户提供的素材管理画面，未见登录凭据或个人联系方式；未作图像编辑"
+}

@@ -1,0 +1,8 @@
+{
+  "checked_at": "2026-10-03T02:38:47.9338878+08:00",
+  "port": 8769,
+  "listener_count": 0,
+  "websocket_connected": false,
+  "browser_commands_executed": false,
+  "scope": "local OS TCP listener metadata"
+}

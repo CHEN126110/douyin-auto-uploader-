@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-10-03",
+  "scope": "local account list only",
+  "matching_account_count": 1,
+  "platform": "taobao",
+  "active_selection_confirmed": true,
+  "identity_source": "local_account",
+  "verified_platform_identity": false,
+  "new_account_created": false,
+  "browser_access": false,
+  "platform_access": false
+}

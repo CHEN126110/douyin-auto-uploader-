@@ -1,0 +1,13 @@
+{
+  "default_placeholder_present_before": true,
+  "default_placeholder_removed": true,
+  "default_profile_switch_rejected": 404,
+  "other_accounts_preserved": true,
+  "account_count_after": 3,
+  "active_platform": "taobao",
+  "taobao_account_added_from_user_confirmed_name": true,
+  "login_status": "manual",
+  "browser_identity_verified": false,
+  "default_browser_directory_existence_unchanged": true,
+  "health_verified": true
+}

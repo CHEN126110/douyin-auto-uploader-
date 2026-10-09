@@ -50,13 +50,16 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 1200,
+    // 最大 chunk 实测 366 KB（vendor-element-plus），原来写 1200 等于把警告关掉了。
+    chunkSizeWarningLimit: 400,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
+          // 注意顺序：@element-plus/icons-vue 的路径里也含 "element-plus"，
+          // 所以它永远命中下面第一条、拿不到自己的 chunk（原来那条
+          // `vendor-element-icons` 分支是不可达代码，已删除）。
           if (id.includes("element-plus")) return "vendor-element-plus";
-          if (id.includes("@element-plus/icons-vue")) return "vendor-element-icons";
           if (id.includes("vue-router")) return "vendor-vue-router";
           if (id.includes("pinia")) return "vendor-pinia";
           if (id.includes("axios")) return "vendor-axios";

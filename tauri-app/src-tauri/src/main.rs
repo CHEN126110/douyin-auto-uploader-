@@ -28,6 +28,28 @@ fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
+// 与 Python runtime_paths 一致：显式数据目录用于隔离验收或便携部署。
+// 未设置时继续使用原有的应用数据目录，不迁移用户资料。
+fn configured_data_dir() -> Result<Option<PathBuf>, String> {
+    match std::env::var_os("DOUYIN_DATA_DIR") {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            if !path.is_absolute() {
+                return Err("DOUYIN_DATA_DIR must be an absolute path".to_string());
+            }
+            Ok(Some(path))
+        }
+        None => Ok(None),
+    }
+}
+
+fn resolve_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    match configured_data_dir()? {
+        Some(path) => Ok(path),
+        None => app.path().app_local_data_dir().map_err(|e| e.to_string()),
+    }
+}
+
 fn first_existing_path(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|candidate| candidate.exists()).cloned()
 }
@@ -91,8 +113,7 @@ fn resolve_runtime_log_dir(app: &tauri::AppHandle) -> PathBuf {
 
     #[cfg(not(debug_assertions))]
     {
-        app.path()
-            .app_local_data_dir()
+        resolve_app_data_dir(app)
             .unwrap_or_else(|_| {
                 std::env::current_exe()
                     .ok()
@@ -163,7 +184,7 @@ fn resolve_packaged_runtime_paths(
     app: &tauri::AppHandle,
 ) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf), String> {
     let resource_root = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let app_data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let app_data_dir = resolve_app_data_dir(app)?;
     let webview_data_dir = app_data_dir.join("webview2");
 
     ensure_directory(&app_data_dir)?;
@@ -466,7 +487,7 @@ fn get_app_info(app: tauri::AppHandle) -> serde_json::Value {
         .unwrap_or_else(|| fallback_app_dir.clone());
 
     let resource_root = app.path().resource_dir().ok();
-    let app_data_dir = app.path().app_local_data_dir().ok();
+    let app_data_dir = resolve_app_data_dir(&app).ok();
 
     #[cfg(debug_assertions)]
     let workspace_root = app_dir
@@ -577,6 +598,14 @@ fn get_app_info(app: tauri::AppHandle) -> serde_json::Value {
 }
 
 fn main() {
+    // 启动器只询问构建类型；此分支不创建窗口、不启动后端、不修改用户数据。
+    if std::env::args_os().any(|arg| arg == "--desktop-startup-check") {
+        std::process::exit(if cfg!(feature = "custom-protocol") { 0 } else { 12 });
+    }
+    if let Err(error) = configured_data_dir() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
     // panic=abort 的 release 构建里，任何线程 panic 都会让进程无声退出（无事件、无 WER）。
     // 装一个全局钩子，在 abort 前把 panic 内容与堆栈写入 logs\panic.log，便于现场取证。
     std::panic::set_hook(Box::new(|info| {
@@ -612,6 +641,29 @@ fn main() {
         // 已移除。--no-proxy-server 让窗口直连 Vite/后端，避免系统代理/TUN 拦截本地流量。
         "--no-proxy-server",
     );
+
+    // ⚠️ WebView2 的 user data folder 必须在**创建 webview 之前**设置。
+    // Tauri 会先按 tauri.conf.json 建窗口 + WebView2，之后才调用 setup 钩子；
+    // 而这段设置原本写在 setup 里，等于一句永远不生效的死代码 ——
+    // WebView2 一直在用默认位置，profile 出问题时会卡在初始化：
+    // 窗口能出来但内容永远空白、setup 不执行、sidecar 也不会被拉起。
+    // 2026-10-01 实测：profile 指向一个可用目录时，webview 与 setup 都恢复正常。
+    // 外部已显式指定该变量时予以尊重（排障 / 自动化测试用）。
+    #[cfg(target_os = "windows")]
+    {
+        if std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none() {
+            let app_data_dir = configured_data_dir().ok().flatten().unwrap_or_else(|| {
+                std::env::var_os("LOCALAPPDATA")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(std::env::temp_dir)
+                    .join("com.dyin.sock-publisher")
+            });
+            let webview_data_dir = app_data_dir.join("webview2");
+            let _ = std::fs::create_dir_all(&webview_data_dir);
+            std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &webview_data_dir);
+            println!("WebView2 user data dir (early): {:?}", webview_data_dir);
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

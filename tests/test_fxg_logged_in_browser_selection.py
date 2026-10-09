@@ -90,6 +90,62 @@ class FxgLoggedInBrowserSelectionTest(unittest.TestCase):
         self.assertIsNotNone(selected)
         self.assertEqual(selected["debug_address"], "127.0.0.1:9222")
 
+    def test_selected_profile_outranks_default_upload_profile(self) -> None:
+        """用户切到 B 店后，不能因为 A 店浏览器还开着就复用 A 店。
+
+        这是多店铺场景里最贵的一种错：每一步都成功，商品却发到了另一家店，
+        事后没有任何报错可查。
+        """
+        browsers = [
+            {
+                "debug_address": "127.0.0.1:9222",
+                "user_data_dir": r"C:\runtime\upload-browser-profile",
+            },
+            {
+                "debug_address": "127.0.0.1:9334",
+                "user_data_dir": r"C:\runtime\shop-fdd4dde5",
+            },
+        ]
+        targets_by_address = {
+            "127.0.0.1:9222": [
+                {"type": "page", "url": "https://fxg.jinritemai.com/ffa/g/create"}
+            ],
+            "127.0.0.1:9334": [
+                {"type": "page", "url": "https://fxg.jinritemai.com/ffa/mshop/homepage/index"}
+            ],
+        }
+
+        selected = select_logged_in_fxg_debug_browser(
+            browsers, targets_by_address, preferred_profile="shop-fdd4dde5"
+        )
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["debug_address"], "127.0.0.1:9334")
+
+    def test_without_preferred_profile_behaviour_is_unchanged(self) -> None:
+        browsers = [
+            {
+                "debug_address": "127.0.0.1:9222",
+                "user_data_dir": r"C:\runtime\upload-browser-profile",
+            },
+            {
+                "debug_address": "127.0.0.1:9334",
+                "user_data_dir": r"C:\runtime\shop-fdd4dde5",
+            },
+        ]
+        targets_by_address = {
+            "127.0.0.1:9222": [
+                {"type": "page", "url": "https://fxg.jinritemai.com/ffa/g/create"}
+            ],
+            "127.0.0.1:9334": [
+                {"type": "page", "url": "https://fxg.jinritemai.com/ffa/mshop/homepage/index"}
+            ],
+        }
+
+        selected = select_logged_in_fxg_debug_browser(browsers, targets_by_address)
+
+        self.assertEqual(selected["debug_address"], "127.0.0.1:9222")
+
 
 if __name__ == "__main__":
     unittest.main()

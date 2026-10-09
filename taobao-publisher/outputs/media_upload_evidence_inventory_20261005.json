@@ -1,0 +1,438 @@
+{
+  "generated_at": "2026-10-05T22:35:00+08:00",
+  "current_upload_route": {
+    "verdict": "只走 DOM/CDP 路线，没有任何直接 HTTP/mtop 上传实现。链路是：点主图空位 .image-empty 打开素材中心弹层 → 取素材中心 iframe（sucai-selector-ng）的执行上下文 → 点「本地上传」在 iframe 里按需创建 input[type=file] → 用 CDP DOM.setFileInputFiles（优先 objectId，失败回退 nodeId）把本地文件路径塞进那个 input → 等上传队列逐项 state=success → 点上传面板的「完成」落库 → 在图片空间按完整文件名+完整 URL 选入主图位。全仓 grep `multipart` / `form-data` 零命中；taobao_publish/mtop.py 只算签名与分类响应，自己不发送任何请求；唯一对外发请求的模块是 cdp.py（连本地 9334/9502 调试端口）。",
+    "path_convention": "本报告所有 path:line 均为仓库根（C:\\Users\\CRB\\Desktop\\2.1）相对路径，行号为磁盘真实行号（2026-10-05 工作区状态）。",
+    "evidence": [
+      "taobao-publisher/taobao_publish/page.py:336 DOM.setFileInputFiles 封装（set_file_input_files）",
+      "taobao-publisher/taobao_publish/page.py:339 「往 <input type=\"file\"> 塞文件（DOM.setFileInputFiles）。绕开原生文件选择框——这正是自动化上传的关键。」",
+      "taobao-publisher/taobao_publish/page.py:386 self.send(\"DOM.setFileInputFiles\", payload) 主路径（objectId）",
+      "taobao-publisher/taobao_publish/page.py:394 回退路径（DOM.requestNode 拿 nodeId 再 setFileInputFiles）",
+      "taobao-publisher/taobao_publish/page.py:2585-2586 MEDIA_FILE_INPUT = 'input[type=\"file\"]'（「按需创建，点「本地上传」之前不存在」）",
+      "taobao-publisher/taobao_publish/page.py:3045-3047 _upload_staged_files_to_media：click_media_entry(MEDIA_LOCAL_UPLOAD_TEXT) → upload_panel.ensure_all_images",
+      "taobao-publisher/taobao_publish/page.py:3066 record['set'] = client.set_file_input_files(paths, MEDIA_FILE_INPUT, context_id=context_id)",
+      "taobao-publisher/taobao_publish/page.py:3135-3145 「点「完成」让上传落库（E-123）」+ 点完后才做落库确认 landed",
+      "taobao-publisher/taobao_publish/upload_panel.py:52 ensure_all_images：发送文件前把「上传至」回读为「全部图片」",
+      "taobao-publisher/taobao_publish/media_manifest.py:4-5 「本模块不实现或猜测网页私有上传接口。」",
+      "taobao-publisher/taobao_publish/mtop.py:15-16 「本模块只做纯计算与分类，不发起任何请求。」",
+      "taobao-publisher/taobao_publish/mtop.py:213 URL 形态 https://h5api.m.taobao.com/h5/<api>/<v>/?<query>（build_request 只组装，不发送）",
+      "taobao-publisher/contracts/selectors.json:332-338 media.file_input（verified）：note 明写「塞文件走 CDP DOM.setFileInputFiles({files, backendNodeId})」",
+      "taobao-publisher/docs/05-证据日志.md:1468 链路：点空位 → 素材中心 iframe → 已在空间里的直接选，不在的才上传（本地上传 → setFileInputFiles → 等图出现在空间）→ 点卡片选图",
+      "taobao-publisher/taobao_publish/constants.py:221-223 注释记录「上传主图：2026-10-03 实机跑通——素材中心 iframe → 本地上传 → 点「完成」落库 → 逐张点卡片里的 label 选入主图位 → 回读确认 5/5」"
+    ]
+  },
+  "known_endpoints": [
+    {
+      "url_or_path": "https://item.upload.taobao.com/sell/ai/category.htm",
+      "kind": "page",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/taobao_publish/constants.py:48 PUBLISH_WORKBENCH_URL",
+        "taobao-publisher/taobao_publish/constants.py:256 CATEGORY_PAGE_URL",
+        "taobao-publisher/docs/01-平台入口与路线判断.md:26 发布工作台入口表"
+      ]
+    },
+    {
+      "url_or_path": "https://item.upload.taobao.com/sell/v2/publish.htm?catId=<catId>",
+      "kind": "page",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/taobao_publish/constants.py:57 PUBLISH_FORM_URL",
+        "taobao-publisher/taobao_publish/page.py:1123 category_id_from_publish_url",
+        "taobao-publisher/tests/test_category_handoff.py:14 实测形态 .../sell/v2/publish.htm?catId=202187801"
+      ]
+    },
+    {
+      "url_or_path": "https://item.upload.tmall.com/router/publish.htm",
+      "kind": "page",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/docs/01-平台入口与路线判断.md:27 天猫发布页",
+        "taobao-publisher/tests/test_cdp.py:149 天猫入口被识别为淘宝目标"
+      ]
+    },
+    {
+      "url_or_path": "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true&needHeader=false&max=1...",
+      "kind": "iframe",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/taobao_publish/page.py:2573-2577 MEDIA_IFRAME_URL_HINT = \"sucai-selector-ng\"（按 frame URL 匹配，不按 origin）",
+        "taobao-publisher/scripts/probe-media-iframe.py:5 记录完整 src 与「外面套在 .sell-component-image-v2-media-popup 里」",
+        "taobao-publisher/contracts/selectors.json:308-315 media.media_iframe verified，note 含 src、title=「图片选择器」、入口「本地上传 / 图片空间 / 生意管家」",
+        "taobao-publisher/docs/05-证据日志.md:1360 E-103（verified：probe-media-iframe.py）"
+      ]
+    },
+    {
+      "url_or_path": "https://h5api.m.taobao.com/h5/<api>/<version>/?jsv&appKey&t&sign&api&v&type&timeout&dataType",
+      "kind": "api",
+      "evidence_level": "candidate",
+      "evidence": [
+        "taobao-publisher/taobao_publish/mtop.py:29 MTOP_H5_HOST",
+        "taobao-publisher/taobao_publish/mtop.py:238 url = f\"{MTOP_H5_HOST}/h5/{api}/{version}/?{urlencode(query)}\"",
+        "taobao-publisher/docs/01-平台入口与路线判断.md:92-103 签名算法与「只算签名、不发请求」的落地说明",
+        "taobao-publisher/docs/02-接口与字段映射.md:132-137 「它不发请求」，请求由浏览器内 fetch 或 CDP 发出",
+        "等级理由：读路径（app.py 采集）实测用过；写路径/上传路径本条无任何已抓到的上传 API 名"
+      ]
+    },
+    {
+      "url_or_path": "mtop.taobao.jdy.resource.shop.info.get (v1.0) @ h5api.m.taobao.com",
+      "kind": "api",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/docs/05-证据日志.md:238 观察到的请求行 h5api.m.taobao.com /h5/mtop.taobao.jdy.resource.shop.info.get/1.0/",
+        "taobao-publisher/docs/05-证据日志.md:246 E-058：返回 data.result.shopName/shopId/nick；GET + JSONP，data={}；与 mtop.py 常量逐字相同",
+        "用途仅为「读店铺名」，与图片上传无关"
+      ]
+    },
+    {
+      "url_or_path": "https://img.alicdn.com/imgextra/<...>（图片空间返回的图片地址形态）",
+      "kind": "page",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/docs/05-证据日志.md:6809-6813 「主图位读回的是平台侧 URL：https://img.alicdn.com/imgextra/i3/2214966481149/O1CN01..._320x320q80_.webp」",
+        "taobao-publisher/contracts/selectors.json:374 media.main_slot_filled note：已填位里是 img（src 形如 https://img.alicdn.com/imgextra/...）"
+      ]
+    },
+    {
+      "url_or_path": "POST https://item.upload.taobao.com/sell/v2/asyncOpt.htm（字段名 catId,itemId,jsonBody,globalExtendInfo）",
+      "kind": "api",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/tmp/publish-requests-20261003123151.json 观察产物（1200s，19 条 host/path）中的唯一 POST 写形态之一",
+        "taobao-publisher/scripts/watch-publish-requests.py:6-9 只记 host/path/方法/类型/mtop api 名/POST 字段名，不记任何值"
+      ]
+    },
+    {
+      "url_or_path": "POST https://item.upload.taobao.com/sell/partEdit/previewDraftSubmit.htm（字段名 catId,itemId,copyItemMode,jsonBody,global,globalExtendInfo）",
+      "kind": "api",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/tmp/publish-requests-20261003123151.json 同一观察产物",
+        "与图片上传无关；只是证明观察器确实抓到了写请求形态，但没有抓到上传端点"
+      ]
+    },
+    {
+      "url_or_path": "https://item.upload.taobao.com/sell/draftOp/add.json、/sell/draftOp/update.json、/sell/draftList.json",
+      "kind": "api",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/tmp/publish-requests-20261003123151.json 同一观察产物"
+      ]
+    },
+    {
+      "url_or_path": "独立「素材页 / 图片空间」页面 URL（用户截图里「上传文件 / 新建文件夹 / 分页」那一页）",
+      "kind": "page",
+      "evidence_level": "unknown",
+      "evidence": [
+        "taobao-publisher/captures/user_media_routes_20261005.json:21-22 「独立素材页有文件夹、上传文件入口与分页」（只有视觉事实，未记录 URL）",
+        "taobao-publisher/captures/user_media_routes_20261005.json:52 「current_dom_selectors_proven: false」",
+        "taobao-publisher/docs/25-整件商品一次上传与文件夹方案.md:17 「当前 DOM、事件绑定、同名云端目录的合并规则仍为 unknown；截图不能验证 CSS 选择器。」"
+      ]
+    },
+    {
+      "url_or_path": "图片上传端点（host / path / multipart 表单字段名 / 响应 URL 形态）",
+      "kind": "api",
+      "evidence_level": "unknown",
+      "evidence": [
+        "taobao-publisher/docs/06-阻塞项.md:205-216 B-03 的验收标准原文要求「拿到上传接口（host / path / 表单字段名）与返回 URL 形态」——该条从未达成，B-03 是以「DOM 上传实机跑通」解除的",
+        "taobao-publisher/docs/05-证据日志.md:88 「图片是否必须先入淘宝图片空间（已知外链会被判盗链，但图片空间接口形态未知）。」",
+        "taobao-publisher/docs/02-接口与字段映射.md:99 media.main_images：「是否必须先入图片空间、接口形态、返回 URL 形态均未知」"
+      ]
+    },
+    {
+      "url_or_path": "观察白名单 host（item.upload.taobao.com / item.upload.tmall.com / h5api.m.taobao.com / mtop.taobao.com / api.m.taobao.com / market.m.taobao.com / img.taobao.com / stream.taobao.com / qn.taobao.com）",
+      "kind": "api",
+      "evidence_level": "candidate",
+      "evidence": [
+        "taobao-publisher/scripts/capture-publish-requests.mjs:36-46 INTERESTING_HOSTS（只是「值得记录的 host」清单，不代表其中任何一条被证实承载上传）",
+        "taobao-publisher/docs/01-平台入口与路线判断.md:141 qn.taobao.com 在本子项目里只作为外部公告链接出现，没有任何上传 endpoint 证据"
+      ]
+    },
+    {
+      "url_or_path": "https://login.taobao.com/member/login.jhtml ；https://sec.taobao.com/punish（风险/登录页标记）",
+      "kind": "page",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/tests/test_cdp.py:182 login 目标被识别为登录页",
+        "taobao-publisher/tests/test_cdp.py:189 sec.taobao.com/punish 目标被识别为风控页",
+        "taobao-publisher/docs/04-安全门与授权红线.md:236-241 命中 sec.taobao.com / punish / captcha 立即停手"
+      ]
+    },
+    {
+      "url_or_path": "mtop.mediaplatform.live.encryption (v1.0) @ h5api.m.taobao.com",
+      "kind": "api",
+      "evidence_level": "verified",
+      "evidence": [
+        "taobao-publisher/tmp/publish-requests-20261003123151.json 观察产物中出现的 mtop api 名（与图片上传无关，仅证明观察器能拿到 mtop api 名）"
+      ]
+    }
+  ],
+  "captured_upload_requests": {
+    "found": false,
+    "detail": "没有抓到过任何图片上传请求（无 multipart/form-data，无上传端点、字段名、响应结构）。证据链：① 全仓对 `multipart` / `form-data` 的 grep 零命中（docs、taobao_publish、scripts、contracts、captures、outputs 全覆盖）；② 唯一的上传类观察器 taobao-publisher/scripts/capture-publish-requests.mjs 只用 Network 域被动监听（第 8-10 行明确「不拦截、不修改、不重放、不重发」），过滤 INTERESTING_HOSTS（第 36-46 行），首次运行 taobao-publisher/tmp/tb_publish_requests_raw_20261002161323.json 记录 totals.interesting_requests=0 / write_like_requests=0 / mtop_requests=0；③ 2026-10-03 那次 1200 秒观察（taobao-publisher/tmp/publish-requests-20261003123151.json）共 19 条 host/path，写形态只有 asyncOpt.htm、partEdit/previewDraftSubmit.htm、draftOp/add.json、draftOp/update.json、mtop.alibaba.alidetaildeocrate.lite.template.list，**没有任何上传端点**；④ 实际上传动作全部由 DOM 探针直接触发，而探针只 dump DOM，不装网络监听：scripts/probe-upload-lifecycle.py（docstring 1-12 行、实现 107-158 行只做 evaluate + set_file_input_files）、scripts/verify-media-finish.py（只点「完成」）、scripts/probe-upload-error.py（只 dump 队列子树），因此上传流量从未被记录；⑤ 观察器派生的脱敏产物 captures/ 下只有 user_media_routes_20261005.json 与 user_media_subdirectory_selection_20261005.json 两个「用户截图索引」，captures/ 下没有任何请求抓包文件（也没有 captures/README.md）。"
+  },
+  "blockers": [
+    {
+      "item": "B-03 图片空间链路未知（已解除，但解除方式不是协议化）",
+      "where": "taobao-publisher/docs/06-阻塞项.md:203",
+      "text": "> **状态：已解除** —— 2026-10-03：上传实机跑通（第 59 轮修掉一个「平台接受了却报失败」的死锁）。5 张主图上传入库并选入主图位，回读确认。"
+    },
+    {
+      "item": "B-03 的原始验收标准仍悬空：上传接口形态从未取证",
+      "where": "taobao-publisher/docs/06-阻塞项.md:212-213",
+      "text": "**验收标准**：拿到上传接口（host / path / 表单字段名）与返回 URL 形态；\n确认返回的 URL 是否可直接用于后续发布。"
+    },
+    {
+      "item": "B-15 本会话无法访问发布入口（仍存在）",
+      "where": "taobao-publisher/docs/06-阻塞项.md:370-372",
+      "text": "> **当前状态：仍存在。** 历史资料记有其它执行时的页面验证，不构成本次工具权限的改变；当前站点禁令及禁止绕过要求仍有效。\n\nBrowser Use 的站点安全策略直接拒绝该入口，且明确禁止替代浏览器、CDP、窗口读取或请求脚本绕过。"
+    },
+    {
+      "item": "当前阻塞只有三项（B-17 提交授权 / B-18 三块非标准控件 / B-19 跨类目地图）",
+      "where": "taobao-publisher/docs/06-阻塞项.md:55-63",
+      "text": "| **B-18** | `发货时间` / `提取方式` / `宝贝详情` 无写入方式 | 开发 | 需要实地勘察这三块的非标准控件 |\n**除了这三项，发布链路（除提交外）已端到端跑通。**"
+    },
+    {
+      "item": "B-09 详情描述写入方式未知（media.detail_images = unknown）",
+      "where": "taobao-publisher/docs/06-阻塞项.md:303-308",
+      "text": "> **状态：仍存在** —— 「宝贝详情」在实测地图里 `controls=0`，note 写明「尚无写入方式」。这是**当前的真实缺口**，见文末 B-18。\n\n**现状**：`media.detail_images` 是 `unknown`。非必填（不阻塞），但缺失会让发布出的商品没有详情。"
+    },
+    {
+      "item": "图片空间/目录结构仍未在真实页面核对",
+      "where": "taobao-publisher/docs/20-图片目录导航与批量上传.md:40",
+      "text": "没有访问当前真实淘宝工作台，没有实际上传、保存草稿或上架。当前目录树适配仍需要实际页面匹配；中间文件夹卡片的双击交互尚未实现。"
+    },
+    {
+      "item": "云端目录合并规则与整文件夹导入未验收",
+      "where": "taobao-publisher/docs/25-整件商品一次上传与文件夹方案.md:45",
+      "text": "目录拖入事件与普通 file input 的多个文件不是同一种数据结构。不能把父文件夹路径直接塞入普通多文件输入，并期待网站自动创建整棵目录。生产端的整文件夹入口仍未启用；隔离枚举成功不证明真实淘宝服务端完成了上传、合并或去重。"
+    },
+    {
+      "item": "生产必填读取器仍为局部可见范围（completePage=false）",
+      "where": "taobao-publisher/docs/25-整件商品一次上传与文件夹方案.md:53",
+      "text": "以上是本地真实 HTTP 工作线程、生产流水线与隔离合成页面的证据，平台上传服务为模拟。真实淘宝当前页面仍未访问，本轮没有执行真实上传。生产必填读取器仍是局部可见范围，`completePage=false`；完整目标保持为真实商品填写全部必填并停在提交前。"
+    },
+    {
+      "item": "上传后子目录定位仍需真实页面事实",
+      "where": "taobao-publisher/docs/28-上传后子目录定位与图片名称.md:28",
+      "text": "当前目录树仍需符合已支持的ARIA/Next结构，卡片父子关系按运行时条件判断。若当前淘宝的实际目录结构不同，新错误会明确显示目录未识别；仍需相应页面事实继续适配。"
+    },
+    {
+      "item": "目录加载时序的生产标记仍为 candidate",
+      "where": "taobao-publisher/docs/30-目录选中与图片加载时序.md:21",
+      "text": "`test_media_directory_transition.py` 用新建隔离浏览器覆盖上述四个反例，以及超时、隐藏指示器、读取期间重新加载、整批查找与最终选图。目录、图库和上传服务仍为明确的本地模型。生产页面能否通过这些候选标记完整反映加载时序仍为 `candidate`。"
+    },
+    {
+      "item": "上传/媒体契约的生产适配尚缺",
+      "where": "taobao-publisher/taobao_publish/media_manifest.py:212",
+      "text": "本函数不会调用商品填写、保存草稿或提交；网页接口的生产适配尚需实证契约。"
+    },
+    {
+      "item": "目标级阻塞条件（记录在案的最新一次审查）",
+      "where": "taobao-publisher/outputs/goal_post_media_scope_audit_20261005.json:29",
+      "text": "\"blocking_condition\": \"工具此前拒绝读取相关淘宝商家后台且禁止替代通道绕过；当前真实控件、完整必填事实和新版运行反馈缺失，剩余核心适配及真实验收无法仅由现有材料完成\""
+    },
+    {
+      "item": "上传阶段缺「真实上传服务与当前页面主图入位」现场证据",
+      "where": "taobao-publisher/outputs/goal_post_media_scope_audit_20261005.json:104,115",
+      "text": "\"missing_authoritative_evidence\": \"当前淘宝控件匹配情况、真实上传队列/图库回执以及选择后绑定结果仍缺现场确认\" / \"missing_authoritative_evidence\": \"真实上传服务与当前页面主图入位、顺序核对尚未验证\""
+    },
+    {
+      "item": "LIVE_VERIFIED_STAGES 里没有 upload_images（实机只跑通过旧版主图链路）",
+      "where": "taobao-publisher/taobao_publish/constants.py:214-237",
+      "text": "frozenset({ STAGE_SESSION, STAGE_PRECHECK, STAGE_SELECT_CATEGORY, STAGE_FILL_BASE, STAGE_FILL_PROPS, STAGE_FILL_PRICE_STOCK, STAGE_FILL_FREIGHT }) —— 第 221-223 行注释说「上传主图：2026-10-03 实机跑通…本轮扩展为主图/SKU/详情共用上传，完整路径仍需实机验证」，但 STAGE_UPLOAD_IMAGES 未列入该集合，因此它落在 LIVE_UNVERIFIED_STAGES（第 241-243 行）。"
+    }
+  ],
+  "runtime_facts": [
+    {
+      "fact": "「点完成才算落库」——不点「完成」，图不会进图片空间",
+      "where": "taobao-publisher/taobao_publish/page.py:2590-2592",
+      "text": "⚠️ **这是上传真正落库的关键一步**（E-123）：面板里每个文件都会带 `next-icon-success` 成功图标、文案也有「上传成功」，但**不点「完成」，图就不会进图片空间**——实测空间里 144 张卡片一张都没有它们。"
+    },
+    {
+      "fact": "同一事实的证据日志原文",
+      "where": "taobao-publisher/docs/05-证据日志.md:5592-5593",
+      "text": "> **点「完成」让上传落库**：不点它，文件只停在上传面板里，\n> 图片空间里什么都看不到，而面板上全是成功图标。"
+    },
+    {
+      "fact": "点完成前后的实测对照（E-123）",
+      "where": "taobao-publisher/docs/05-证据日志.md:1826-1835",
+      "text": "**点「完成」之前**：5 个文件都在队列里、每个都带 `next-icon-success` 成功图标、面板文案也有「上传成功」——但**图片空间 144 张卡片里一张都没有它们**。\n**点「完成」之后**（实测）：面板项 9 → 0（队列清空）… → 上传落库成功"
+    },
+    {
+      "fact": "DOM 层的落库实现：点击完成前先核对队列，点完后再确认 landed",
+      "where": "taobao-publisher/taobao_publish/page.py:3135-3145",
+      "text": "# **点「完成」让上传落库**（E-123）：不点它，文件只停在上传面板里，图片空间里什么都看不到，而面板上全是成功图标。 … # **点完之后再核对**：这才是「落库确认」。队列说成功 ≠ 已经进了图片空间——中间隔着「完成」这一下。"
+    },
+    {
+      "fact": "「操作过于频繁，请滑动验证码之后，重新上传。」= 平台限流要求人工过验证码，不是代码 bug",
+      "where": "taobao-publisher/docs/05-证据日志.md:3099-3124",
+      "text": "## AQ. 2026-10-03 上传不落库的**根因**：平台限流要求验证码（不是代码 bug）… UploadPanel_fileDesc: '操作过于频繁，请滑动验证码之后，重新上传。' … **平台在限流，要求人工完成滑动验证码。** … **红线**：不绕过任何安全机制。**我不会去过那个验证码，也立即停止了继续上传。**"
+    },
+    {
+      "fact": "限流原文与处置口径（写进阻塞项与代码）",
+      "where": "taobao-publisher/docs/06-阻塞项.md:129-130",
+      "text": "* **不绕过风控**：上传被限流时如实报出平台原文（「操作过于频繁，请滑动验证码之后，重新上传。」），**请人工处理**。"
+    },
+    {
+      "fact": "代码里对限流的处置：不重试、如实带出平台原因",
+      "where": "taobao-publisher/taobao_publish/page.py:3078-3084",
+      "text": "实测平台给的是「操作过于频繁，请滑动验证码之后，重新上传。」，而当时报的是 ``arrived: true`` / ``confirmed``。**平台拒绝了却报成功。** … 这一层只如实报告，**不尝试绕过验证码**；人工处理之后重跑。"
+    },
+    {
+      "fact": "错误目录写明不要绕过验证码，且用 AST 查标识符防止「顺手自动化验证码」",
+      "where": "taobao-publisher/taobao_publish/errors.py:128",
+      "text": "\"如实报告，**不要尝试绕过**。请人工在浏览器里完成验证（例如滑动验证码）\""
+    },
+    {
+      "fact": "限流的实测影响面：多次真实上传全部被拒（未落库）",
+      "where": "taobao-publisher/docs/05-证据日志.md:3204-3208",
+      "text": "本轮**向店铺图片空间尝试上传了 3 张图，全部被平台拒绝**（未落库），`tmp/upload-lifecycle-*.json` 与 `tmp/upload-error-*.json` 有逐次记录。… **已停止继续上传**，避免把限流推向更严重。"
+    },
+    {
+      "fact": "限流解除后的一次真实上传成功并落库（实机）",
+      "where": "taobao-publisher/docs/05-证据日志.md:5625-5627",
+      "text": "ok = True   confirmed = ['ID-探针_200345_1x1.jpg']   failed = []\n→ 上传成功并落库"
+    },
+    {
+      "fact": "整条链路 8/8 实机通过时 upload_images 的耗时（5 张约 10.5 分钟）",
+      "where": "taobao-publisher/docs/05-证据日志.md:5634,5645",
+      "text": "[OK] upload_images     628515ms  主图已选入主图位并回读确认：5 张（本次新上传 5 张，空间里原有 0 张） … （上传 5 张耗时约 10.5 分钟——每张都要等它落进空间。）"
+    },
+    {
+      "fact": "上传入口是 iframe 内按需创建的 file input，且不弹原生文件框",
+      "where": "taobao-publisher/docs/05-证据日志.md:1361",
+      "text": "| E-104 | 点「本地上传」之后，iframe 里**出现 1 个** `input[type=file]`（`multiple=true`、accept 为常见图片格式、display=block），且**留在 DOM 里、不触发原生框**（未收到 `Page.fileChooserOpened`） | verified：`probe-media-local-upload.py` |"
+    },
+    {
+      "fact": "上传目标默认「全部图片」，且必须回读成功才发送文件",
+      "where": "taobao-publisher/taobao_publish/upload_panel.py:52-72",
+      "text": "ensure_all_images()：read 后若 value != '全部图片' 则 open+pick，再轮询回读，超时抛 FieldMismatchError('上传目标未回读为全部图片，尚未发送文件')"
+    },
+    {
+      "fact": "上传时的本地文件身份 = 内容摘要改名，原名不上传（tb_<记录ID>_<用途>_<槽位>_<sha256前32位>.<后缀>）",
+      "where": "taobao-publisher/taobao_publish/form_adapters.py:339",
+      "text": "name = 'tb_%s_%s%s_%s%s' % (record_id, role, position, digest[:32], path.suffix.lower())"
+    },
+    {
+      "fact": "图片空间是店铺级的，「按名字判断已在空间」曾经错用别的商品的图",
+      "where": "taobao-publisher/tests/test_media_name_identity.py:5-8",
+      "text": "1. **采集目录里的主图名不含商品标识**（``主图_01_1x1.jpg``），而图片空间是**店铺级**的。于是两个商品的主图同名，「按名字判断图已在空间里 → 跳过上传」会把**上一个商品的图**当成这个商品的图选进去。"
+    },
+    {
+      "fact": "上传/选图全部是「模型页面」验证，未触达真实平台",
+      "where": "taobao-publisher/outputs/media_single_upload_handoff.json:2-4",
+      "text": "\"scope\": \"local_synthetic_browser_with_real_http_worker\", \"live_platform_tested\": false, \"server_uploads_simulated\": true"
+    },
+    {
+      "fact": "21 张上传后定位那轮的产物同样声明平台为模拟",
+      "where": "taobao-publisher/outputs/uploaded_media_subdirectories_handoff.json:2-3",
+      "text": "\"scope\": \"isolated_browser_with_simulated_upload_server_and_role_subdirectories\", \"live_platform_tested\": false"
+    }
+  ],
+  "receipt_producer": {
+    "exists": false,
+    "detail": "PreparedProductMedia / UploadedImageReceipt 这两个冻结契约（taobao-publisher/taobao_publish/media_manifest.py:134-148）**没有生产端**。它们只被两处消费：① media_manifest.py:207-234 的 prepare_media_batch(plans, upload_product, ...)，它要求调用方传入一个 upload_product 回调，并强制校验回调返回的对象 `isinstance(prepared, PreparedProductMedia)`（第 228 行）；② pipeline.py:233 的可选入参 prepared_media，pipeline.py:320-327 只做 isinstance 校验 + selection_plan 校验。全仓 grep `PreparedProductMedia(` 只命中一处构造点：taobao-publisher/tests/test_prepared_media_manifest.py:36（测试里手搓）。全仓 grep `upload_product` 只有 media_manifest.py 的形参/文档串（第 211、216、227 行）与 protocol-research/fxg_protocol_pipeline.py:100（抖店侧同名函数，另一套协议体系，不可搬用）。也就是说：真正上传并返回回执的代码**不存在**，契约处于「等生产适配」状态（media_manifest.py:212 原文：「网页接口的生产适配尚需实证契约」）。目前真实跑得通的生产路径用的是另一套**普通 dict 回执**，不是这两个 dataclass：form_adapters.prepare_media（taobao-publisher/taobao_publish/form_adapters.py:376-454）返回 {role: [{path, name, sha256, url, folder_path, page_number, uploaded_now}]}，其数据来自 page.upload_files_to_media 的 confirmed/landed/finish 结果（page.py:3155-3168）与 media_library.locate_uploaded_images（taobao-publisher/taobao_publish/media_library.py:244-292）。",
+    "contract": "taobao-publisher/taobao_publish/media_manifest.py:134-148",
+    "consumer": [
+      "taobao-publisher/taobao_publish/media_manifest.py:207-234",
+      "taobao-publisher/taobao_publish/pipeline.py:233,320-327",
+      "taobao-publisher/taobao_publish/stages.py:50,86"
+    ],
+    "only_constructor": "taobao-publisher/tests/test_prepared_media_manifest.py:36",
+    "live_path_receipts": [
+      "taobao-publisher/taobao_publish/form_adapters.py:404-406,411-412,443-452（dict 回执）",
+      "taobao-publisher/taobao_publish/page.py:3155-3168（confirmed / landed / failed / finish / ok）",
+      "taobao-publisher/taobao_publish/media_library.py:244-292（locate_uploaded_images）"
+    ]
+  },
+  "selector_contracts": [
+    {
+      "key": "media.main_image_slot",
+      "selector": ".image-empty",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:284-290", "write_critical=true"]
+    },
+    {
+      "key": "media.upload_popup",
+      "selector": ".sell-component-image-v2-media-popup",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:296-302", "write_critical=true"]
+    },
+    {
+      "key": "media.media_iframe",
+      "selector": "iframe[src*=sucai-selector-ng]",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:308-314", "write_critical=true"]
+    },
+    {
+      "key": "media.local_upload_entry",
+      "selector": "(label 文本「本地上传」)",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:320-326", "write_critical=true"]
+    },
+    {
+      "key": "media.file_input",
+      "selector": "input[type=file]",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:332-338", "write_critical=true", "note 明写用 CDP DOM.setFileInputFiles"]
+    },
+    {
+      "key": "media.space_tab",
+      "selector": "(label 文本「图片空间」)",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:344-350", "write_critical=false"]
+    },
+    {
+      "key": "media.image_card",
+      "selector": "[class*=\"PicList_pic_background\"]",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:356-362", "write_critical=true"]
+    },
+    {
+      "key": "media.main_slot_filled",
+      "selector": ".sell-component-material-item-view",
+      "evidence_level": "verified",
+      "evidence": ["taobao-publisher/contracts/selectors.json:368-374", "write_critical=true"]
+    },
+    {
+      "key": "sku.image_slot",
+      "selector": ".sell-component-material-item-view",
+      "evidence_level": "candidate",
+      "evidence": ["taobao-publisher/contracts/selectors.json:465-471", "write_critical=false"]
+    },
+    {
+      "key": "sku.table_image",
+      "selector": "img",
+      "evidence_level": "candidate",
+      "evidence": ["taobao-publisher/contracts/selectors.json:477-483", "write_critical=false"]
+    },
+    {
+      "key": "media.exact_filename",
+      "selector": "img[alt]",
+      "evidence_level": "candidate",
+      "evidence": ["taobao-publisher/contracts/selectors.json:501-507", "write_critical=false", "docs/06-阻塞项.md:470 记录该条目曾让 upload_images 阶段停在 media.exact_filename 未确认"]
+    },
+    {
+      "key": "media.directory_tree",
+      "selector": "[role=\"tree\"],.next-tree",
+      "evidence_level": "candidate",
+      "evidence": ["taobao-publisher/contracts/selectors.json:513-519", "write_critical=false", "source：用户2026-10-05说明父目录与主图/SKU/详情页子目录；test_media_directory_flow.py仅证明本地原生目录树模型"]
+    },
+    {
+      "key": "media.directory_node",
+      "selector": "[role=\"treeitem\"],.next-tree-node",
+      "evidence_level": "candidate",
+      "evidence": ["taobao-publisher/contracts/selectors.json:525-531", "write_critical=false"]
+    }
+  ],
+  "route_gate_status": {
+    "dom_write_ready": true,
+    "protocol_write_ready": false,
+    "evidence": [
+      "taobao-publisher/taobao_publish/contracts.py:526-527 protocol_write_ready = contracts_ok and not field_blocked；dom_write_ready = contracts_ok and not selector_blocked",
+      "taobao-publisher/docs/04-安全门与授权红线.md:104-107 路线门对照表：mtop 协议路线不可用（0 个 verified）；DOM 路线可用（30/30）",
+      "taobao-publisher/docs/02-接口与字段映射.md:80-87 field_mapping 证据分布 verified 0 / candidate 10 / unknown 6"
+    ]
+  }
+}

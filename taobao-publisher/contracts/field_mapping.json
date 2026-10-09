@@ -1,0 +1,246 @@
+{
+  "contract_version": "0.2.0",
+  "platform": "taobao",
+  "updated_at": "2026-10-02",
+  "purpose": "淘宝商品发布的字段映射契约。平台字段名只允许出现在本文件里，不允许硬编码进 taobao_publish 的 dataclass。",
+  "authority": "taobao-publisher/AGENTS.md",
+  "evidence_levels": {
+    "verified": "有可复现实验证据（脚本输出 / 抓包产物 / 官方文档）且已归档",
+    "candidate": "有间接证据或合理推断，尚未实证；可以写代码但必须能被证伪",
+    "unknown": "查不到；必须进 blockers，不得用默认值填充",
+    "rejected": "已实证不成立；必须写明证伪方式"
+  },
+  "write_gate": {
+    "rule": "platform_field 非 null 且 evidence.level 属于 [\"verified\"] 时，该字段才允许进入真实写操作。",
+    "rationale": "淘宝写接口字段名目前一条都没实证。candidate 级别的字段名一旦写进平台就是脏数据，宁可拒绝执行。",
+    "why_not_candidate": "本文件里大部分 candidate 来自已下线的淘宝开放平台（TOP）老接口文档，其字段语义可用来理解新版 schema，但**不能证明**当前网页发布工作台仍使用同名协议字段。要升级到 verified，必须在发布工作台上抓到真实写请求。"
+  },
+  "route_conclusion": {
+    "evidence_level": "verified",
+    "source": "https://open.fliggy.com/support/announcementDetail.htm?source=search&id=25658",
+    "note": "淘宝开放平台自 2022-08-31 起逐步下线 taobao.item.add / taobao.item.update 等商品发布编辑接口；替代接口 alibaba.item.publish.submit 的商家自研身份『仅面向天猫商家开放』（https://open.taobao.com/businessDetail.htm?tagId=1），第三方须走 ISV 资质审核。因此本子项目**不做 API 路线**，只做网页工作台 + mtop 路线。"
+  },
+  "fields": [
+    {
+      "intent": "item.title",
+      "local_source": "Record.title",
+      "stage": "fill_base",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "已实证发布工作台存在标题填写环节（https://jianghu.taobao.com/detail/47301_35929790），但输入控件的选择器与提交体字段名均未取证。"
+      },
+      "blocker_hint": "发布页标题字段未实证：需在发布工作台抓包，或在 DOM 路线中确认标题输入框定位策略（contracts/selectors.json 的 base.title_input）。"
+    },
+    {
+      "intent": "item.category_id",
+      "local_source": "由类目接口实时拉取；本地 Record.clazz 是本地自定义类目，不是平台类目 ID",
+      "stage": "select_category",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/08-页面实拍与流程.md（2026-10-03 实拍）",
+        "note": "已实测三处：① 本地 Record.clazz 是小整数（如 2），量级与叶子类目 ID 不符，不可直接用（src/orm.py:21-39）；② 类目页是三级级联选择器（一级/二级/三级），外加一个带搜索的树；③ **选定叶子类目后跳转的 URL 形如 …/sell/v2/publish.htm?catId=201581801&fromAICategory=true&keyProps={}&fromAIPublish=true**，即叶子类目 ID 通过 URL 查询参数 catId 传递（实测样本 201581801，约 9 位数字）。**仍缺**：类目树的 ID 从哪里来（接口名/返回结构），以及提交体的字段名。"
+      },
+      "blocker_hint": "已确证叶子类目 ID 走 URL 的 catId 参数（9 位数字），但『类目树/属性值列表从哪个接口取』仍未取证，提交体字段名也未知。注意 catId 是导航参数，不是写接口字段。"
+    },
+    {
+      "intent": "item.category_path",
+      "local_source": "由类目接口返回",
+      "stage": "select_category",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "仅用于人工核对与日志展示，不参与程序判定，因此不阻塞。"
+      },
+      "blocker_hint": ""
+    },
+    {
+      "intent": "item.outer_id",
+      "local_source": "Record.name（如 ID-976666440420）",
+      "stage": "fill_base",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "老 TOP 接口用 outer_id 表达商家编码。非必填，位置与长度限制未取证。"
+      },
+      "blocker_hint": ""
+    },
+    {
+      "intent": "item.guide_title",
+      "local_source": "本地无此字段（Record 表没有导购标题）",
+      "stage": "fill_base",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍）",
+        "note": "2026-10-03 实拍**新发现**的字段：「导购标题」，位于「宝贝标题」下方，**选填**（无必填星号）。平台给出的结构建议原文：「品牌 + 筒高 + 功能 + 面料主材质 + 服装款式细节 + 风格 + 亮点 + 品类词 + 利益点」。上限 30 字符 / 15 汉字（见 rules.json 的 guide_title_max_chars）。它旁边也有「AI推荐」按钮。**本地 Record 表没有这个字段**，要填必须由调用方提供。"
+      },
+      "blocker_hint": "字段本身已实证存在，但提交体字段名未知；且本地没有数据源，需调用方显式提供（选填，缺失不阻塞）。"
+    },
+    {
+      "intent": "item.props",
+      "local_source": "由采集产品属性 + 人工整理，需重新绑定到目标类目的属性 ID",
+      "stage": "fill_props",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "官方老接口文档给出属性体系语义：关键属性/商品属性/绑定属性(SPU)/销售属性(SKU)；枚举属性写 props=pid:vid；自定义属性写 input_pids+input_str；关键属性选『其他』时必须补 input_pids+input_str。这些是理解新版 schema 的钥匙，但**不是**当前网页工作台仍用同名参数的证据。"
+      },
+      "blocker_hint": "类目属性体系未取证：属性必须通过目标类目的属性值列表动态解析，禁止硬编码 pid/vid（官方明确要求）。"
+    },
+    {
+      "intent": "item.sale_props",
+      "local_source": "采集侧 ICE skuBase.props（pid / name / values[].vid）",
+      "stage": "fill_skus",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "tauri-app/python-sidecar/app.py:11177-11194",
+        "note": "读路径已实证：淘宝商品详情页 __ICE_APP_CONTEXT__ 的 skuBase.props 带 pid 与 values[].vid；详情 URL 的 sku_properties 参数形如 20509%3A28383（pid:vid）。老 TOP 文档同样用 props=pid:vid 与 sku_properties 表达销售属性。两处一致，但发布工作台是否复用同一套词汇仍未取证。"
+      },
+      "blocker_hint": "销售属性 pid/vid 是否与读路径同一套词汇未取证：需在发布工作台抓包确认。"
+    },
+    {
+      "intent": "item.sale_prop_values",
+      "local_source": "采集侧 ICE skuBase.props[].values[].vid / name",
+      "stage": "fill_skus",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "tauri-app/python-sidecar/app.py:11186-11194",
+        "note": "同 item.sale_props。另注意：目标类目的可选值集合与源商品未必一致（尺码区间、颜色命名都可能不同），必须按目标类目重新取可用值。"
+      },
+      "blocker_hint": "目标类目的可销售属性值集合未取证。"
+    },
+    {
+      "intent": "sku.price",
+      "local_source": "Record.content[].price（实测为 float，如 4.8）",
+      "stage": "fill_price_stock",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "已实测本地数据形态：sqlite.db 的 record.content 是 JSON 数组，元素为 {dir_name, file_name, name, path, price}，price 为 float。老 TOP 接口用 sku_prices 表达 SKU 价格，并规定一口价须落在 SKU 价格区间内（新版 schema tipRule 原文）。平台侧字段名、单位（元/分）仍未取证。"
+      },
+      "blocker_hint": "价格字段名与单位未取证：需确认平台接受元还是分，以及类目级的 SKU 价格区间限制。"
+    },
+    {
+      "intent": "sku.stock",
+      "local_source": "本地无库存字段（Record 表与 content 均无库存）",
+      "stage": "fill_price_stock",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "src/orm.py:21-39",
+        "note": "已实测：Record 模型无库存列，record.content 的 SKU 条目也无库存键。老 TOP 接口用 sku_quantities 表达库存，但当前工作台字段名未取证。"
+      },
+      "blocker_hint": "库存数据源缺失：本地没有库存字段，必须由调用方显式传入，禁止默认填 0 或 999。"
+    },
+    {
+      "intent": "sku.outer_id",
+      "local_source": "Record.content[].name",
+      "stage": "fill_price_stock",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "老 TOP 接口用 sku_outer_ids 表达 SKU 商家编码。非必填。"
+      },
+      "blocker_hint": ""
+    },
+    {
+      "intent": "media.main_images",
+      "local_source": "采集目录主图（主图/、主图/750、主图/800）；src/whitebg 产出的 SKU_1x1/ 提供 1:1 规格图",
+      "stage": "upload_images",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "老 TOP 接口用 pic_path 表达主图。图片规范已实证：主图最多 5 张、1:1、最低 480px、经典 800×800、单张 ≤3MB，第 5 张为白底图（https://www.biaojixia.com/blog/taobao-main-image-requirements-guide）。但**图片是否必须先入淘宝图片空间**、以及图片空间接口形态，仍未取证；另有实证表明外链图会被判盗链（详情图一张出问题整单审核不过）。"
+      },
+      "blocker_hint": "图片上传链路未取证：主图是否必须先入图片空间、接口形态、返回 URL 形态均未知。外链图会被判盗链，这条必须解决。"
+    },
+    {
+      "intent": "media.detail_images",
+      "local_source": "采集目录详情页/ 图片",
+      "stage": "upload_images",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "淘宝详情描述已迁移到新版描述编辑器/旺铺详情，写入形态未取证。"
+      },
+      "blocker_hint": "详情描述写入方式未取证。非必填，但缺失会让发布出的商品没有详情。"
+    },
+    {
+      "intent": "media.white_bg_image",
+      "local_source": "采集目录 白底图.jpg / 白底图/<SKU>.jpg（src/whitebg 产出）",
+      "stage": "upload_images",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "白底图规范已实证（纯白 RGB(255,255,255)、无文字/Logo/水印/阴影/模特、主体 ≥300×300），但它是作为第 5 张主图提交还是独立字段，未取证。"
+      },
+      "blocker_hint": ""
+    },
+    {
+      "intent": "logistics.freight_template_id",
+      "local_source": "Record.shipping_template（实测为中文名，如「中通包邮」）",
+      "stage": "fill_freight",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "老 TOP 接口用 postage_id 表达运费模板 ID。已实测本地只有模板中文名、没有平台 ID（src/orm.py:36）。抖店侧证明过『按名称猜 ID』会发错模板（protocol-research-clean-20260505/scripts/fxg_protocol_v4.py:1063 注释记录的历史事故），淘宝侧同样禁止按名称硬匹配。"
+      },
+      "blocker_hint": "运费模板 ID 未取证：必须从平台实时拉取模板列表后严格匹配，匹配不到就终止，不许兜底默认模板。"
+    },
+    {
+      "intent": "logistics.delivery_time",
+      "local_source": "无",
+      "stage": "fill_freight",
+      "required": false,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "发货时间承诺（现货/预售）的默认值与字段名未取证。"
+      },
+      "blocker_hint": ""
+    },
+    {
+      "intent": "publish.listing_mode",
+      "local_source": "无",
+      "stage": "submit",
+      "required": true,
+      "platform_field": null,
+      "evidence": {
+        "level": "unknown",
+        "source": "",
+        "note": "『立即上架』与『放入仓库』两个动作在协议层的区分方式未取证。"
+      },
+      "blocker_hint": "上架方式（立即上架 / 放入仓库）的协议差异未取证。默认策略：先只做『放入仓库』，避免误上架。"
+    }
+  ]
+}

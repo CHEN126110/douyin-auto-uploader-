@@ -37,6 +37,13 @@ class Record(BaseModel):
     import_source = CharField(null=True, default='manual')
     source_url = CharField(null=True)
     managed_files = BooleanField(default=False)
+    captured_attributes = TextField(null=True)
+    # 商品目录内的相对路径；空值表示沿用自动选图规则。
+    white_bg_path = TextField(null=True, default='')
+    #: 购买须知——**列保留**（真实库已有此列，删列是破坏性操作），但代码已不再使用：
+    #: 界面 2026-10-07 撤掉入口后这条通路已整条删除（PublishItem / mapping / stages /
+    #: 契约条目 / 侧车回传与保存白名单），它也不再参与"资料指纹"。
+    notice = CharField(null=True)
 
 
 def _ensure_record_columns():
@@ -51,6 +58,10 @@ def _ensure_record_columns():
         ('source_url', 'ALTER TABLE "record" ADD COLUMN "source_url" VARCHAR(2048)'),
         ('managed_files', 'ALTER TABLE "record" ADD COLUMN "managed_files" INTEGER DEFAULT 0'),
     ]
+    migrations.append(('captured_attributes', 'ALTER TABLE "record" ADD COLUMN "captured_attributes" TEXT'))
+    migrations.append(('white_bg_path', 'ALTER TABLE "record" ADD COLUMN "white_bg_path" TEXT'))
+    # 购买须知：**必须同时改模型与这张迁移表**，否则升级安装读 Record 会缺列。
+    migrations.append(('notice', 'ALTER TABLE "record" ADD COLUMN "notice" VARCHAR(255)'))
     for column_name, sql in migrations:
         if column_name not in columns:
             database.execute_sql(sql)

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>合成发布页·销售信息（隔离测试用）</title>
+<!--
+  只建模「销售信息」这三行的**真实行结构**，用来离线验证 `fill_price_stock` 真正走的
+  DOM 路径（按标签唯一定位行 → 写值 → 回读比对），而不是只跟替身打交道。
+
+  结构来自 `locating.py` 的 `PUBLISH_FORM` profile（真机实测）：
+    * 行容器  `.sell-component-info-wrapper-wrap`
+    * 行标签  `.sell-component-info-wrapper-label`
+    * 行内控件 `input,textarea,select,[role="combobox"]`
+
+  **纯本地**：无外部资源、无网络请求。
+-->
+<style>
+  body { font: 13px/1.6 sans-serif; margin: 16px; }
+  .sell-component-info-wrapper-wrap { display: flex; gap: 8px; margin: 8px 0; }
+  .sell-component-info-wrapper-label { width: 120px; }
+  input { min-height: 24px; min-width: 200px; }
+</style>
+</head>
+<body>
+
+<div class="sell-component-info-wrapper-wrap">
+  <div class="sell-component-info-wrapper-label">一口价</div>
+  <input type="text" id="price" value="">
+</div>
+
+<div class="sell-component-info-wrapper-wrap">
+  <div class="sell-component-info-wrapper-label">总库存</div>
+  <!-- 真机上总库存**预填 1**，这里照做：用来验证"写入前先回读既有值"那条路径。 -->
+  <input type="text" id="stock" value="1">
+</div>
+
+<div class="sell-component-info-wrapper-wrap">
+  <div class="sell-component-info-wrapper-label">购买须知</div>
+  <!-- 真机这一行有 60 字上限（E-032 的计数器 0/60）。照做，好让"超长被截断"这件事
+       在离线也能被回读抓到。 -->
+  <input type="text" id="notice" maxlength="60" value="">
+</div>
+
+<script>
+  // 真机的输入框是受控组件，写 value 之后靠事件同步内部状态。这里照做，
+  // 好让 `read_text_field` 读到的确实是写进去的值（而不是被框架弹回去）。
+  document.querySelectorAll('input').forEach(function (box) {
+    box.addEventListener('input', function () { box.setAttribute('data-synced', box.value); });
+    box.addEventListener('change', function () { box.setAttribute('data-synced', box.value); });
+  });
+</script>
+</body>
+</html>

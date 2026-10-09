@@ -1,0 +1,13 @@
+{
+  "scope": "isolated_browser_and_memory_only_loopback_http_folder_drop",
+  "live_platform_tested": false,
+  "root_is_directory": true,
+  "groups": {
+    "主图": 2,
+    "SKU": 105,
+    "详情页": 2
+  },
+  "file_count": 109,
+  "all_relative_paths_matched": true,
+  "test_source_sha256": "e82458927974f5a0f964ea9cbe2a9abf6b1d28f8d03c0ead12a027921682227b"
+}

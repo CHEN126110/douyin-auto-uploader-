@@ -1,0 +1,98 @@
+{
+  "checked_at": "2026-10-09T00:18:45.100911+08:00",
+  "scope": "source_isolated_tests_and_existing_local_product_repair",
+  "fresh_live_taobao_capture_tested": false,
+  "root_cause": [
+    "nested_spec_group_and_option_button_double_enumeration",
+    "independent_attribute_values_mistaken_for_sku_combinations",
+    "missing_variant_images_replaced_by_product_main_images",
+    "image_file_enumeration_used_as_sku_record_source"
+  ],
+  "tests": {
+    "passed": 123,
+    "subtests_passed": 5,
+    "failed": 0,
+    "frontend_checks": 79,
+    "frontend_build": "passed"
+  },
+  "local_repair": {
+    "before_skus": 24,
+    "after_skus": 5,
+    "main_image_copies_removed_from_active_skus": 14,
+    "names": [
+      "【浅灰】 / 均码",
+      "【白色】 / 均码",
+      "【米杏】 / 均码",
+      "【黑色】 / 均码",
+      "【深灰】 / 均码"
+    ],
+    "prices": [
+      4.5,
+      4.5,
+      4.5,
+      4.5,
+      4.5
+    ],
+    "original_files_preserved": true
+  },
+  "local_runtime_readback": {
+    "success": true,
+    "record_id": 1,
+    "sku_count": 5,
+    "names_match": true,
+    "prices_preserved": true,
+    "local_image_hashes_match": true,
+    "active_sku_file_count": 5,
+    "images_not_replaced_by_main": true
+  },
+  "frozen_modules_match_source": {
+    "folder_import": true,
+    "pipeline": true,
+    "cdp": true,
+    "constants": true,
+    "media_library": true,
+    "media_manifest": true,
+    "upload_client": true,
+    "price_policy": true,
+    "sku_batch": true,
+    "required_attrs": true,
+    "form_adapters": true,
+    "stages": true,
+    "page": true,
+    "src.taobao_capture": true
+  },
+  "sidecar_functions_match_source": {
+    "_download_capture_product_images": true,
+    "_ensure_taobao_fill_browser": true,
+    "_activate_shop_profile": true,
+    "_run_taobao_publish_task": true,
+    "_capture_taobao_tmall_product_for_store": true,
+    "_extract_taobao_ice_data": true,
+    "_extract_taobao_tmall_product_snapshot": true,
+    "_import_capture_product_record": true,
+    "import_capture_result": true,
+    "start_capture": true,
+    "run_capture_task": true
+  },
+  "source_manifest_files": 84,
+  "runtime": {
+    "checked_at": "2026-10-09T00:14:28.2273524+08:00",
+    "startup_check_exit_code": 0,
+    "shortcut_used": true,
+    "window_observed_seconds": 6.64,
+    "health_ok_seconds": 11.9,
+    "gui_processes": 1,
+    "backend_bootloader_and_worker_processes": 2,
+    "compiler_processes_seen": [],
+    "vite_1420_seen": false,
+    "backend_sha256": "b65fb79a5596e303eaf970942232addc089625fb084fa120c4b000fcfc355e9b",
+    "desktop_sha256": "dcbc6b51d8aec42e205ed2edfa4575a45c74763e57fdde96a2e45d94ad56c8b4",
+    "stderr_log_start_bytes": 0,
+    "real_taobao_flow_tested": false
+  },
+  "limitations": [
+    "current_taobao_dom_adapter_requires_allowed_environment_revalidation",
+    "multiple_variable_dom_axes_without_actual_sku_table_are_not_guessed",
+    "displayed_product_starting_price_is_not_used_as_per_sku_price"
+  ]
+}

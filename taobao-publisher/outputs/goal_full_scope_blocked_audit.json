@@ -1,0 +1,173 @@
+{
+  "checked_at": "2026-10-04T23:55:40.540502+08:00",
+  "scope": "full user objective audit from current source/contracts, frozen package, allowed local runtime and prior isolated evidence",
+  "goal_completion_proven": false,
+  "recommended_goal_status": "blocked",
+  "previous_goal_turn_classification": "progress",
+  "same_blocker_consecutive_goal_turns_confirmed": 3,
+  "preceding_turns": [
+    {
+      "evidence": "E-162..E-164",
+      "artifact": "outputs/desktop_brand_media_validation.json",
+      "checked_at": "2026-10-04T23:33:00.682658+08:00",
+      "same_blocker_present": true,
+      "turn_classification": "progress"
+    },
+    {
+      "evidence": "E-165..E-167",
+      "artifact": "outputs/desktop_required_receipts_validation.json",
+      "checked_at": "2026-10-04T23:47:49.002080+08:00",
+      "same_blocker_present": true,
+      "turn_classification": "progress"
+    }
+  ],
+  "current_turn": "source/contracts and local deployed package revalidated; no new platform-control evidence",
+  "blocking_condition": "existing tool access refusal prevents current Taobao workbench inspection; required production controls and whole-form facts remain unverified",
+  "known_agent_validation_jobs_waiting": [],
+  "pending_user_platform_tasks_checked": false,
+  "sha256": "5580840edaba31326175462cb7333f4850dcb30d42eced528190a05331f06478",
+  "local_health_success": true,
+  "local_deployment_matches_build": true,
+  "unverified_production_controls": [
+    {
+      "key": "media.exact_filename",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_mode",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_rows",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_input",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.custom_add",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.image_slot",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "sku.table_image",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    },
+    {
+      "key": "detail.editor",
+      "level": "candidate",
+      "source": "docs/13-自定义规格与媒体候选适配.md"
+    }
+  ],
+  "allowed_archived_screenshots": [
+    "tb_category_cascade_20261003.png",
+    "tb_publish_form_sales_20261003.png",
+    "tb_publish_form_top_20261003.png"
+  ],
+  "required_reader_scope": "visible_property_label_required",
+  "required_reader_complete_page": false,
+  "requirements": [
+    {
+      "id": "shared_ui_account_routing",
+      "requirement": "共同表单、SKU、上传入口和进度；账户绑定平台，无重复设置页面",
+      "status": "completion_unproven",
+      "evidence_and_scope": "actual SFC/store/API: 70 isolated cases; local served frontend markers",
+      "missing_authoritative_evidence": "当前店铺完整交互与渲染尚未实测"
+    },
+    {
+      "id": "account_browser_and_persistent_login",
+      "requirement": "启动或复用正确账户浏览器，持久登录及隔离",
+      "status": "completion_unproven",
+      "evidence_and_scope": "real Flask/account function isolated regressions; frozen bootstrap and concurrency checks",
+      "missing_authoritative_evidence": "当前账户浏览器/持久登录现场尚未验证"
+    },
+    {
+      "id": "category_brand_next",
+      "requirement": "搜索发品、唯一类目、默认无品牌、下一步和catId核对",
+      "status": "completion_unproven",
+      "evidence_and_scope": "test_category_first_pipeline.py + test_default_brand_and_media_content.py; isolated file model",
+      "missing_authoritative_evidence": "当前淘宝页面与归档控件是否匹配尚未验证"
+    },
+    {
+      "id": "main_images",
+      "requirement": "用户素材内容、主图上传与顺序准确",
+      "status": "completion_unproven",
+      "evidence_and_scope": "content identity, batch snapshot, exact name, full URL/order negative cases",
+      "missing_authoritative_evidence": "当前图片空间控件及真实上传/入位尚未验证"
+    },
+    {
+      "id": "sku_names_and_images",
+      "requirement": "完整规格名称与对应SKU图片准确",
+      "status": "completion_unproven",
+      "evidence_and_scope": "candidate custom adapter + isolated DOM and media readback",
+      "missing_authoritative_evidence": "自定义模式/名称行/图片入口/表格图片共六个生产控件仍candidate"
+    },
+    {
+      "id": "sale_price_and_stock",
+      "requirement": "本次编辑快照、售价、库存与实际SKU一一对应",
+      "status": "completion_unproven",
+      "evidence_and_scope": "atomic save, revision handoff, row identity and number readback isolated tests",
+      "missing_authoritative_evidence": "当前实际SKU表及商品级库存关系尚未实测"
+    },
+    {
+      "id": "title_and_category_rules",
+      "requirement": "标题与商品事实正确，并符合当前类目实时规则",
+      "status": "completion_unproven",
+      "evidence_and_scope": "shared Chinese/ASCII unit count; contract/precheck/write guard",
+      "missing_authoritative_evidence": "各类目实时标题上限及其它Unicode计数仍未取得实时证据"
+    },
+    {
+      "id": "required_fields_and_logistics",
+      "requirement": "全部必填属性及当前账户物流配置准确",
+      "status": "completion_unproven",
+      "evidence_and_scope": "visible required property reader, freight selection, mandatory missing-value counterexamples",
+      "missing_authoritative_evidence": "仅visible_property_label_required，completePage=false；整页必填与部分物流读取仍缺证据"
+    },
+    {
+      "id": "detail_images_and_description",
+      "requirement": "详情素材顺序及描述真实写入",
+      "status": "completion_unproven",
+      "evidence_and_scope": "candidate native HTML editor + isolated ordered content/readback cases",
+      "missing_authoritative_evidence": "实际详情编辑器结构未取得证据；iframe/私有编辑器不支持"
+    },
+    {
+      "id": "failure_cancel_recovery",
+      "requirement": "并发、取消、读取恢复及结果报告准确",
+      "status": "completion_unproven",
+      "evidence_and_scope": "243 business safety cases, 70 frontend cases, frozen required-receipt counterexamples",
+      "missing_authoritative_evidence": "当前完整店铺流程下的失败/取消/恢复尚未实测"
+    },
+    {
+      "id": "fill_only_without_draft_or_submit",
+      "requirement": "淘宝本次全部填写并停在提交前，不保存草稿、不上架",
+      "status": "completion_unproven",
+      "evidence_and_scope": "fixed HTTP fill_only parameters, operation authorization and frozen stop-before-submit checks",
+      "missing_authoritative_evidence": "没有当前商品真实填写后整页核对的证据"
+    },
+    {
+      "id": "actual_publication_capability",
+      "requirement": "获明确提交授权后验证发布与最终平台状态",
+      "status": "completion_unproven",
+      "evidence_and_scope": "submission lock and readback gate implemented; current scope remains fill-only",
+      "missing_authoritative_evidence": "实际提交未授权/未验证；本次不能声明已发布"
+    }
+  ],
+  "write_scope": "fill_only; stop_before_submit; no draft save or listing submission",
+  "live_taobao_task_started_by_tools": false,
+  "workbench_or_account_identity_read_by_tools": false,
+  "next_dependency": "directly supplied sanitized control facts, or an execution environment explicitly permitted by the tool access policy",
+  "goal_status": "blocked",
+  "goal_status_confirmed_at": "2026-10-04T23:57:51.757848+08:00",
+  "goal_scope_preserved": true
+}

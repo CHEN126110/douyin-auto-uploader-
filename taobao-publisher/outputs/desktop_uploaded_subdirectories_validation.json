@@ -1,0 +1,57 @@
+{
+  "recorded_at": "2026-10-05T19:47:09.241870+08:00",
+  "scope": "user supplied failure, isolated native browser model, regression, frozen package and local desktop runtime",
+  "user_report_received": {
+    "uploaded_but_not_found": 21,
+    "screenshot": "../captures/user_media_subdirectory_selection_20261005.json"
+  },
+  "pre_fix_reproduction": {
+    "failed": 4,
+    "passed": 2,
+    "included_same_21_file_failure": true
+  },
+  "package_regression": {
+    "passed": 1312,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "command_exclusions": [
+      "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+      "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ]
+  },
+  "publish_safety_regression": {
+    "passed": 75
+  },
+  "documentation_regression": {
+    "passed": 23,
+    "subtests_passed": 11
+  },
+  "package_selfcheck_passed": true,
+  "new_image_tests": {
+    "cases": 8,
+    "included_in_package_regression": true,
+    "artifact": "uploaded_media_subdirectories_handoff.json",
+    "upload_batches": [
+      21
+    ],
+    "main": 5,
+    "sku": 6,
+    "detail": 10,
+    "production_stages_completed": 3,
+    "whole_form_coverage_proven": false
+  },
+  "implementation": {
+    "post_upload_product_role_plan": true,
+    "receipts_include_actual_folder": true,
+    "owned_sibling_or_title_names_supported": true,
+    "raw_basename_or_position_guessing": false,
+    "error_reports_actual_visited_directories": true
+  },
+  "frozen_build": "desktop_uploaded_subdirectories_build.json",
+  "runtime": "desktop_uploaded_subdirectories_runtime.json",
+  "utf8_and_syntax_checked_files": 5,
+  "live_platform_tested_by_tools": false,
+  "real_upload_draft_or_submit_performed_by_tools": false,
+  "actual_current_taobao_dom_verified": false,
+  "goal_completion_claimed": false
+}

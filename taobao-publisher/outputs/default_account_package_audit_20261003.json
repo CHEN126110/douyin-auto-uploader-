@@ -1,0 +1,13 @@
+{
+  "executable_bytes": 145995811,
+  "default_placeholder_removal_included": true,
+  "fixed_default_auto_creation_removed": true,
+  "legacy_profile_path_compatibility_retained": true,
+  "taobao_contracts": [
+    "taobao-publisher/contracts/field_mapping.json",
+    "taobao-publisher/contracts/selectors.json",
+    "taobao-publisher/contracts/rules.json",
+    "taobao-publisher/contracts/publish_item.schema.json"
+  ],
+  "research_artifacts_included": false
+}

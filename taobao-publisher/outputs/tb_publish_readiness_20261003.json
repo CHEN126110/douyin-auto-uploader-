@@ -1,0 +1,56 @@
+{
+  "contract_problems": [],
+  "protocol_write_ready": false,
+  "dom_write_ready": false,
+  "publish_route_ready": false,
+  "implemented_stages": [
+    "session",
+    "precheck"
+  ],
+  "unimplemented_stages": [
+    "upload_images",
+    "select_category",
+    "fill_base",
+    "fill_props",
+    "fill_skus",
+    "fill_price_stock",
+    "fill_freight",
+    "readback",
+    "submit"
+  ],
+  "blocked_required_fields": [
+    "item.title",
+    "item.category_id",
+    "item.props",
+    "item.sale_props",
+    "item.sale_prop_values",
+    "sku.price",
+    "sku.stock",
+    "media.main_images",
+    "logistics.freight_template_id",
+    "publish.listing_mode"
+  ],
+  "blocked_write_critical_selectors": [
+    "category.search_input",
+    "category.search_result_item",
+    "category.confirm_button",
+    "base.title_input",
+    "props.required_prop_list",
+    "props.prop_value_option",
+    "skus.sale_prop_selector",
+    "skus.sku_table_root",
+    "skus.sku_row",
+    "price_stock.price_input",
+    "price_stock.stock_input",
+    "freight.template_select",
+    "freight.template_option",
+    "submit.save_draft_button",
+    "submit.submit_button"
+  ],
+  "field_evidence": {
+    "verified": 0,
+    "candidate": 11,
+    "unknown": 6,
+    "rejected": 0
+  }
+}

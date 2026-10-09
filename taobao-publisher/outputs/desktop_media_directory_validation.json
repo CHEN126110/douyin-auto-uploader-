@@ -1,0 +1,42 @@
+{
+  "checked_at": "2026-10-05T10:01:38.795947+08:00",
+  "scope": "local native DOM, upload queue, product directories, source and deployed app only",
+  "package_regression": {
+    "passed": 1211,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "excluded_actual_environment_tests": 2,
+    "timing": "完整回归在最后折叠目录边界补充前启动；最终目录及身份定向测试单列"
+  },
+  "final_directory_and_identity_tests": {
+    "passed": 14,
+    "subtests_passed": 5
+  },
+  "business_and_upload_safety_regression": {
+    "passed": 243
+  },
+  "frontend_behavior_checks": 71,
+  "documentation_checks": {
+    "passed": 23,
+    "subtests_passed": 11
+  },
+  "source_selfcheck_gates_passed": 6,
+  "native_directory_capability_tested": true,
+  "automatic_whole_product_folder_import_enabled": false,
+  "implemented_strategy": "native multiple files per role; exact product folder navigation and asset directory receipts",
+  "local_model": {
+    "fill_stages": 11,
+    "simulated_files": 5,
+    "upload_batches": 3,
+    "submit_calls": 0,
+    "draft_calls": 0
+  },
+  "new_directory_selectors_evidence": "candidate",
+  "backend_sha256": "55cbffe2d69adb8568d6f3bdfbc9dd453a98ce3fcef93b38ada94e67655856c9",
+  "packaged_modules_verified": 20,
+  "packaged_contracts_verified": 4,
+  "source_files_verified": 65,
+  "local_health_and_deployed_hash_verified": true,
+  "live_taobao_filling_executed": false,
+  "whole_form_required_fields_verified": false
+}

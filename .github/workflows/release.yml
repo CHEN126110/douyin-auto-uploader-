@@ -1,10 +1,9 @@
-# 桌面端发布流水线：打 tag 即构建 Windows 安装包、签名、生成 latest.json 并发 Release。
+# 桌面端发布流水线：打 tag 即构建 Windows 安装包、签名、生成 latest.json 并生成候选 Release；验收后再提升为正式版。
 #
 # 客户端自动更新链路：
 #   tauri.conf.json 的 plugins.updater.endpoints 指向
 #   https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest/download/latest.json
-#   → 所以本工作流必须把 latest.json 作为 asset 传到「正式（非草稿、非预发布）」Release 上，
-#     否则 releases/latest 命不中，客户端检查更新会 404。
+#   → 本工作流先生成预发布候选（不改变 latest）；通过旧版升级验收后才提升为正式版。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置：
 #   TAURI_SIGNING_PRIVATE_KEY           更新签名私钥「文件内容」（不是路径）
@@ -196,6 +195,15 @@ jobs:
         working-directory: tauri-app
         run: npm ci
 
+      - name: 运行发布回归
+        shell: pwsh
+        run: |
+          python -m pip install pytest
+          python -m pytest tests taobao-publisher/tests -q --basetemp taobao-publisher/tmp/release-pytest
+          if ($LASTEXITCODE -ne 0) { throw "发布回归失败" }
+          node --test tests/media_processing_flow.cjs tests/whitebg_selection_flow.cjs tests/product_delete_flow.cjs tests/updater_flow.cjs
+          if ($LASTEXITCODE -ne 0) { throw "前端交互回归失败" }
+
       - name: 构建 Tauri 安装包（含更新签名）
         working-directory: tauri-app
         env:
@@ -259,36 +267,32 @@ jobs:
           # 需要它的 step 用同一个表达式自己算即可。
           "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: 发布 Release
+      - name: 发布候选版本（不推送正式更新）
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
-          NOTES: ${{ github.event.inputs.notes || format('版本 {0}', steps.version.outputs.version) }}
+          NOTES: ${{ github.event.inputs.notes || format('版本 {0}，待升级验收', steps.version.outputs.version) }}
         run: |
           $tag = $env:TAG
           gh release view $tag 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag 已存在，覆盖上传 asset"
-            gh release upload $tag (Get-ChildItem release-assets | ForEach-Object { $_.FullName }) --clobber
-          } else {
-            # --latest 明确标记为最新版：endpoint 用的是 releases/latest/download/latest.json
-            gh release create $tag (Get-ChildItem release-assets | ForEach-Object { $_.FullName }) --title $tag --notes $env:NOTES --latest
+            throw "候选版本 $tag 已存在，禁止自动覆盖已签名的安装包；请使用新版本号"
           }
-          if ($LASTEXITCODE -ne 0) { throw "发布 Release 失败" }
+          [IO.File]::WriteAllText("release-notes.txt", $env:NOTES, [Text.UTF8Encoding]::new($false))
+          gh release create $tag (Get-ChildItem release-assets | ForEach-Object { $_.FullName }) --verify-tag --title $tag --notes-file release-notes.txt --prerelease --latest=false
+          if ($LASTEXITCODE -ne 0) { throw "发布候选版本失败" }
 
-      - name: 校验更新端点可达
+      - name: 校验候选更新资源
         shell: pwsh
         env:
           REPO: ${{ github.repository }}
           VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $url = "https://github.com/{0}/releases/latest/download/latest.json" -f $env:REPO
+          $url = "https://github.com/{0}/releases/download/{1}/latest.json" -f $env:REPO, $env:TAG
           $manifest = Invoke-RestMethod -Uri $url -MaximumRedirection 5
-          Write-Host "latest.json 可达，version=$($manifest.version)"
-          if ($manifest.version -ne $env:VERSION) {
-            throw "latest.json 版本($($manifest.version))与本次发布($($env:VERSION))不一致"
-          }
-          $assetUrl = $manifest.platforms.'windows-x86_64'.url
-          $head = Invoke-WebRequest -Uri $assetUrl -Method Head -MaximumRedirection 5
-          Write-Host "安装包下载地址可达: HTTP $($head.StatusCode)"
+          if ($manifest.version -ne $env:VERSION) { throw "候选清单版本不一致" }
+          if (-not $manifest.platforms.'windows-x86_64'.signature) { throw "候选安装包缺少签名" }
+          $head = Invoke-WebRequest -Uri $manifest.platforms.'windows-x86_64'.url -Method Head -MaximumRedirection 5
+          Write-Host "候选版本资源就绪: HTTP $($head.StatusCode)。正式 latest 未改变，等待升级验收。"

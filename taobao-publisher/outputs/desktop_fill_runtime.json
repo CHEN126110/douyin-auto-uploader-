@@ -1,0 +1,8 @@
+{
+  "checked_at": "2026-10-04T00:22:31.608499+08:00",
+  "scope": "local application health and deployed binary only",
+  "health_success": true,
+  "release_backend_matches_build": true,
+  "live_taobao_task_started": false,
+  "account_identity_read_by_tools": false
+}

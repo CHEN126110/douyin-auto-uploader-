@@ -1,0 +1,76 @@
+{
+  "checked_at": "2026-10-08T23:10:30.541704+08:00",
+  "scope": "source_and_isolated_browser_and_desktop_deployment",
+  "live_platform_tested": false,
+  "tests": {
+    "passed": 219,
+    "subtests_passed": 44,
+    "failed": 0,
+    "seconds": 117.35
+  },
+  "verified_behaviors": [
+    "material_preparation_before_category_and_publish_page",
+    "one_native_parent_directory_drop_preserves_original_paths_and_bytes",
+    "directory_file_input_used_only_when_supported",
+    "queue_and_actual_cloud_path_receipts_required_before_navigation",
+    "same_account_same_manifest_cache_reused_without_reupload",
+    "old_ledger_reuse_requires_current_gallery_resource_match",
+    "invalid_plan_unauthorized_cancelled_and_failed_preparation_do_not_navigate",
+    "prepared_media_does_not_create_empty_folders",
+    "current_publish_tab_is_pinned",
+    "inventory_retains_picture_id_for_direct_selection"
+  ],
+  "frozen_modules_match_source": {
+    "folder_import": true,
+    "pipeline": true,
+    "cdp": true,
+    "constants": true,
+    "media_library": true,
+    "media_manifest": true,
+    "upload_client": true,
+    "price_policy": true,
+    "sku_batch": true,
+    "required_attrs": true,
+    "form_adapters": true,
+    "stages": true,
+    "page": true
+  },
+  "sidecar_functions_match_source": {
+    "_ensure_taobao_fill_browser": true,
+    "_activate_shop_profile": true,
+    "_run_taobao_publish_task": true,
+    "_capture_taobao_tmall_product_for_store": true,
+    "_extract_taobao_ice_data": true,
+    "_extract_taobao_tmall_product_snapshot": true,
+    "_import_capture_product_record": true,
+    "import_capture_result": true,
+    "start_capture": true,
+    "run_capture_task": true
+  },
+  "source_manifest_files": 83,
+  "archive_entries": 634,
+  "runtime": {
+    "checked_at": "2026-10-08T23:07:46.9296212+08:00",
+    "startup_check_exit_code": 0,
+    "shortcut_used": true,
+    "window_observed_seconds": 7.99,
+    "health_ok_seconds": 11.97,
+    "gui_processes": 1,
+    "backend_bootloader_and_worker_processes": 2,
+    "compiler_processes_seen": [],
+    "vite_1420_seen": false,
+    "backend_sha256": "531c70cac0d859263862bcbda07853c899c4ddd7f8adfeb7b40a668e2ef69c96",
+    "desktop_sha256": "dcbc6b51d8aec42e205ed2edfa4575a45c74763e57fdde96a2e45d94ad56c8b4",
+    "stderr_log_start_bytes": 0,
+    "real_taobao_flow_tested": false
+  },
+  "candidate_behaviors": [
+    "taobao_material_center_acceptance_of_native_directory_import"
+  ],
+  "limitations": [
+    "unknown_remote_same_name_folder_merge_is_not_attempted",
+    "partial_folder_import_is_not_treated_as_complete_receipt",
+    "whole_batch_all_products_preupload_is_not_implemented"
+  ],
+  "test_source_sha256": "79cc5c1b72fe940ae31aa4b47cc4dea61736232c16192f26a4942f8da870eea9"
+}

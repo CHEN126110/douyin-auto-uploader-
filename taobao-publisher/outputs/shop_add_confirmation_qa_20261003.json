@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-10-03",
+  "scope": "offline ShopStatusBar SFC confirmation behavior",
+  "command": "node .tmp/qa_shop_action_confirmation.cjs",
+  "exit_code": 0,
+  "output": "PASS POST返回后仍等current与list；确认前无成功、无关窗、重复点击无POST\nPASS current回读失败：保留已知目标，再点只GET确认、不重POST\nPASS list回读失败：保留已知目标，再点只GET确认、不重POST\nPASS 网络中断无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS HTTP500无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS successfalse无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS 缺失响应data无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS 错误平台无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS 路径穿越slug无可靠目标：刷新不猜成功、close/reopen保留、结束仅清本地\nPASS current目标不符不伪成功、不自动改选、保留待确认\nPASS current平台不符不伪成功、不自动改选、保留待确认\nPASS list当前目标不符不伪成功、不自动改选、保留待确认\nPASS list目标条目缺失不伪成功、不自动改选、保留待确认\nPASS list平台不符不伪成功、不自动改选、保留待确认\nPASS list未active不伪成功、不自动改选、保留待确认\nPASS 淘宝错误loggedin不伪成功、不自动改选、保留待确认\nPASS known目标错选可从列表切换；原pending不覆盖，随后只GET确认添加\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"profiles\":null}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"profiles\":{}}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"active_profile\":\"taobao-1234abcd\",\"profiles\":[null]}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"active_profile\":\"taobao-1234abcd\",\"profiles\":[{\"platform\":\"unknown\",\"profile_name\":\"taobao-1234abcd\",\"label\":\"模拟账户备注\",\"is_active\":true,\"removable\":false,\"identity_source\":\"account_note\",\"shop_id\":null,\"shop_name\":null}]}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"active_profile\":\"taobao-1234abcd\",\"profiles\":[{\"platform\":\"taobao\",\"profile_name\":\"taobao-1234abcd\",\"label\":\"模拟账户备注\",\"is_active\":\"true\",\"removable\":false,\"identity_source\":\"local_account\",\"shop_id\":null,\"shop_name\":null}]}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"active_profile\":\"taobao-1234abcd\",\"profiles\":[{\"platform\":\"taobao\",\"profile_name\":\"taobao-1234abcd\",\"label\":\"模拟账户备注\",\"is_active\":true,\"removable\":false,\"identity_source\":\"local_account\",\"shop_id\":null,\"shop_name\":null},{\"platform\":\"douyin\",\"profile_name\":\"shop-2345bcde\",\"label\":\"模拟账户备注\",\"is_active\":true,\"removable\":false,\"identity_source\":\"account_note\",\"shop_id\":null,\"shop_name\":null}]}\nPASS 损坏或冲突的list不导致未捕获异常/假成功：{\"active_profile\":\"taobao-1234abcd\",\"profiles\":[{\"platform\":\"taobao\",\"profile_name\":\"taobao-1234abcd\",\"label\":\"模拟账户备注\",\"is_active\":true,\"removable\":false,\"identity_source\":\"local_account\",\"shop_id\":null,\"shop_name\":null},{\"platform\":\"taobao\",\"profile_name\":\"taobao-1234abcd\",\"label\":\"模拟账户备注\",\"is_active\":false,\"removable\":true,\"identity_source\":\"local_account\",\"shop_id\":null,\"shop_name\":null}]}\nPASS legacy合法空列表可展示，但空列表不能确认新添加成功\nPASS paused禁止add/switch/confirm/end；在途busy禁止重复动作\nPASS 旧current迟到不覆盖新已确认账户\nPASS 旧list迟到不覆盖动作回读的当前列表\nPASS 卸载后迟到POST不新发GET、不toast或改变状态\nPASS 卸载后迟到current不新发list、不toast或应用响应\nPASS 初始mounted GET期间卸载：迟到响应不建立周期timer、不提示或发新GET\nPASS 抖音浏览器失败仅在current/list确认后提示，不冒充已登录\nRESULT 33 passed, 0 failed\n",
+  "isolation": {
+    "real_http": false,
+    "browser": false,
+    "account_registry": false,
+    "database": false,
+    "platform_write": false
+  },
+  "result_limit": "Confirms local account registration UI behavior only; real Taobao login and identity verification are not implemented."
+}

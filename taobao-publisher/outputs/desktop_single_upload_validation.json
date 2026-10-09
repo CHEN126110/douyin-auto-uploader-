@@ -1,0 +1,67 @@
+{
+  "recorded_at": "2026-10-05T18:57:26.555682+08:00",
+  "scope": "source, isolated tests, frozen package, local desktop runtime; no live marketplace action",
+  "package_regression": {
+    "passed": 1301,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "command_exclusions": [
+      "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+      "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ],
+    "excluded_cases_are_not_counted_as_verified": true
+  },
+  "publish_safety_regression": {
+    "passed": 75,
+    "files": [
+      "test_taobao_desktop_api.py",
+      "test_sidecar_upload_safety.py",
+      "test_upload_brand_safety.py",
+      "test_publish_preflight_safety.py"
+    ]
+  },
+  "common_frontend_behavior": {
+    "passed": 79,
+    "command": "node taobao-publisher/tests/frontend_publish_flow.cjs"
+  },
+  "documentation_regression": {
+    "passed": 23,
+    "subtests_passed": 11
+  },
+  "final_folder_capability_regression": {
+    "passed": 3,
+    "artifact": "native_folder_drop_capability.json"
+  },
+  "package_selfcheck": {
+    "passed": true,
+    "command": "python -m taobao_publish check --json"
+  },
+  "pipeline_model": {
+    "main": 5,
+    "sku": 2,
+    "detail": 2,
+    "upload_calls": 1,
+    "lookup_calls": 5,
+    "stages": 11,
+    "artifact": "media_single_upload_handoff.json"
+  },
+  "directory_pipeline_model": "media_single_upload_directory_handoff.json",
+  "folder_drop_model": {
+    "files": 109,
+    "preserves_relative_paths": true,
+    "live_platform_tested": false
+  },
+  "source_review": {
+    "utf8_syntax": true,
+    "merged_role_upload": true,
+    "final_queue_readback_required": true,
+    "platform_rejection_code_and_verbatim_reason_preserved": true
+  },
+  "frozen_build": "desktop_single_upload_build.json",
+  "running_binary": "desktop_single_upload_runtime.json",
+  "live_platform_tested": false,
+  "real_upload_draft_or_submit_performed_by_tools": false,
+  "whole_form_coverage": "partial",
+  "standalone_material_center_upload_implemented": false,
+  "real_network_throughput_measured": false
+}

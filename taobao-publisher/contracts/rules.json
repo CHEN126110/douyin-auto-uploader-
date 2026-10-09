@@ -1,0 +1,178 @@
+{
+  "contract_version": "0.1.0",
+  "platform": "taobao",
+  "updated_at": "2026-10-02",
+  "purpose": "平台硬约束（数量/尺寸/长度）。这些数字会随平台改版变化，因此必须集中在此处并带证据，不允许写死在代码里。",
+  "authority": "taobao-publisher/AGENTS.md",
+  "note": "evidence.level=candidate 的规则仍会被校验，但校验失败时的提示会说明该数值尚未实证，避免误判为平台拒绝。",
+  "rules": {
+    "title_max_chars": {
+      "value": 60,
+      "unit": "字符",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍）",
+        "note": "平台自己的文案，原文：「最多允许输入30个汉字（60字符）」，输入框右侧计数器显示 0/60。即 1 个汉字 = 2 字符，上限 30 汉字 / 60 字符。**注意**：左侧「填写助手」另称「最多允许输入字符数以标题填写栏右侧数字为准」，说明该上限**随类目变化**；60 只对本次实测的类目（女士内衣/男士内衣/家居服>>短袜/打底袜/丝袜/美腿袜（新）>>长筒袜）成立。"
+      }
+    },
+    "guide_title_max_chars": {
+      "value": 30,
+      "unit": "字符",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍）",
+        "note": "「导购标题」是**独立于宝贝标题**的另一个字段，实测文案原文：「最多输入30字符（15个汉字）」，计数器 0/30。它是选填项（无必填星号）。"
+      }
+    },
+    "title_min_chars": {
+      "value": 1,
+      "unit": "字符",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "契约自身约束：空标题必然被平台拒绝",
+        "note": "仅要求非空。"
+      }
+    },
+    "main_image_max_count": {
+      "value": 5,
+      "unit": "张",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍）",
+        "note": "平台文案原文：「图片要求：比例为1:1，推荐尺寸1440x1440及以上；**至多可上传5张**，拖拽可调整顺序」，页面上一字排开 5 个「上传图片」空位。"
+      }
+    },
+    "main_image_formats": {
+      "value": ["png", "jpg", "jpeg"],
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍，填写助手「1:1主图」面板）",
+        "note": "平台「填写助手」原文列出四条基础上传要求：① 宽高比为1:1 ② 推荐尺寸1440x1440 ③ 最多可上传5张 ④ **图片格式支持png、jpg、jpeg**。注意：**不含 webp 与 bmp**。本地采集/白底图流程若产出 webp/bmp，必须先转成 jpg 或 png 再上传——`local_source.SUPPORTED_IMAGE_SUFFIXES` 目前把 webp/bmp 也算作候选图片，需要在真正上传阶段过滤或转换。"
+      }
+    },
+    "main_image_min_count": {
+      "value": 1,
+      "unit": "张",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "同 main_image_max_count",
+        "note": "至少 1 张主图，否则商品无法展示。"
+      }
+    },
+    "main_image_min_side_px": {
+      "value": 480,
+      "unit": "px",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "https://www.biaojixia.com/blog/taobao-main-image-requirements-guide",
+        "note": "主图最低 480px；经典尺寸 800×800。"
+      }
+    },
+    "main_image_recommended_side_px": {
+      "value": 1440,
+      "unit": "px",
+      "hard": false,
+      "evidence": {
+        "level": "verified",
+        "source": "captures/tb_publish_form_top_20261003.png（2026-10-03 实拍）",
+        "note": "平台文案原文：「推荐尺寸1440x1440及以上」。是**推荐**不是硬性要求，故 hard=false、只告警。同一处还提示「已设置商品详情页优先展示1:1主图」，并提供「从3:4主图裁剪」快捷入口。"
+      }
+    },
+    "main_image_max_bytes": {
+      "value": 3145728,
+      "unit": "字节",
+      "hard": true,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://www.biaojixia.com/blog/taobao-main-image-requirements-guide",
+        "note": "经典限制为单张 ≤3MB；但有 2026 新规称单文件上限提高到 20MB 且上线质量检测。两说冲突，故按较严的 3MB 告警、不硬阻塞，最终以平台实际上传响应为准。"
+      }
+    },
+    "main_image_aspect_ratio": {
+      "value": 1.0,
+      "tolerance": 0.02,
+      "unit": "宽高比",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "https://www.biaojixia.com/blog/taobao-main-image-requirements-guide",
+        "note": "主图要求 1:1。容差 0.02 用于容忍 JPEG 取整。"
+      }
+    },
+    "sku_max_count": {
+      "value": 40,
+      "unit": "行",
+      "hard": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://www.yingdao.com/community/detaildiscuss?id=884740762731630592",
+        "note": "第三方 RPA 实测帖称 SKU 超过 40 条后列表转懒加载、实际只能操作约 17 行。数字未经本仓库复核，故只告警不阻塞；但超过该值时必须走虚拟滚动路径。"
+      }
+    },
+    "sku_min_count": {
+      "value": 1,
+      "unit": "行",
+      "hard": true,
+      "evidence": {
+        "level": "verified",
+        "source": "契约自身约束",
+        "note": "至少要有一条 SKU 才能建立价格库存。"
+      }
+    },
+    "sku_price_min": {
+      "value": 0.01,
+      "unit": "元",
+      "hard": true,
+      "evidence": {
+        "level": "candidate",
+        "source": "https://doc.alidayu.com/docs/doc.htm?treeId=1&articleId=108956&docType=1",
+        "note": "价格必须为正数。老 TOP 文档给出「一口价须落在 SKU 价格区间内」的区间校验语义，但未给出最小绝对值；此处按「必须为正」这一必然约束处理。"
+      }
+    }
+  },
+  "unknown_rules": [
+    {
+      "name": "标题违禁词词表",
+      "note": "未取到官方词表正文，因此本子项目不做词表拦截，只做长度校验。不要把猜测的词表写进代码。"
+    },
+    {
+      "name": "重复铺货判定细则",
+      "note": "rule.taobao.com 正文未取到。不做程序判定。"
+    },
+    {
+      "name": "管控类目资质清单",
+      "note": "食品/酒类/书籍/保健品/农药/医疗等类目需要资质。本子项目不做资质预判，由人工在类目选择阶段确认。"
+    },
+    {
+      "name": "类目级价格上下限",
+      "note": "2026-10-03 实拍：销售信息区的「一口价」下方显示动态提示「本类目常规价格最低是1.00元，请规范标价行为」。这说明价格下限是**类目级、由平台实时下发**的，不能在本仓库写死一个全局值。当前 sku_price_min=0.01 只作「必须为正数」的兜底；真实下限必须按类目从页面/接口读取，读不到时应作为 blocker，而不是用 0.01 放行。"
+    },
+    {
+      "name": "标题长度上限",
+      "note": "2026-10-03 实拍：左侧「填写助手」面板原文——「1个中文按照2个字符计算，最多允许输入字符数以标题填写栏右侧数字为准」。即**上限显示在标题输入框右侧、随类目变化**，不是一个固定的 60。当前 title_max_chars=60 仍是 candidate；真实校验应读取输入框右侧的计数器。"
+    }
+  ],
+  "visual_evidence_20261003": {
+    "note": "以下来自 2026-10-03 的窗口实拍（见 docs/08-页面实拍与流程.md）。属于「看到了什么」，不是「DOM/接口是什么」。可用于校验设计，**不可**用于填选择器。",
+    "source": "docs/08-页面实拍与流程.md",
+    "facts": [
+      "发布表单页 URL 形如 …/sell/v2/publish.htm?catId=<叶子类目ID>&fromAICategory=true&keyProps={}&fromAIPublish=true&newRouter=1（实测 catId=201581801）",
+      "表单页有四个 tab：基础信息 / 销售信息 / 物流服务 / 图文描述",
+      "销售信息区含：销售规格（+ 创建规格）、一口价*、总库存*、购买须知(0/60)、商家编码(0/64)",
+      "一口价与总库存是独立于 SKU 的字段，各带「元」「件」后缀与必填星号",
+      "总库存输入框在 UI 上预填了默认值 1（平台行为；本子项目仍不替用户默认）",
+      "基础信息 tab 的属性区是「属性名 + 控件（请选择/请输入）」栅格，实测可见：缝头工艺、厚薄、抗菌处理、款式细节、里料、是否商场同款、图案、袜口弹性材质、款号",
+      "「已折叠」区域含：宝贝类型：全新 / 采购地 / 趋势标签",
+      "右侧浮层广告：SKU『批量生成神器』（批量秒级生成SKU / 自动对齐平台规范 / 解析回填更多参数）",
+      "右上角有「批量导入」入口",
+      "类目选择是三列级联（一级→二级→三级），外加一个带「名称/拼音首字母」搜索的类目树"
+    ]
+  }
+}

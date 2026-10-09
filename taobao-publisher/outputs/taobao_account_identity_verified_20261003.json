@@ -1,0 +1,41 @@
+{
+  "artifact": "taobao_account_identity_verified",
+  "date": "2026-10-03",
+  "platform": "taobao",
+  "method": "shop_session.read_taobao_identity(debug_address, timeout)",
+  "read_path": "CDP Network.getAllCookies → 过滤 taobao.com / tmall.com 域 → 取候选 cookie",
+  "sensitive_values_redacted": true,
+  "redaction_note": "本文件不记录任何 cookie 值、用户 ID 数值、会员名原文或调试端口。只记录「读到了什么形态的数据」这一事实，用于支撑证据等级。",
+  "result": {
+    "status": "logged_in",
+    "user_id_cookie": {
+      "name": "unb",
+      "observed": true,
+      "shape": "纯数字",
+      "accepted_as": "shop_id",
+      "note": "形态校验通过（非数字会被拒绝采信并降级为 logged_out）"
+    },
+    "nick_cookie": {
+      "candidates": ["tracknick", "_nk_"],
+      "observed": true,
+      "resolved_by": "按顺序取第一个非空，具体命中哪一个未单独区分",
+      "shape": "URL 编码，unquote 后为可读字符串",
+      "accepted_as": "shop_name",
+      "note": "语义是淘宝会员名（nick），不是店铺名"
+    },
+    "observed_times": 15,
+    "recorded_by": "shop_session.observe_identity(..., platform='taobao')",
+    "registry_entry_created": true,
+    "registry_source": "%LOCALAPPDATA%\\com.dyin.sock-publisher\\shop_profiles.json"
+  },
+  "what_this_proves": [
+    "淘宝登录态下的账户身份可以从 cookie 读出，无需调用任何猜测出来的 mtop 接口",
+    "observe_identity 能接受平台为 taobao 的实测结果，list_profiles 会因此把该账户判为已验证",
+    "「淘宝账户永远未验证」这条旧产品决策在实现层面已被移除"
+  ],
+  "what_this_does_not_prove": [
+    "淘宝店铺名：cookie 里没有店铺名。店铺名只能在卖家中心页面看到，目前没有已实证读取方式",
+    "运费模板：淘宝拉模板列表的接口尚未抓取取证，read_taobao_freight_templates 目前返回 not_captured",
+    "自动发布：本子项目的写路径仍未实现，本次只验证了账户身份（读）"
+  ]
+}

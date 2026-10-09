@@ -1,0 +1,30 @@
+{
+  "executable_bytes": 145993520,
+  "contract_resources": [
+    "taobao-publisher/contracts/field_mapping.json",
+    "taobao-publisher/contracts/selectors.json",
+    "taobao-publisher/contracts/rules.json",
+    "taobao-publisher/contracts/publish_item.schema.json"
+  ],
+  "taobao_modules": [
+    "taobao_publish",
+    "taobao_publish.authorization",
+    "taobao_publish.cdp",
+    "taobao_publish.constants",
+    "taobao_publish.contracts",
+    "taobao_publish.desktop",
+    "taobao_publish.errors",
+    "taobao_publish.local_source",
+    "taobao_publish.mapping",
+    "taobao_publish.models",
+    "taobao_publish.pipeline",
+    "taobao_publish.preflight",
+    "taobao_publish.sanitize",
+    "taobao_publish.stages"
+  ],
+  "account_platform_module": "src.shop_session",
+  "account_platform_binding_included": true,
+  "research_artifacts_included": false,
+  "publish_account_guard_included": true,
+  "active_account_alias_removal_guard_included": true
+}

@@ -1,0 +1,562 @@
+{
+  "contract_version": "0.1.0",
+  "platform": "taobao",
+  "updated_at": "2026-10-02",
+  "purpose": "DOM 路线的选择器契约。所有选择器必须由只读探针在真实发布页面上取证后填入，禁止凭页面观感猜测。",
+  "authority": "taobao-publisher/AGENTS.md",
+  "rules": [
+    "selector 为 null 表示未取证；对应阶段必须拒绝执行并抛出 EVIDENCE_INSUFFICIENT。",
+    "write_critical 为 true 的条目未取证时，整条 DOM 写路线不可用。",
+    "禁止使用会匹配到多个元素的选择器去驱动写操作；写入前必须校验唯一命中的元素数量。",
+    "取证脚本：scripts/probe-publish-workbench.mjs（只读，不点击、不输入、不提交）。",
+    "CSS 选择器无法按文本匹配。真实表单里大量控件共用 placeholder「请选择」「请输入」，按钮（如「搜索」「确认，下一步」）也没有唯一属性，只有 next-btn 这类公共类名。因此商品属性与按钮必须按**标签文本/相对位置**定位，selector 字段装不下这种语义——实现阶段要额外提供 label 文本或行定位规则，不要退化成「第 N 个 input」。",
+    "按标签文本定位是**默认**手段：CSS 选择器无法按文本匹配，而表单控件 placeholder 大量重复。实现必须走 taobao_publish.locating 的两段式（先按标签定位行，再在行内定位控件）。",
+    "禁止按位置定位（nth-child / 「第 N 个 input」/ 数组下标）。页面增删一个字段就整体错位，且每一步都会「成功」。",
+    "命中数不为 1 时必须失败：locating.require_unique 会抛 LabelNotFound / LabelAmbiguous，调用方拿不到「可能写错」的选项。",
+    "selector 字段是 CSS 选择器；label 字段是标签文本。两者都有时优先用 label（更能抗结构变化），selector 用于二次确认。",
+    "label 字段承载「按文本定位」的文本：表单字段填**标签文本**，按钮填**按钮文本**。CSS 无法按文本匹配，所以这是按钮唯一的可靠定位方式（「提交宝贝信息」与「保存草稿」的区别只在文本）。",
+    "命中多个按钮时守卫必须拒绝：实测「添加材质成分」命中 2 个（材质成分行 + 里料材质成分行）、「切换类目」命中 2 个（1 个可见）。点错就填错字段，宁可失败。",
+    "「销售规格」行内无可见控件，入口是按钮「+ 创建规格」；规格表格结构尚未勘察，skus.sku_table_root / skus.sku_row 保持 unknown。",
+    "第三种定位机制：**文本锚点**（locating.locate_text_anchor_expression）。适用于类名是 CSS Modules 哈希的区块——实测运费模板的容器是 div.template-lzNicC、标签是 div.label-HElTNK，每次构建都会变，写进契约等于埋雷。做法是找到文本恰好等于锚点的最深元素，向上逐层找「恰好 1 个可见控件」的容器；命中 0 层或多层都拒绝。",
+    "**React 事件处理器在文本元素自己身上，不在祖先卡片上**。实测类目候选：.sell-rich-text.path-text 带 onClick，而 .result-item / .wrap 都没有。点祖先卡片不会报错、也不会有任何效果——这类「静默无效」必须靠回读状态发现。",
+    "判断「某元素是否可点」不要用 node.onclick —— React 用事件委托，该属性永远是 null。可靠做法是读 __reactProps$<random> 里的 on* 键（见 scripts/probe-react-handlers.py）。",
+    "选完类目后**还会要求选品牌**，未选品牌时「确认，下一步」保持 disabled。实现 select_category 时必须把「品牌已选」纳入完成判定，否则会卡在一个永远点不动的按钮上。",
+    "类目 ID 不在 DOM 里（cate-path / wrap / result-item 都没有 data-* 或 id）。实测点击候选时 catId 出现在 item.upload.taobao.com/router/asyncOpt.htm 的 query 里。",
+    "**同一个页面上的下拉容器类名可能不止一种**：实测品牌下拉是 .next-select-popup-wrap（带搜索框），运费模板是 .next-overlay-inner.next-select-single-menu（不带搜索框）。只认一种会报「下拉没打开」，而实际上它开了——读结构失败时先报告**所有可见的 overlay**，别急着下结论。",
+    "**销售规格抽屉**（点「+ 创建规格」打开）：容器 .sku-decouple-drawer-container，底部 .sku-decouple-drawer-footer 有「重置 / 确认创建 / 取消」。左 .left-part 是展示示意，右 .right-part 才是操作区（.select-mode 选展示模式、.multi-sale-props .group .prop-item 选标准属性、.sale-props-value 填值）。**收尾一律点「取消」**，不要点「确认创建」——除非本轮就是要创建规格。",
+    "**规格值必须从标准候选项里选，不能自由填写**。实测「尺码」的候选来自标准列表（如 XS(34-37)、M(37-41)、均码 (39-45.5)、L（45-47）），容器与品牌下拉相同（.next-select-popup-wrap）。往「主色(必选)」输入自由文本并回车**不会**加入任何值（实测计数仍是 0）。这与项目红线一致：属性值必须来自平台，不得硬编码或臆造。",
+    "**页面上有三套下拉，但只有两种候选结构**（2026-10-03 实测，E-090）：① 标准选择类（选品牌、选规格值）→ 容器 .next-select-popup-wrap，候选 .options-item，文本 .info-content；② 简单菜单类（运费模板）→ 容器 .next-overlay-inner.next-select-single-menu，候选 li.next-menu-item，文本 .next-menu-item-text。**用 ② 的选择器去读 ① 的候选会得到 0 个**——而弹层其实开着、候选就在眼前，很容易误判成「下拉没打开」。读候选失败时先报告**弹层里实际有哪些元素**，别急着换选择器。",
+    "**规格值的加入不是「点一下就成」**（E-092/E-093，已部分证伪）：实测点中候选后 header 计数从 0 变 1 成功过一次；但重复操作时值只进到输入框（input.value 变成候选文本）而**未提交为规格值**，「确认创建」也不会关闭抽屉或生成表格。**不要假设一次点击就完成了提交**——实施 \fill_skus 前必须先把「值如何真正提交」实证清楚。",
+    "**「颜色分类」与「尺码」两个属性块结构不同**（E-091）：尺码块是一个 input[role=combobox]（标准值下拉）；颜色分类块是 ul.sell-color-item-container > li，每行含色板下拉（.color-dropdown-*）与备注输入（.color-item-remark），另有「+」按钮加行。**不能按同一套逻辑处理所有属性块。**",
+    "**给规格属性加值必须「先点 + 再加行」**（E-095/E-096，已实证）：属性块里的 \button.add（内含 i.next-icon-add）才是新增值行的入口；那个 input[role=combobox] 是**所在行**的编辑器——反复用它只会改掉同一行的值。正确链路：点 \button.add → 点**最后一行**的输入 → 在**最后一个**可见 .next-select-popup-wrap 里点中 .options-item → 计数 +1（点中即提交）。实测踩过：不点 + 直接选值，值只填进输入框、计数不变，回车与失焦都无效。",
+    "**分层展示模式下，所有选中的属性都必须有值，否则「确认创建」静默失败**（E-097，已实证）：实测颜色分类(0) 为空时点「确认创建」，抽屉不关、不报错、15 秒无任何变化；取消勾选颜色分类后再点，**1 秒内抽屉关闭且表格出现**。⚠️ 这是**静默失败**——没有提示、没有 disabled、按钮看着完全正常。实施 \fill_skus 时必须先校验「每个选中属性都有值」，否则会卡死在这一步且无从排查。",
+    "⚠️ **.sell-sku-table-wrapper-new 在没创建规格时也是可见的**，但里面只有「+ 创建规格」按钮、表格数 0。所以「容器存在」**不能**当作「规格已创建」——必须查 \table 元素或 \tr.sku-table-row。",
+    "**图片上传不在发布页上，在素材中心的 iframe 里**（E-101..E-104）：点主图空位 .image-empty **不会**弹原生文件框，而是打开 .sell-component-image-v2-media-popup，里面套一个 sucai-selector-ng 的 iframe。发布页上**没有任何常驻的 input[type=file]**（实测 0 个）。**必须切到 iframe 的执行上下文**再操作。",
+    "⚠️ **按 frame URL 匹配执行上下文，不能按 origin**：同一个 origin （market.m.taobao.com）下有 3 个 iframe（详情预览 / 服务大厅 / 素材中心），按 origin 挑会挑到详情预览那个，然后在错误的页面里找上传入口（实测踩过）。正确做法：Page.getFrameTree 取 frameId→url，再用 Runtime.executionContextCreated 的 \u0007uxData.frameId 对上。",
+    "**file input 是按需创建的**：素材中心 iframe 里点「本地上传」之前是 0 个，点之后是 1 个（multiple=true，accept 为常见图片格式）。它**留在 DOM 里、不触发原生文件框**，所以直接对它调 DOM.setFileInputFiles({files, backendNodeId}) 即可，不需要 Page.setInterceptFileChooserDialog。**要在点完「本地上传」之后再去找这个 input**，不能提前缓存。",
+    "**对图片空间里已有的素材，优先「选择」而不是「重新上传」**：更容易成功，也不占新的空间配额。实测图片空间里已有历史素材。",
+    "**选图没有确认按钮，点图即生效**（E-109 实测）：图片空间里每张图是 `div.PicList_pic_background`，点它（或里面的 `label.next-checkbox-wrapper`）**立刻**把图回填到主图位——实测空位 5→4、已填 0→1。但**弹层不会自动关闭**（实测选完仍是 open），要自己关。所以「选图成功」的判据是**已填位数变化**，不是弹层关闭。",
+    "**「找不到确认按钮」不等于「选不了图」**：实测在弹层外层找到 0 个按钮、iframe 里也搜不到「确定/完成/确认」文案，一度以为还缺一步。实际上这是**实时选择**（URL 里的 max=1 / realTimeSel 也提示了这一点）。遇到「找不到确认入口」时，先试最朴素的动作（点一下图），再看状态有没有变。",
+    "⚠️ **`find_frame_context` 不能用 `send(\"Runtime.enable\")`**：`send` 会丢弃沿途事件，而 `executionContextCreated` 是在 `Runtime.enable` 响应**之前**批量发出的，用 `send` 会把它们全丢掉——表现为「找不到 iframe 上下文」而 iframe 明明开着（实测踩过）。要一边自己收事件一边等响应。后备方案：`Page.createIsolatedWorld(frameId)` 按 frameId 直接建上下文，不依赖事件时序。",
+    "**「遮挡」的标志是 `.next-overlay-backdrop`，不是「有浮层」**（实测对照）：干净页面上 `.next-overlay-inner` 为 0；打开图片选择弹层后变成 1，但 `.next-overlay-backdrop` **两次都是 0**——那个弹层是非模态的。`.next-loading` 干净页面上就有 8 个（内联 loading），更不能当遮挡信号。用错信号会让**正常页面被误判为「有遮挡」而拒绝执行**。",
+    "**`PageSnapshot` 的四个 DOM 事实必须由 CDP 真的评估，不能靠 URL 猜**：`snapshot_from_probe` 刻意把它们留成 `None`（「本模块不做 Runtime.evaluate」），而预检在写模式下把 `None` 当阻塞项——于是**真实写入永远过不了预检**。接通 `PageClient.read_page_facts` 之后这四项才有值。"
+  ],
+  "selectors": [
+    {
+      "key": "session.login_indicator",
+      "stage": "precheck",
+      "purpose": "判断当前页面是否为登录页。优先用 URL 匹配（constants.LOGIN_URL_MARKERS），此项仅作补充。",
+      "selector": null,
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "docs/05-证据日志.md E-024（未登录访问类目页 302 到 login.taobao.com）",
+        "note": "按 URL 判断即可，不需要 DOM 选择器：constants.LOGIN_URL_MARKERS 已覆盖 login.taobao.com / login.tmall.com。本项作为补充，selector 保持为空是**正确状态**，不是缺失。"
+      }
+    },
+    {
+      "key": "session.publish_workbench_root",
+      "stage": "precheck",
+      "purpose": "确认当前页面确实渲染出了发布工作台，而非空白页或错误页。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-map.py（真实登录态页面全貌）",
+        "note": "用实测行容器的存在性判断工作台是否渲染。实测填写页 70 行；类目页结构不同，本项只对填写页成立。"
+      }
+    },
+    {
+      "key": "category.search_input",
+      "stage": "select_category",
+      "purpose": "类目搜索输入框。",
+      "selector": "input[placeholder*=\"可输入产品名称\"]",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-publish-workbench.mjs（真实登录态，9502 端口）",
+        "note": "类目页唯一的该文案输入框；实测 placeholder 为「可输入产品名称、类目关键词、条码信息」。"
+      }
+    },
+    {
+      "key": "category.search_result_item",
+      "stage": "select_category",
+      "purpose": "类目搜索结果条目。写入前必须校验只命中一个。",
+      "selector": ".sell-rich-text.path-text",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-category-results.py + probe-result-ancestry.py + probe-react-handlers.py + probe-category-click.py（真实登录态）",
+        "note": "类目候选的**可点击元素是路径文本自己**（.sell-rich-text.path-text 带 React onClick/onMouseEnter/onMouseLeave；.sell-component-general-category-result-cate-path 也带 onClick）。⚠️ **不要点祖先卡片**：.result-item / .wrap 上都没有 handler，点了不生效且不报错（实测踩过）。候选文本形如「女士内衣/男士内衣/家居服>短袜/打底袜/丝袜/美腿袜（新）>一次性袜子」，实测「搜索袜子」返回 9 个候选。匹配必须唯一，命中 0 或多都要拒绝。"
+      }
+    },
+    {
+      "key": "category.confirm_button",
+      "stage": "select_category",
+      "purpose": "确认类目、进入填写页的按钮。",
+      "selector": null,
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-publish-workbench.mjs（类目页）",
+        "note": "按钮文本。实测类目页为 disabled 直到选中类目；实现必须先确认未禁用再点。label 字段在这里承载的是**按钮文本**，不是表单标签。"
+      },
+      "label": "确认，下一步"
+    },
+    {
+      "key": "base.title_input",
+      "stage": "fill_base",
+      "purpose": "商品标题输入框。",
+      "selector": "input[placeholder*=\"最多允许输入30个汉字\"]",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态 9502 端口，22/22 唯一命中）",
+        "note": "两段式定位：先按标签「宝贝标题」找到行，再取行内 input。placeholder 里是限制说明，不是当前值。"
+      },
+      "label": "宝贝标题"
+    },
+    {
+      "key": "base.outer_id_input",
+      "stage": "fill_base",
+      "purpose": "商家编码 / 外部 ID 输入框。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态，标签 22/22 唯一、按钮 8 可用 2 需补限定）",
+        "note": "两段式：按标签「商家编码」定位行，再取行内 input。实测唯一命中。"
+      },
+      "label": "商家编码"
+    },
+    {
+      "key": "props.required_prop_list",
+      "stage": "fill_props",
+      "purpose": "带 * 的必填类目属性列表容器。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态 9502 端口，22/22 唯一命中）",
+        "note": "行容器。实测页面 70 行、其中 8 行无标签；必填标记以 * 出现在标签区（.sell-component-info-wrapper-label-wrap）内，不进入标签元素本身的 textContent。"
+      }
+    },
+    {
+      "key": "props.prop_value_option",
+      "stage": "fill_props",
+      "purpose": "某个属性下的可选值条目。必须按属性行定位，不能全局匹配。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态 9502 端口，22/22 唯一命中）",
+        "note": "必须两段式：先用属性名（如「面料」「厚薄」）唯一定位到行，再取该行内的 [role=combobox]。实测 16 个属性字段全部恰好命中 1 行。禁止全局匹配候选项，也禁止按序号取行。"
+      },
+      "label": "<属性名>"
+    },
+    {
+      "key": "required.row_marker",
+      "stage": "fill_required_attrs",
+      "purpose": "必填标记 * 的独立元素。它就是「哪些项是必填」的唯一可靠来源。",
+      "selector": ".sell-component-info-wrapper-required",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "tmp/scan-category-attributes.py / tmp/probe-required-markers.py（真实登录态 9334 端口）",
+        "note": "⚠️ 标记是**独立元素** `<span class=\"sell-component-info-wrapper-required\">*</span>`，**不在标签元素的 textContent 里**。按标签文本搜 * 会得出「0 个必填」（实测踩过）。实测本类目 46 个属性行、17 个必填标记。属性行名要取 `.sell-component-info-wrapper-label` 的文本（不是整行文本，否则会把提示词读进名字，如 `适用季节重要`）。"
+      }
+    },
+    {
+      "key": "required.option_item",
+      "stage": "fill_required_attrs",
+      "purpose": "必填项下拉的候选值弹层与候选项。必须先分行、再展开、再读候选。",
+      "selector": "div.next-select-popup-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "tmp/diagnose-dropdown-open.py / tmp/diagnose-dropdown-ab.py（真实登录态 9334 端口）",
+        "note": "⚠️ 三个坑：① 页面上同时存在其它 `.next-overlay-inner`（导航条、填写助手），**只认 `div.next-select-popup-wrap`**；② 候选项要取**弹层内叶子节点的短文本**——按 `.next-menu-item,[role=option],li` 找会命中 0（弹层其实开着、候选就在眼前）；③ 展开前必须把该行 `scrollIntoView` 进视口，CDP 鼠标事件只在视口内有效（实测某行在 y=-1483，表现为「点开了但候选为空」）。写入用 page.pick_prop_value（自带回读断言），候选必须来自平台、禁止自由文本。"
+      },
+      "label": "<属性名>"
+    },
+    {
+      "key": "skus.sale_prop_selector",
+      "stage": "fill_skus",
+      "purpose": "销售属性（颜色 / 尺码）选择区。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-map.py（真实登录态页面全貌）",
+        "note": "入口已实证：行「销售规格」行内**无可见控件**，靠按钮「+ 创建规格」（按钮文本定位，实测唯一命中）。规格创建后的表格结构**尚未勘察**，故 sku_table_root / sku_row 仍为 unknown。"
+      },
+      "label": "销售规格"
+    },
+    {
+      "key": "skus.sku_table_root",
+      "stage": "fill_skus",
+      "purpose": "SKU 明细表格根节点。",
+      "selector": ".sell-sku-table-wrapper-new",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-sku-panel.py + probe-sku-drawer-inner.py + probe-sku-value-area.py + probe-sku-value-options.py（真实登录态）",
+        "note": "SKU 表格容器，实测为 .sell-sku-table-wrapper-new（同时带 is-taobao 类），内含 .sell-new-sku-table-content。**注意**：在点「+ 创建规格」之前，这个容器是可见的但**里面只有那个按钮**，没有表格。真正的表格行要等抽屉里点「确认创建」之后才渲染。相关的还有 .sell-component-sku-excel-upload（「批量导入」入口）。"
+      }
+    },
+    {
+      "key": "skus.sku_row",
+      "stage": "fill_skus",
+      "purpose": "SKU 明细行。写入前必须按规格值回读校验行身份，不能按行号盲写。",
+      "selector": "tr.sku-table-row",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/experiment-sku-add-row.py + experiment-sku-deselect-prop.py + read-sku-table.py（真实登录态）",
+        "note": "SKU 表格的数据行。实测创建规格后 tbody 里有 2 个 tr.sku-table-row，每行 12 个 td。列序：td[1]=规格值文本（如 L（45-47））、td[2]=价格（「元」+ input）、td[4]=库存（「件」+ input，默认 value=0）、td[6]=商家编码（combobox + input ph=请输入）。表格本身是 table.sell-sku-inner-table-new.sell-sku-body-table，外层容器 .sell-sku-table-wrapper-new。**表头不在同一个 table 里**（thead 查不到 th）。"
+      }
+    },
+    {
+      "key": "price_stock.price_input",
+      "stage": "fill_price_stock",
+      "purpose": "SKU 价格输入框。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态 9502 端口，22/22 唯一命中）",
+        "note": "一口价行内 input 的 placeholder 为空，无法用 placeholder 区分——这正是必须按标签定位的原因。"
+      },
+      "label": "一口价"
+    },
+    {
+      "key": "price_stock.stock_input",
+      "stage": "fill_price_stock",
+      "purpose": "SKU 库存输入框。",
+      "selector": ".sell-component-info-wrapper-wrap",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态 9502 端口，22/22 唯一命中）",
+        "note": "总库存行内 input 的 placeholder 为空。UI 预填 1，写入前必须回读确认，不能假设它一定是 1。"
+      },
+      "label": "总库存"
+    },
+    {
+      "key": "freight.template_select",
+      "stage": "fill_freight",
+      "purpose": "运费模板选择控件。",
+      "selector": null,
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-field-structure.py + taobao_publish.locating.locate_text_anchor_expression 实机验证",
+        "note": "**只能按文本锚点定位**：容器与标签都是 CSS Modules 哈希类名（实测 div.template-lzNicC / div.label-HElTNK），每次构建都会变。定位方式：找到文本恰好为「运费模板」的最深元素，向上逐层找「恰好 1 个可见控件」的容器——实测 hop=1 命中（1 个 input[role=combobox]），hop=2/3 各有 2 个控件。注意 label 字段在这里是**文本锚点**，不是表单行标签，定位机制不同（见 locating.locate_text_anchor_expression）。"
+      },
+      "label": "运费模板"
+    },
+    {
+      "key": "freight.template_option",
+      "stage": "fill_freight",
+      "purpose": "运费模板候选项。必须严格匹配名称，匹配不到要终止。",
+      "selector": "li.next-menu-item",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-freight-dropdown.py（真实登录态，展开下拉读结构）",
+        "note": "运费模板下拉里的选项。**容器有两种类名**（实测）：品牌下拉用 .next-select-popup-wrap（带搜索框、虚拟滚动），运费模板用 .next-overlay-inner.next-select-single-menu（简单单选菜单）。选项 = li.next-menu-item，文本 = 内层 .next-menu-item-text，当前选中项带 next-selected 类。⚠️ **不要把 .next-menu 当作容器选择器**：那会抓到顶部导航栏（基础信息/销售信息/物流服务/图文描述），选项看起来完全不对。实测该店铺有 2 个模板：「极兔快递」（默认选中）与「系统模板-商家默认模板」；展开下拉时**0 个网络请求**，说明模板在页面加载时就已取好。按名称**精确匹配**，命中 0 或多都拒绝——选错模板会按别人的运费规则发货。"
+      }
+    },
+    {
+      "key": "submit.save_draft_button",
+      "stage": "fill_price_stock",
+      "purpose": "保存草稿按钮（如存在）。",
+      "selector": null,
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态，标签 22/22 唯一、按钮 8 可用 2 需补限定）",
+        "note": "按钮文本定位，实测唯一且可见。label 字段承载按钮文本。保存草稿同样是**写入**，必须过写入锁。"
+      },
+      "label": "保存草稿"
+    },
+    {
+      "key": "submit.submit_button",
+      "stage": "submit",
+      "purpose": "提交发布按钮。最后一道人工确认的对象。",
+      "selector": null,
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/verify-locating-live.py（真实登录态，标签 22/22 唯一、按钮 8 可用 2 需补限定）",
+        "note": "按钮文本定位，实测唯一且可见，类名 next-btn next-large next-btn-primary。这是最后一道人工确认的对象——写入前必须要求 TAOBAO_UPLOAD_ALLOW_SUBMIT 精确为 \"1\"。"
+      },
+      "label": "提交宝贝信息"
+    },
+    {
+      "key": "common.blocking_overlay",
+      "stage": "precheck",
+      "purpose": "可能遮挡表单的弹窗 / 蒙层。存在时必须先由人工处理，不做自动关闭。",
+      "selector": ".next-overlay-backdrop",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-facts.py（真实登录态，干净页面 + 打开弹层各测一次）",
+        "note": "模态遮罩。**实测判据**：干净页面 0 个；打开图片选择弹层（非模态）后**仍是 0**；同时 `.next-dialog` / `.next-dialog-body` 也都是 0。所以 `has_blocking_overlay` 要读的是 **`.next-overlay-backdrop`**，而**不是** `.next-overlay-inner`（非模态浮层也会命中，会把正常页面误判成被遮挡）、也不是 `.next-loading`（干净页面上就有 8 个内联 loading，完全不能当遮挡信号）。⚠️ 猜一个会让**正常页面被误判为「有遮挡」而拒绝执行**，所以这条一直是 unknown，直到这次拿到对照实测。"
+      }
+    },
+    {
+      "key": "media.main_image_slot",
+      "stage": "upload_images",
+      "purpose": "主图空位。点它打开图片选择弹层；这是上传的入口。",
+      "selector": ".image-empty",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "主图空位。实测 1:1主图与 3:4主图各有 5 个空位，结构为 .sell-component-info-wrapper-new > .sell-component-simply-images > .image-list > .sell-component-material-item-view.sell-component-image-v2 > .image-empty，空位内文本是「上传图片」（.upload-text）。**点击它不会弹原生文件框**，而是打开素材中心弹层（见 media.upload_popup）。"
+      }
+    },
+    {
+      "key": "media.upload_popup",
+      "stage": "upload_images",
+      "purpose": "图片选择弹层容器。里面是素材中心的 iframe。",
+      "selector": ".sell-component-image-v2-media-popup",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "实测尺寸 901x549，结构 .media-wrap > .media-img-plug > (.media-img-plug-header「选择图片」+「图片要求：比例为1:1，图片大小不超过20MB」) + iframe。弹层里**没有** input[type=file]，按钮数 0——一切都发生在 iframe 里。"
+      }
+    },
+    {
+      "key": "media.media_iframe",
+      "stage": "upload_images",
+      "purpose": "素材中心 iframe。本地上传与选图都在它的执行上下文里。",
+      "selector": "iframe[src*=sucai-selector-ng]",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "src=https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true&...，title=「图片选择器」。⚠️ **必须按 frame URL 匹配执行上下文**，不能按 origin：同一个 origin（market.m.taobao.com）下有 3 个 iframe（详情预览、服务大厅、素材中心），按 origin 挑会挑到详情预览那个（实测踩过）。入口按钮：本地上传 / 图片空间 / 生意管家。"
+      }
+    },
+    {
+      "key": "media.local_upload_entry",
+      "stage": "upload_images",
+      "purpose": "「本地上传」入口。点它会在素材中心 iframe 里创建 file input。",
+      "label": "本地上传",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "素材中心 iframe 里的「本地上传」按钮。实测点它之后 iframe 里**出现 1 个** input[type=file]（accept=image/jpeg,image/bmp,image/gif,.heic,image/png,..., multiple=true，display=block，尺寸 219x42）。**该 input 留在 DOM 里、不触发原生文件框**（实测未收到 Page.fileChooserOpened），所以可以直接对它用 CDP 的 DOM.setFileInputFiles。"
+      }
+    },
+    {
+      "key": "media.file_input",
+      "stage": "upload_images",
+      "purpose": "素材中心的 file input。用 CDP DOM.setFileInputFiles 塞文件。",
+      "selector": "input[type=file]",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "**不是常驻元素**：点「本地上传」之前 iframe 里 file input 数为 0，点之后为 1。multiple=true，一次可塞多个文件。塞文件走 CDP DOM.setFileInputFiles({files, backendNodeId})——需要先 DOM.getDocument 再在**素材中心那个 frame** 里 querySelector，或者用 DOM.describeNode 拿 backendNodeId。"
+      }
+    },
+    {
+      "key": "media.space_tab",
+      "stage": "upload_images",
+      "purpose": "「图片空间」入口。已上传的图从这里选，不重新上传。",
+      "label": "图片空间",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-image-upload-area.py + probe-file-chooser.py + probe-media-iframe.py + probe-media-local-upload.py（真实登录态）",
+        "note": "素材中心 iframe 里的另一个入口。实测图片空间里已经有历史素材（如「智淘商品复制宝贝主图素材_勿删」「详情_004.jpg 1440x1919」）。**对已经传过的图，从这里选比重新上传更稳**，也不占用新的空间配额。"
+      }
+    },
+    {
+      "key": "media.image_card",
+      "stage": "upload_images",
+      "purpose": "图片空间里的一张图卡片。**点它即选中并回填主图位**，不需要确认按钮。",
+      "selector": "[class*=\"PicList_pic_background\"]",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-media-space-items.py + probe-media-selection.py + experiment-media-select.py（真实登录态）",
+        "note": "实测结构：div.PicList_pic_background 内含 label > label.next-checkbox-wrapper > input.next-checkbox-input，缩略图是 img。**点击卡片（或卡片里的 label）立即生效**：实测点第一张图后，主图空位从 5 变 4、已填从 0 变 1，且**弹层保持打开**——也就是说没有「确定」按钮，选完要自己关弹层。URL 带的 max=1 / realTimeSel 也印证是实时选择。图片空间实测有 145 张可选（同一店铺的历史素材）。"
+      }
+    },
+    {
+      "key": "media.main_slot_filled",
+      "stage": "upload_images",
+      "purpose": "主图位回填状态。**这是「选图成功」的唯一可靠判据。**",
+      "selector": ".sell-component-material-item-view",
+      "write_critical": true,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-media-space-items.py + probe-media-selection.py + experiment-media-select.py（真实登录态）",
+        "note": "1:1主图区共 5 个 .sell-component-material-item-view；空位里含 .image-empty，已填位里是 img（src 形如 https://img.alicdn.com/imgextra/...）。**判据是「已填位数」的变化**，不是弹层开不开——实测选完图弹层还开着。"
+      }
+    },
+    {
+      "key": "common.workbench_root",
+      "stage": "precheck",
+      "purpose": "",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-facts.py（真实登录态，干净页面 + 打开弹层各测一次）",
+        "note": "发布工作台根节点。实测干净页面有 28 个；`.sell-component-navigation-bar` 1 个（顶部「基础信息/销售信息/物流服务/图文描述」导航）；`.next-form` 0 个——所以**不能**用 `.next-form` 判断工作台是否加载。"
+      },
+      "selector": ".sell-component-info-wrapper-wrap"
+    },
+    {
+      "key": "common.submit_control",
+      "stage": "precheck",
+      "purpose": "",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-facts.py（真实登录态，干净页面 + 打开弹层各测一次）",
+        "note": "提交控件计数。实测干净页面恰好 1 个。用于回填 `has_submit_control`。"
+      },
+      "label": "提交宝贝信息"
+    },
+    {
+      "key": "common.save_draft_control",
+      "stage": "precheck",
+      "purpose": "",
+      "write_critical": false,
+      "evidence": {
+        "level": "verified",
+        "source": "scripts/probe-page-facts.py（真实登录态，干净页面 + 打开弹层各测一次）",
+        "note": "保存草稿控件计数。实测干净页面恰好 1 个。用于回填 `has_save_draft_control`。"
+      },
+      "label": "保存草稿"
+    },
+    {
+      "key": "sku.custom_mode",
+      "stage": "fill_skus",
+      "purpose": "归档有模式入口，切换后的行结构仍待实测",
+      "selector": ".select-mode label.next-radio-wrapper",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "归档有模式入口，切换后的行结构仍待实测；本地模拟通过不会提升平台证据"
+      },
+      "label": "单层展示·自定义填写规格"
+    },
+    {
+      "key": "sku.custom_rows",
+      "stage": "fill_skus",
+      "purpose": "候选：仅抽屉内、拥有唯一名称输入的行，不宣称当前平台使用此结构",
+      "selector": "li",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：仅抽屉内、拥有唯一名称输入的行，不宣称当前平台使用此结构；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "sku.custom_input",
+      "stage": "fill_skus",
+      "purpose": "候选：原生文本输入；拒绝标准候选 combobox",
+      "selector": "input[placeholder=\"输入规格\"]",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：原生文本输入；拒绝标准候选 combobox；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "sku.custom_add",
+      "stage": "fill_skus",
+      "purpose": "标准模式的加行入口已归档，自定义模式复用属于推断",
+      "selector": "button.add",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "标准模式的加行入口已归档，自定义模式复用属于推断；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "sku.image_slot",
+      "stage": "fill_skus",
+      "purpose": "候选：名称行内唯一图片位；当前归档未确认该复用",
+      "selector": ".sell-component-material-item-view",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：名称行内唯一图片位；当前归档未确认该复用；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "sku.table_image",
+      "stage": "readback",
+      "purpose": "候选：按完整规格身份定位表格行，再读行内唯一图片 URL",
+      "selector": "img",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：按完整规格身份定位表格行，再读行内唯一图片 URL；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "detail.editor",
+      "stage": "fill_detail",
+      "purpose": "候选：宝贝详情行内的原生 HTML 编辑区；iframe/私有编辑器暂不支持",
+      "selector": "[contenteditable=\"true\"],textarea",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：宝贝详情行内的原生 HTML 编辑区；iframe/私有编辑器暂不支持；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "media.exact_filename",
+      "stage": "upload_images",
+      "purpose": "候选：图片空间卡片 alt 精确文件名；需要确认当前平台真实命名控件",
+      "selector": "img[alt]",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "docs/13-自定义规格与媒体候选适配.md",
+        "note": "候选：图片空间卡片 alt 精确文件名；需要确认当前平台真实命名控件；本地模拟通过不会提升平台证据"
+      }
+    },
+    {
+      "key": "media.directory_tree",
+      "stage": "upload_images",
+      "purpose": "素材空间目录树",
+      "selector": "[role=\"tree\"],.next-tree",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "用户2026-10-05说明父目录与主图/SKU/详情页子目录；test_media_directory_flow.py仅证明本地原生目录树模型",
+        "note": "未读取当前淘宝目录DOM；仅支持可明确识别的原生ARIA/Next目录树，动作前唯一路径匹配，动作后回读选中路径。"
+      }
+    },
+    {
+      "key": "media.directory_node",
+      "stage": "upload_images",
+      "purpose": "素材空间目录节点",
+      "selector": "[role=\"treeitem\"],.next-tree-node",
+      "write_critical": false,
+      "evidence": {
+        "level": "candidate",
+        "source": "用户2026-10-05说明父目录与主图/SKU/详情页子目录；test_media_directory_flow.py仅证明本地原生目录树模型",
+        "note": "未读取当前淘宝目录DOM；仅支持可明确识别的原生ARIA/Next目录树，动作前唯一路径匹配，动作后回读选中路径。"
+      }
+    }
+  ]
+}

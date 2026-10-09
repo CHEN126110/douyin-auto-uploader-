@@ -1,0 +1,39 @@
+{
+  "review": [
+    {
+      "file": "page.py",
+      "changed_definitions": [
+        "build_read_media_file_input_expression",
+        "wait_for_media_upload_queue",
+        "upload_files_to_media",
+        "_upload_staged_files_to_media"
+      ],
+      "removed_definitions": [],
+      "added_lines": 47,
+      "utf8_and_original_newlines": true
+    },
+    {
+      "file": "form_adapters.py",
+      "changed_definitions": [
+        "prepare_media",
+        "create_custom_skus"
+      ],
+      "removed_definitions": [],
+      "added_lines": 41,
+      "utf8_and_original_newlines": true
+    },
+    {
+      "file": "stages.py",
+      "changed_definitions": [
+        "report_media_activity",
+        "stage_upload_images",
+        "run_stage"
+      ],
+      "removed_definitions": [],
+      "added_lines": 25,
+      "utf8_and_original_newlines": true
+    }
+  ],
+  "new_module": "media_library.py",
+  "scope": "directory navigation, batch queue waiting and scoped media lookup"
+}

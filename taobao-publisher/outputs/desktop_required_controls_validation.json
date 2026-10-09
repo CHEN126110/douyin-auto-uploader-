@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-10-05T10:36:31.833493+08:00",
+  "scope": "visible required control implementation, isolated native DOM and real local worker, frontend, frozen and local runtime",
+  "previous_goal_turn_classification": "progress",
+  "goal_status_observed_at_turn_start": "active",
+  "goal_completed": false,
+  "package_regression": {
+    "passed": 1238,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "excluded_actual_environment_tests": 2,
+    "timing": "最终清单成员关系及禁用原生值读取补充前启动；最终定向检查单列"
+  },
+  "final_required_control_and_verification_tests": {
+    "passed": 55
+  },
+  "business_and_upload_safety_tests": {
+    "passed": 243
+  },
+  "frontend_behavior_checks": 79,
+  "frontend_typecheck_and_build": true,
+  "source_selfcheck": {
+    "passed": 6,
+    "builders": 52,
+    "calls": 62
+  },
+  "review": [
+    {
+      "file": "taobao-publisher/taobao_publish/page.py",
+      "utf8_and_original_newlines": true,
+      "added_lines": 10
+    },
+    {
+      "file": "taobao-publisher/taobao_publish/stages.py",
+      "utf8_and_original_newlines": true,
+      "added_lines": 19
+    },
+    {
+      "file": "taobao-publisher/taobao_publish/verification.py",
+      "utf8_and_original_newlines": true,
+      "added_lines": 36
+    },
+    {
+      "file": "tauri-app/src/types/index.ts",
+      "utf8_and_original_newlines": true,
+      "added_lines": 20
+    },
+    {
+      "file": "tauri-app/src/utils/taobaoFormVerification.ts",
+      "utf8_and_original_newlines": true,
+      "added_lines": 21
+    }
+  ],
+  "backend_sha256": "af9e684f2807bda70d9a5267177e599b37396c25488acc6c5e293416b098cd76",
+  "frozen_package_semantics_match_source": true,
+  "runtime_modules_verified": 21,
+  "contracts_verified": 4,
+  "source_manifest_files_verified": 66,
+  "local_health_and_deployed_hash_verified": true,
+  "live_taobao_filling_executed": false,
+  "whole_form_required_fields_verified": false
+}

@@ -8,3 +8,14 @@ lxml==4.9.3
 Pillow==10.0.1
 python-dateutil==2.8.2
 psutil==5.9.8
+
+# 白底图语义抠图（src/whitebg）。装上才有「生成白底图」功能；
+# 不装 sidecar 照样启动，接口会返回「缺少运行依赖」而不是崩掉。
+# 代价：onnxruntime + scipy + numpy 打进安装包大约多 280MB，
+# 模型（birefnet-general 927MB + CLIP 147MB）不打包，运行时从数据目录读，
+# 路径规则见 src/whitebg/paths.py。
+rembg>=2.0.80              # 只用它的 new_session/remove，本体 0.3MB，不带 opencv
+onnxruntime>=1.17.0        # matte 与 CLIP 推理
+tokenizers>=0.15.0         # CLIP 文本侧分词（只在首次生成 embedding 缓存时用到）
+scipy>=1.11.0              # 连通域标记、距离变换、box filter
+numpy>=1.26.0

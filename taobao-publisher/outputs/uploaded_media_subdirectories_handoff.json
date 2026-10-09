@@ -1,0 +1,19 @@
+{
+  "scope": "isolated_browser_with_simulated_upload_server_and_role_subdirectories",
+  "live_platform_tested": false,
+  "main_images": 5,
+  "sku_images": 6,
+  "detail_images": 10,
+  "upload_batches": [
+    21
+  ],
+  "subdirectory_lookup_required": true,
+  "caption_is_sibling": true,
+  "stage_summaries": [
+    "主图已选入主图位并回读确认：5 张（本次新上传 5 张，空间里原有 0 张）；SKU 素材 6 张、详情素材 10 张已准备",
+    "自定义规格、对应图片及逐行售价库存已写入并回读",
+    "详情图片按采集顺序写入并回读"
+  ],
+  "saved_draft_or_submitted": false,
+  "test_source_sha256": "28268fbc8c7a2393623bce5b5876a487856214d8003e82fbb7c1a9ba33cadf1c"
+}

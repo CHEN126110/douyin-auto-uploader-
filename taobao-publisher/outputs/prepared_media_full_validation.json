@@ -1,0 +1,28 @@
+{
+  "exit_code": 1,
+  "source_changes_during_test": [
+    "taobao-publisher\\taobao_publish\\selfcheck.py",
+    "taobao-publisher\\taobao_publish\\upload_api.py",
+    "taobao-publisher\\tests\\test_upload_api.py"
+  ],
+  "command": [
+    "pytest",
+    "taobao-publisher/tests",
+    "-q",
+    "--basetemp",
+    "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\pytest-prepared-full-5fb6ebec071241639bc4219c118c70ae",
+    "--deselect=taobao-publisher/tests/test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+    "--deselect=taobao-publisher/tests/test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url",
+    "--tb=line"
+  ],
+  "summary": [
+    "E   AssertionError: False is not true : 当前树里有未豁免的陈旧说法：['upload_api.py:893 说了「硬编码布尔 implemented」——若这是对的，请加进 STALE_ALLOWLIST 并写明理由：\"implemented\": False,']",
+    "C:\\Users\\CRB\\AppData\\Local\\hermes\\hermes-agent\\.hermes-runtime\\python\\generation-1788004385-51372-836cc217\\cpython-3.11-windows-x86_64-none\\Lib\\unittest\\case.py:715: AssertionError: False is not true : 当前树里有未豁免的陈旧说法：['upload_api.py:893 说了「硬编码布尔 implemented」——若这是对的，请加进 STALE_ALLOWLIST 并写明理由：\"implemented\": False,']",
+    "=========================== short test summary info ===========================",
+    "SUBFAILED(gate='陈旧说法') taobao-publisher\\tests\\test_every_gate_can_fail.py::EveryGateCanFailTest::test_each_gate_is_healthy_before_injection",
+    "FAILED taobao-publisher\\tests\\test_every_gate_can_fail.py::EveryGateCanFailTest::test_run_all_still_passes_after_the_injections",
+    "FAILED taobao-publisher\\tests\\test_selfcheck_gates.py::SelfCheckPassesTest::test_all_gates_pass",
+    "FAILED taobao-publisher\\tests\\test_stale_claim_gate.py::StaleClaimGateTest::test_gate_passes_in_the_current_tree",
+    "4 failed, 1468 passed, 7 skipped, 334 subtests passed in 284.23s (0:04:44)"
+  ]
+}

@@ -16,6 +16,7 @@ from dataclasses import dataclass, asdict
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence
@@ -1183,12 +1184,19 @@ def _match_text(value: Any) -> str:
     return "".join(kept)
 
 
-def _title_similarity(left: Any, right: Any) -> float:
-    left_text = _match_text(left)
-    right_text = _match_text(right)
+def _similarity_of_normalized(left_text: str, right_text: str) -> float:
+    """对**已经过 `_match_text` 归一化**的两串文本算相似度。
+
+    单独拆出来是为了让批量匹配能把「归一化」提到循环外——`_match_text` 是逐字符循环，
+    `SequenceMatcher.ratio()` 是 O(L²)，在 n×m 的双层循环里重复归一化同一侧是纯浪费。
+    """
     if not left_text or not right_text:
         return 0.0
     return round(SequenceMatcher(None, left_text, right_text).ratio(), 4)
+
+
+def _title_similarity(left: Any, right: Any) -> float:
+    return _similarity_of_normalized(_match_text(left), _match_text(right))
 
 
 def build_product_record_mappings(
@@ -1201,18 +1209,22 @@ def build_product_record_mappings(
     mappings: List[Dict[str, Any]] = []
     normalized_records = []
     for record in local_records:
+        record_title = str(record.get("title") or "")
         normalized_records.append({
             "record_id": record.get("record_id") or record.get("id"),
-            "record_title": str(record.get("title") or ""),
+            "record_title": record_title,
             "record_path": str(record.get("path") or ""),
+            # 归一化只做一次：原来在内层循环里对同一条 record 标题反复 _match_text
+            "record_match_text": _match_text(record_title),
         })
 
     for product in shop_products:
         product_title = str(product.get("title") or "")
+        product_match_text = _match_text(product_title)
         best_record: Optional[Dict[str, Any]] = None
         best_score = 0.0
         for record in normalized_records:
-            score = _title_similarity(product_title, record["record_title"])
+            score = _similarity_of_normalized(product_match_text, record["record_match_text"])
             if score > best_score:
                 best_score = score
                 best_record = record
@@ -5285,5 +5297,21 @@ class OpsLedger:
         return result
 
 
+@lru_cache(maxsize=None)
+def _cached_ops_ledger(db_path: str) -> OpsLedger:
+    return OpsLedger(db_path)
+
+
 def get_ops_ledger() -> OpsLedger:
-    return OpsLedger()
+    """取运营账本（按 db 路径缓存实例）。
+
+    原来这里是裸的 `return OpsLedger()`：每次调用都重跑一遍
+    `initialize_schema()`（ops_engine.py:4690-4834，8 条 CREATE TABLE IF NOT EXISTS
+    + 2 次 PRAGMA table_info 迁移检查 + 一次连接开关）。而 app.py 里有 37 个调用点，
+    其中若干路由（如 1415/1426、1455/1471、1649/1655）一次请求里连着调两次
+    —— 等于每个 /api/ops/* 请求白跑两遍建表。
+
+    OpsLedger 本身不持有连接（`_connection()` 每次开关），所以复用实例是安全的；
+    缓存键是账本绝对路径，测试传自定义路径时不会串味。
+    """
+    return _cached_ops_ledger(str(resolve_ops_ledger_path()))

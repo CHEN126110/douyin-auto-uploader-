@@ -1,0 +1,120 @@
+{
+  "checked_at": "2026-10-05T09:14:58.440658+08:00",
+  "scope": "source implementation, isolated native DOM and HTTP worker, packaged build and local application health",
+  "package_regression": {
+    "passed": 1194,
+    "skipped": 7,
+    "subtests_passed": 335,
+    "excluded": [
+      "test_objective_evidence_audit.py::ObjectiveAuditScriptTest::test_it_runs_clean",
+      "test_cli_cdp_and_warnings.py::CdpAddressOptionTest::test_parses_address_into_a_list_url"
+    ],
+    "exclusion_reason": "涉及用户实际运行环境或根数据库，未当作离线测试执行"
+  },
+  "source_metadata_and_docs_after_final_update": {
+    "passed": 84,
+    "subtests_passed": 46
+  },
+  "native_dom_cases_after_final_update": {
+    "passed": 10
+  },
+  "business_and_upload_safety_regression": {
+    "passed": 243
+  },
+  "frontend_behavior_checks": 71,
+  "frontend_typecheck_and_build": true,
+  "source_selfcheck": {
+    "gates_passed": 6,
+    "builders": 51,
+    "builder_calls": 61
+  },
+  "native_model": {
+    "stages": 11,
+    "simulated_uploads": 5,
+    "sku_rows": 2,
+    "detail_images": 2,
+    "draft_calls": 0,
+    "submit_calls": 0,
+    "whole_form_verification": "partial"
+  },
+  "review": {
+    "source_review": [
+      {
+        "file": "page.py",
+        "new_or_changed_definitions": [
+          "MediaImageMissing",
+          "_media_image_result",
+          "build_media_image_expression",
+          "build_select_media_image_expression",
+          "find_media_image",
+          "media_image_exists",
+          "select_media_image",
+          "wait_for_media_images"
+        ],
+        "removed_definitions": [],
+        "added_lines": 77,
+        "utf8": true,
+        "original_newlines_preserved": true
+      },
+      {
+        "file": "form_adapters.py",
+        "new_or_changed_definitions": [
+          "_checked",
+          "adapter_blockers",
+          "build_custom_expression",
+          "build_detail_expression",
+          "config_for",
+          "create_custom_skus",
+          "gallery_find",
+          "required_keys",
+          "selector_has_execution_guard"
+        ],
+        "removed_definitions": [
+          "MediaImageMissing",
+          "build_gallery_expression"
+        ],
+        "added_lines": 71,
+        "utf8": true,
+        "original_newlines_preserved": true
+      },
+      {
+        "file": "stages.py",
+        "new_or_changed_definitions": [
+          "StageHandlerSpec",
+          "_blocker_details",
+          "_stage_adapter_guard",
+          "_stage_fill_custom_skus",
+          "stage_fill_detail",
+          "stage_upload_images"
+        ],
+        "removed_definitions": [
+          "stage_fill_props_and_detail"
+        ],
+        "added_lines": 61,
+        "utf8": true,
+        "original_newlines_preserved": true
+      },
+      {
+        "file": "constants.py",
+        "new_or_changed_definitions": [],
+        "removed_definitions": [],
+        "added_lines": 8,
+        "utf8": true,
+        "original_newlines_preserved": true
+      }
+    ],
+    "changed_selector_entries": [
+      "media.image_card",
+      "detail.editor"
+    ],
+    "evidence_grades_unchanged": true
+  },
+  "backend_sha256": "6c169ed4b4db163d2c1a7d6493bdaab4740af2083b487eaf2f39d16490a8b0c3",
+  "packaged_modules_verified": 19,
+  "packaged_contracts_verified": 4,
+  "source_manifest_files_verified": 64,
+  "local_health_and_deployed_hash_verified": true,
+  "live_taobao_fill_executed": false,
+  "live_taobao_full_required_fields_verified": false,
+  "goal_completed": false
+}

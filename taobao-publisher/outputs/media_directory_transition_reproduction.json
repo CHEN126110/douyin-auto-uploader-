@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-10-05T21:45:21.776549+08:00",
+  "scope": "isolated browser model; no live platform accessed",
+  "before_fix": {
+    "command": "python -m pytest taobao-publisher/tests/test_media_directory_transition.py -q --tb=short",
+    "failed": 4,
+    "cases": [
+      "new_directory_returned_previous_main_image",
+      "empty_directory_inherited_previous_image",
+      "already_selected_loading_directory_returned_old_image",
+      "same_image_accepted_before_loading_finished"
+    ]
+  },
+  "model_delay_ms": 250,
+  "platform_upload_or_submit_executed": false,
+  "production_loading_marker_coverage": "candidate"
+}

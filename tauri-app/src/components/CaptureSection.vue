@@ -22,13 +22,17 @@ const canRetry = ref(false);
 const taskOrigin = ref<"local" | "external" | null>(null);
 
 let pollingInterval: number | null = null;
-let discoveryInterval: number | null = null;
+let discoveryTimer: number | null = null;
 let pollingRetryCount = 0;
 let lastExternalTaskNoticeId: string | null = null;
 
 const MAX_POLLING_RETRIES = 5;
 const POLLING_INTERVAL_MS = 2000;
+// 常驻的「外部采集任务发现」轮询。空闲时每次都要打一次 GET /api/capture/history，
+// 用户不开采集也一直在跑，所以按窗口可见性和最近一次是否真的发现任务做退避：
+// 刚发现过任务（说明有活干）用短间隔，一直没任务就退到长间隔。
 const EXTERNAL_TASK_DISCOVERY_MS = 5000;
+const EXTERNAL_TASK_DISCOVERY_IDLE_MS = 30000;
 const SUPPORTED_CAPTURE_HOST_SUFFIXES = [".taobao.com", ".tmall.com", ".1688.com", ".tb.cn"];
 const SUPPORTED_CAPTURE_HOSTS = new Set(["taobao.com", "tmall.com", "1688.com", "tb.cn", "m.tb.cn"]);
 const CAPTURE_URL_CANDIDATE_PATTERN =
@@ -109,9 +113,9 @@ function stopPolling(): void {
 }
 
 function stopDiscovery(): void {
-  if (discoveryInterval !== null) {
-    window.clearInterval(discoveryInterval);
-    discoveryInterval = null;
+  if (discoveryTimer !== null) {
+    window.clearTimeout(discoveryTimer);
+    discoveryTimer = null;
   }
 }
 
@@ -288,12 +292,23 @@ async function syncExternalCaptureTask(options: { silent?: boolean } = {}) {
 
 function startDiscovery() {
   stopDiscovery();
-  discoveryInterval = window.setInterval(() => {
-    if (document.visibilityState === "hidden") {
-      return;
-    }
-    void syncExternalCaptureTask({ silent: true });
-  }, EXTERNAL_TASK_DISCOVERY_MS);
+
+  // 递归 setTimeout 而不是固定 setInterval：每轮按「上一轮有没有发现任务」决定下次间隔，
+  // 空闲时降到 30s，发现任务后回到 5s。任务接续逻辑（syncExternalCaptureTask）本身没动。
+  const scheduleNext = (delayMs: number) => {
+    discoveryTimer = window.setTimeout(async () => {
+      discoveryTimer = null;
+
+      let foundTask = false;
+      if (document.visibilityState !== "hidden") {
+        foundTask = await syncExternalCaptureTask({ silent: true });
+      }
+
+      scheduleNext(foundTask ? EXTERNAL_TASK_DISCOVERY_MS : EXTERNAL_TASK_DISCOVERY_IDLE_MS);
+    }, delayMs);
+  };
+
+  scheduleNext(EXTERNAL_TASK_DISCOVERY_MS);
 }
 
 async function startCapture() {

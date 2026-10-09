@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local/taobao-publisher/contracts/publish_item.schema.json",
+  "title": "TaobaoPublishRequest",
+  "description": "淘宝发布子项目的入参契约（平台无关层）。这是 sidecar /api/taobao/publish* 接口的请求体形状，也是 CLI 的输入形状。注意：本契约刻意不含任何淘宝平台字段名——平台字段名只允许出现在 field_mapping.json。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "title",
+    "skus"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "integer",
+      "description": "本地 record 表主键。"
+    },
+    "record_name": {
+      "type": "string",
+      "description": "本地记录名（形如 ID-976666440420）。"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "商品标题。长度上限随类目变化，提交前必须按目标类目校验。"
+    },
+    "outer_id": {
+      "type": "string",
+      "description": "商家编码。"
+    },
+    "source_url": {
+      "type": "string",
+      "description": "采集来源 URL，仅用于追溯。"
+    },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category_id"
+      ],
+      "description": "目标叶子类目。必须由类目接口实时取得，禁止硬编码。",
+      "properties": {
+        "category_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "人类可读的类目路径，仅用于展示与人工核对。"
+        }
+      }
+    },
+    "props": {
+      "type": "array",
+      "description": "类目属性。属性值必须来自目标类目的属性值列表。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "prop_name",
+          "value_name"
+        ],
+        "properties": {
+          "prop_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prop_id": {
+            "type": "string"
+          },
+          "value_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "skus": {
+      "type": "array",
+      "minItems": 1,
+      "description": "销售规格行。至少要有一条，否则平台侧无法建立价格库存。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "price",
+          "stock"
+        ],
+        "properties": {
+          "spec_values": {
+            "type": "object",
+            "description": "销售属性名 → 属性值名，例如 {\"颜色\": \"黑色\", \"尺码\": \"均码\"}。",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "price": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "单位由平台侧决定（元或分尚未实证），此处只保证是正数。"
+          },
+          "stock": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "库存。本地没有该字段，必须由调用方显式提供，禁止默认值。"
+          },
+          "outer_id": {
+            "type": "string"
+          },
+          "image_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "main": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "detail": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sku": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "white_bg": {
+          "type": "string"
+        }
+      }
+    },
+    "freight_template_name": {
+      "type": "string",
+      "description": "运费模板中文名。必须与平台实时拉取的模板列表严格匹配，匹配不到要终止而不是兜底。"
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "执行选项。写操作授权**不在这里**——授权只从环境变量读取，避免被请求体绕过。",
+      "properties": {
+        "stop_before_submit": {
+          "type": "boolean",
+          "default": true,
+          "description": "默认在提交前截停。只有显式传 false 且两把锁都满足才可能真的提交。"
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": true,
+          "description": "默认只做只读预检与载荷构建，不触碰平台。"
+        }
+      }
+    },
+    "sku_mode": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "custom"
+      ],
+      "description": "桌面完整 SKU 名称使用单层自定义模式；不增加用户界面配置。"
+    }
+  }
+}

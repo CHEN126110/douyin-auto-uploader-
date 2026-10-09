@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "scope": "offline_frontend_only",
+  "run_date": "2026-10-03",
+  "product_manager_qa": {
+    "command": "node .tmp/qa_taobao_direct_preflight.cjs",
+    "exit_code": 0,
+    "output": "PASS 真实SFC：淘宝只readiness+prepare，不弹窗/导出/提交，只有标题覆盖\nPASS GET和POST在途持续busy，重复点击不产生第二次检查\nPASS GET期间账户改变：丢旧结果、不发送POST、不提前解除busy\nPASS POST期间record改变：旧报告不应用且busy直到finally\nPASS POST期间account改变：旧报告不应用且busy直到finally\nPASS POST期间title改变：旧报告不应用且busy直到finally\nPASS 后端错误原文可见，错误无成功/任务副作用\nPASS 能力或响应契约异常明确失败，不当成发布成功\nPASS 账户操作busy时不调用API；抖音仍使用原完整确认路径\nPASS 只读摘要/白底图字符串计数/无重复淘宝对话框\nRESULT 10 behavior groups passed; source and tests unchanged; no real network/DB/account/browser calls\n"
+  },
+  "summary_qa": {
+    "command": "node .tmp/qa_taobao_summary_contract.cjs",
+    "exit_code": 0,
+    "output": "PASS 1: actual summary SSR counts a long white_bg path as one image, shows real missing checks, and renders no editor.\nPASS 2: actual summary SSR counts an empty white_bg path as zero images.\nPASS: read-only SFC rendering; no HTTP, browser, account registry, or database.\n"
+  },
+  "isolation": {
+    "real_http": false,
+    "browser_access": false,
+    "account_registry_access": false,
+    "database_access": false,
+    "platform_write": false
+  },
+  "result_limit": "Local UI checks passed. Taobao field filling and readback have not been tested or implemented."
+}

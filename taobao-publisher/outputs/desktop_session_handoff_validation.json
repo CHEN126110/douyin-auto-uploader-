@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-10-04T22:25:46.904144+08:00",
+  "scope": "offline isolated tests, file model browser and local deployed binary",
+  "tests": {
+    "session_handoff": 20,
+    "taobao_package": 1134,
+    "taobao_skipped": 7,
+    "taobao_subtests": 319,
+    "business_safety": 243,
+    "shared_frontend": 50
+  },
+  "session_handoff_included_in_package_total": true,
+  "source_sha256": {
+    "taobao-publisher/taobao_publish/stages.py": "0d5511504e477bdf636cd3fc6aebf220b44458493e9ebad341819bb28133ed94",
+    "taobao-publisher/taobao_publish/page.py": "e8dcb2646afe15a770360c74d962814994a1d9153628b659a5decfcac73ecc2b",
+    "taobao-publisher/tests/test_session_category_handoff.py": "442de0c8d3834cbaa11417460328e4f641efd6d89a63419230f8668acf2287a0"
+  },
+  "frozen_and_deployed_sha256": "ad1b68daf144f74a3a9dd00926fac684681bc134b968a5a22d193a6b1d26f8bd",
+  "session_accepts_category_page": true,
+  "session_no_longer_waits_for_publish_form": true,
+  "session_page_failure_is_terminal": true,
+  "production_adapter_evidence_still_candidate": true,
+  "live_platform_tested": false,
+  "account_identity_read": false,
+  "real_shop_category_selection_confirmed": false,
+  "full_required_form_confirmed": false
+}

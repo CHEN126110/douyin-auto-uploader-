@@ -33,10 +33,14 @@ tauri-app/python-sidecar/app_tauri_dev.py
 tauri-app/python-sidecar/automation_assets/
 # sidecar 是 build_sidecar.py 的构建产物目录（含运行时 data/），不进仓库
 tauri-app/src-tauri/sidecar/
+# build_sidecar.py 会把误放进 sidecar/ 的回滚备份挪到这里（避免进安装包）
+tauri-app/_sidecar_backups/
 
 .runtime/
 runtime/
 trash/
+.tmp/
+.pytest_cache/
 tmp_runtime_probe/
 tmp_runtime_probe_live/
 tmp_*
@@ -70,3 +74,19 @@ password.txt
 
 # 编辑备份
 *.bak
+
+# 白底图语义抠图模型（几百 MB 的 ONNX，不进仓库，见 src/whitebg/paths.py）
+/models/whitebg/
+
+# taobao-publisher 子项目：测试 scratch 与临时产物不进仓库。
+# 注意 captures/ 与 outputs/ 下的**去敏证据**是要进仓库的（对齐 protocol-research-* 惯例），
+# 所以这里只忽略 tmp/。
+taobao-publisher/tmp/
+# pytest 在无法写 .pytest_cache 时会退化成在 rootdir 建临时目录（本机沙箱下会触发）
+pytest-cache-files-*/
+
+# 开发机私有临时资料和本地构建清单
+/tmp/
+/.acl_repair/
+/aclprobe-*/
+/tauri-app/python-sidecar/.source-manifest.json

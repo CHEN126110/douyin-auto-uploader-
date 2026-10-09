@@ -1,0 +1,500 @@
+{
+  "generated_at": "2026-10-05T22:10:48+08:00",
+  "scope": "公开信息检索 + 公开 CDN 前端产物静态分析 + 只读出站探测。全程未登录、未提交表单、未上传文件、未做任何写操作或风控绕过。",
+  "target": "淘宝/天猫卖家「图片空间 / 素材中心」（sucai-tu）图片上传接口，为「本地采集图 → 协议上传 → 发布表单选图」提供候选端点。",
+  "search_keywords": [
+    "淘宝 图片空间 上传接口",
+    "图片银行 上传接口",
+    "素材中心 上传接口",
+    "sucai.taobao.com",
+    "sc.taobao.com",
+    "sucai-selector-ng",
+    "sucai-tu-selector",
+    "sucai-tu",
+    "qn_sucai_tu_storage",
+    "stream-upload.taobao.com",
+    "stream-upload.taobao.com/api/upload.api",
+    "upload.api?_input_charset=utf-8&appkey=tu",
+    "collect_client_upload_rt.api",
+    "pic-upload-sdk picuploadsdk.js",
+    "mtop.taobao.picturecenter.console.file.query",
+    "mtop.taobao.picturecenter.console.dir.query",
+    "mtop.taobao.picturecenter.console.dir.add",
+    "mtop.taobao.picturecenter.console.user.storage.query",
+    "mtop.taobao.picture.upload",
+    "mtop.taobao.pic",
+    "mtop.taobao.sucai",
+    "taobao.picture.upload",
+    "taobao.picture.category.get",
+    "taobao.picture.category.add",
+    "taobao.picture.get",
+    "taobao.picture.update",
+    "picture_category_id base64_image image_input_title",
+    "千牛 图床 picgo 插件 淘宝 图片空间 上传",
+    "imgbank / imgbank.taobao.com",
+    "pic.taobao.com / upload.taobao.com（旧端点证伪）",
+    "淘宝 图片空间 上传 频率限制 验证码 baxia"
+  ],
+  "endpoints": [
+    {
+      "url": "https://stream-upload.taobao.com/api/upload.api",
+      "method": "POST",
+      "content_type": "multipart/form-data（浏览器/plupload 用 WebKitFormBoundary 形态；字段是表单字段 + 一个文件字段，不是 base64 body）",
+      "fields": [
+        "file（文件字段，file_data_name=\"file\"，filename=最终图片名）",
+        "name（同文件名的字符串字段，第三方公开实现与浏览器抓包都出现）",
+        "_tb_token_（表单字段，值取 cookie 里的 _tb_token_；生产 bundle 裁剪上传分支显式 append）",
+        "water（表单字段，字符串 \"false\"）",
+        "query: _input_charset=utf-8",
+        "query: appkey=tu",
+        "query: folderId（= 目录/图片分类 ID，pictureCategoryId；默认 0 = 根目录）",
+        "query: picCompress=false|true",
+        "query: watermark=false",
+        "query: 可选 autoCompress、resizeWidth、width、hideUserId"
+      ],
+      "response_fields": [
+        "success（布尔，唯一成功判据）",
+        "object.url（图片完整地址，形如 https://img.alicdn.com/imgextra/...）",
+        "object.fileId / object.fileName（裁剪上传分支读的是这两个）",
+        "object.size、object.pix（形如 \"616x792\"）",
+        "错误响应：errorCode、message、status、total、hasNext（例：errorCode=PARAMETER_ERROR / BAXIA_BLOCKED）",
+        "错误码 code：-9001（一次最多 200 张）、-600（图片需控制在 3M 内）、-601（请选择图片格式文件）、4+message 含\"容量不足\""
+      ],
+      "auth_requirements": [
+        "卖家登录态 cookie（店铺级；公开实现直接复用 myseller/千牛 的完整 Cookie 头）",
+        "cookie 中的 _tb_token_（生产 bundle 把它的值同时作为 multipart 表单字段提交）",
+        "Referer 建议 https://myseller.taobao.com/home.htm/material-center/mine-material/sucai-tu",
+        "Origin 建议 https://myseller.taobao.com",
+        "不需要 _m_h5_tk / sign（该端点不是 mtop 网关调用）",
+        "不需要 cookie2 证据（公开实现只带 Cookie 头即可，未单独提到 cookie2）"
+      ],
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （生产 bundle 原文：i={upload:\"https://stream-upload.taobao.com/api/upload.api\",...}，另有 FormData append water/name/_tb_token_/file 分支）",
+        "https://github.com/renjiu13/picgo-plugin-qn-uploader （src/index.js 第 20 行 URL 常量 + formData.file + 读 response.object.url，2025-11 可用）",
+        "https://bbs.ijingyi.com/forum.php?mod=viewthread&action=printable&tid=14867166 （第三方论坛贴出浏览器抓包原文 multipart，含 name / file 两个字段）",
+        "本仓库只读实测（2026-10-05）：无凭据 GET 该 URL 返回 HTTP 200 + 淘系风控页（含 x5referer / windvane.js），证明主机与路径存活"
+      ],
+      "notes": "图片空间真实上传端点就是它。生产 bundle 里 upload / waterMarkAddQuery / picUploadCollect / getPageConfig 是同一张常量表（模块 35925），其中 upload 唯一指向 stream-upload.taobao.com/api/upload.api。裁剪上传分支（Ee 函数）的调用签名：POST + FormData(water=false, name=<新名>.<后缀>, _tb_token_=<cookie值>, file=<blob, 文件名>) + query{_input_charset:utf-8, appkey:tu, autoCompress:false, folderId=pictureCategoryId, picCompress:true, resizeWidth:false, watermark:false, width:0, hideUserId}。非裁剪路径走官方 plupload SDK（picuploadsdk.js），SDK 自己拼 URL：protocol//stream.taobao.com/api/upload.api + ?appkey=<appkey||'tu'>&folderId=0&_input_charset=utf-8，file_data_name=\"file\"，filters 3MB，chunk_size=0（不分片）。成功判据只有 response.success；因前端过滤了 HTTP 状态，协议侧需同时校验 HTTP 200 + success=true。"
+    },
+    {
+      "url": "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js",
+      "method": "GET",
+      "content_type": "application/javascript（前端 SDK 产物，非接口）",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （g=\"https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js\"，按需动态加载）",
+        "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js （本仓库只读抓取并解析）"
+      ],
+      "notes": "图片空间前端真正使用的上传 SDK（plupload 封装，暴露 window.PicUploader，VERSION 存在则跳过加载）。它给出了上传的默认约束与错误映射，是做协议实现时最准的参照：max_file_size=3MB、扩展名 jpg/jpeg/gif/png/bmp、multi_selection=true、file_data_name=file、chunk_size=0。风控判定逻辑也在这里：HTTP 200 但响应里没有 success 字段 → 判为 BAXIA_BLOCKED。"
+    },
+    {
+      "url": "https://h5api.m.taobao.com/h5/mtop.taobao.picturecenter.console.file.query/1.0/",
+      "method": "GET/POST",
+      "content_type": "application/x-www-form-urlencoded（mtop 网关常规形态；本仓库读路径实测同族，具体 content-type 未逐字取证）",
+      "fields": [
+        "catId（目录 ID，即 folderId/pictureCategoryId；\"0\" 或 \"table01\" 为根/全部）",
+        "key（搜索关键字）",
+        "page（从 1 开始）",
+        "orderBy（排序，默认 \"0\"）",
+        "deleted=0",
+        "status=0",
+        "ignoreCat=0",
+        "clientType=0",
+        "type=1",
+        "mtop 网关公共参数：jsv、appKey（本仓库读路径实测 12574478）、t、sign=md5(token&t&appKey&data)、_m_h5_tk"
+      ],
+      "response_fields": [
+        "fileModule（数组，每项含 pictureId、name、fullUrl、pixel、sizes、status、deleted、gmtCreate、gmtModified、pictureCategoryId、pictureCategoryName、ref、fileType）",
+        "page（当前页码，用于翻页终止判断）"
+      ],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （getPicFile: s(\"mtop.taobao.picturecenter.console.file.query\", e)；调用点参数对象 {key,catId,page,orderBy,deleted:0,status:0,ignoreCat:0,clientType:0,type:1}；返回读 v.fileModule / v.page）"
+      ],
+      "notes": "API 名与入参/返回字段来自生产 bundle，属 verified 级别；但「走 h5api.m.taobao.com 网关 + 需要 _m_h5_tk 签名」这一步是从本项目已实测的 mtop 读路径外推（bundle HTML 确实加载了 g.alicdn.com/mtb/lib-mtop/2.6.1/mtop.js，该库暴露 mtop.request / mtop.antiCreepRequest），未逐字抓到该 API 的真实请求，故整体记 candidate。这是「上传后进目录选图」阶段最该先实测的读接口；上传成功后建议连 getPicFile(page=1) 反查落地，替代当前靠 DOM 数卡片。"
+    },
+    {
+      "url": "https://h5api.m.taobao.com/h5/mtop.taobao.picturecenter.console.dir.query/1.0/",
+      "method": "GET/POST",
+      "content_type": "application/x-www-form-urlencoded（同上，未逐字取证）",
+      "fields": ["catId（可选，传入则查该目录；不传查全量）"],
+      "response_fields": [
+        "dirs（目录树数组；每项含 id、name、official、children，children 递归）"
+      ],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （getPicDir: catId ? {catId} : {}；返回读 a.dirs，按 official 升序排序，取 dirs[0] 为根）"
+      ],
+      "notes": "图片空间目录树的唯一来源。bundle 里 dirs[0] 被当作根（label=name, value/key=String(id)），子目录走 children 递归 + eT() 展平，正好对应「先进入商品父目录，再进主图/SKU/详情页子目录」的需求。DOM 侧目前靠可见文案导航，这个接口能把目录树变成结构化数据。"
+    },
+    {
+      "url": "https://h5api.m.taobao.com/h5/mtop.taobao.picturecenter.console.dir.add/1.0/",
+      "method": "GET/POST",
+      "content_type": "application/x-www-form-urlencoded（同上，未逐字取证）",
+      "fields": [
+        "dirId（父目录 ID；根传 \"0\"）",
+        "name（新目录名）"
+      ],
+      "response_fields": [
+        "jsPictureCategoryDO（对象，含 pictureCategoryId —— 即新建目录的 folderId，可直接用于上传）"
+      ],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （addDir({dirId: n.id, name: a})；成功读 s.jsPictureCategoryDO.pictureCategoryId 作为新 folderId）"
+      ],
+      "notes": "这是「整件商品一次上传 + 按商品建目录」的关键一步：前端拖入文件夹时会为每个子目录调用它，拿到 pictureCategoryId 后把该目录的文件用 folderId=<该 ID> 上传。注意它是写操作（会在店铺图片空间建真实目录），实测前必须走本项目的写授权门。"
+    },
+    {
+      "url": "https://h5api.m.taobao.com/h5/mtop.taobao.picturecenter.console.user.storage.query/1.0/",
+      "method": "GET/POST",
+      "content_type": "application/x-www-form-urlencoded（同上，未逐字取证）",
+      "fields": [],
+      "response_fields": ["容量/配额相关字段（bundle 只做展示，未在代码里逐字段读取）"],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （getUserInfo: s(\"mtop.taobao.picturecenter.console.user.storage.query\", {})）"
+      ],
+      "notes": "查店铺图片空间容量/配额。上传前预检容量有用（上传错误码里有「容量不足」分支），但响应字段名未取证，不要猜。"
+    },
+    {
+      "url": "https://stream-upload.taobao.com/api/collect_client_upload_rt.api",
+      "method": "GET",
+      "content_type": "query string（无 body）",
+      "fields": ["file_Id（注意下划线，来自上传响应的 object.fileId）", "rt（本次上传耗时 ms）", "appkey=tu"],
+      "response_fields": ["（bundle 里 .then(function(){}) 不读返回，属埋点上报）"],
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （FileComplete 回调里 m.hj(s.Pu.picUploadCollect,\"GET\",{file_Id,rt,appkey:\"tu\"})）"
+      ],
+      "notes": "上传耗时埋点，非必要。列出来是为了两点：① 它的存在说明一个「上传完成」事件确实对应一次真实落库；② 协议实现不必调用它，但若被风控按「上报缺失」识别为机器流量，可以补上（属推测，未取证）。"
+    },
+    {
+      "url": "https://tadget.taobao.com/picture/waterMarkX.htm",
+      "method": "POST",
+      "content_type": "未取证",
+      "fields": ["未取证"],
+      "response_fields": ["未取证"],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （常量表 waterMarkAddQuery）"
+      ],
+      "notes": "加水印。上传 query 里 watermark=false 时不需要它。仅登记为同族端点，不做推荐。"
+    },
+    {
+      "url": "https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8",
+      "method": "GET",
+      "content_type": "query string",
+      "fields": [],
+      "response_fields": ["未取证（bundle 用它读页面配置：folderId / aspectRatio / fixWidth / fixHeight / minWidth / minHeight / maxWidth / maxHeight / minRatioLimit / maxRatioLimit / mime / needCrop / removeUid 等）"],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （常量表 getPageConfig；l={...} 从 query 参数 c(\"folderId\") 等读取）",
+        "本仓库只读实测（2026-10-05）：无凭据 GET 返回 302 → https://login.taobao.com?redirectURL=...%2Fsucai.wangpu.taobao.com%2FgetPageConfig.do...，证明主机与路径存活且需登录"
+      ],
+      "notes": "这是图片空间/素材选择器启动时读的「页面配置」，含尺寸与格式约束（aspectRatio / fixWidth / minWidth / maxWidth / needCrop / mime / removeUid）。如果发布页 iframe 是通过挂载参数下发约束，这个接口就是约束的权威来源，比在 DOM 里猜更可靠。注意它部署在 wangpu 域且由固定 query 调用；调用时 bundle 把调用方 query 参数并进去，因此「删除店铺 UID 水印」开关 removeUid 也从这里下发。"
+    },
+    {
+      "url": "https://mediafront.taobao.com/business/agreement/sign.json",
+      "method": "未取证（bundle 以请求形式调用）",
+      "content_type": "未取证",
+      "fields": ["未取证"],
+      "response_fields": ["未取证"],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （常量表 agreement / closeFirstAlertStorage / closeLevelChanged）"
+      ],
+      "notes": "图片空间产品服务协议签署 + 两种提示关闭状态。**这条对本项目重要**：如果店铺未签协议，协议上传可能被拦，而 DOM 路线会先弹协议框（人工点过就无感）。同族还有 https://mediafront.taobao.com/business/firsthint/close.json 与 https://mediafront.taobao.com/business/levelchangedhint/close.json。字段与是否需要签署未取证。"
+    },
+    {
+      "url": "https://sucai.taobao.com/",
+      "method": "GET",
+      "content_type": "text/html;charset=GBK",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "rejected",
+      "sources": [
+        "本仓库只读实测（2026-10-05）：HTTP 200，title = 「首页-TOP素材网-淘宝网」，正文是店铺首页模板（加载 g.alicdn.com/shop/pc-shop-webapp/0.0.42/js/main.js、cell-lib-cps、aplus 等），与卖家图片空间无关"
+      ],
+      "notes": "任务描述里把它当图片空间入口，实测它不是：sucai.taobao.com 是「TOP素材网」的店铺首页模板，没有任何图片空间上传入口。真正的入口是 myseller.taobao.com/home.htm/sucai-tu/home（只读实测 302 → loginmyseller.taobao.com，需登录）。"
+    },
+    {
+      "url": "https://sc.taobao.com/",
+      "method": "GET",
+      "content_type": "text/html",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "rejected",
+      "sources": ["本仓库只读实测（2026-10-05）：HTTP 404 Not Found"],
+      "notes": "不存在。与图片空间无关。"
+    },
+    {
+      "url": "https://imgbank.taobao.com/",
+      "method": "GET",
+      "content_type": "text/html",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "rejected",
+      "sources": ["本仓库只读实测（2026-10-05）：302 → https://store.taobao.com/shop/noshop.htm（「无此店铺」）"],
+      "notes": "「图片银行 imgbank」域名已不再指向图片空间，而是被店铺域名体系接管。任何以 imgbank 为入口的旧资料都不适用。"
+    },
+    {
+      "url": "https://upload.taobao.com/",
+      "method": "GET",
+      "content_type": "text/html",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "unknown",
+      "sources": ["本仓库只读实测（2026-10-05）：302 → https://login.taobao.com/member/login.jhtml?redirectURL=http%3A%2F%2Fupload.taobao.com%2F"],
+      "notes": "域名存在且重定向到登录页（严格说是 http 版回跳），但没有拿到任何上传路径证据；未登录无法判断它是否还是图片上传入口。公开检索也没有给它任何上传端点证据。**不要**在这个域上猜路径。"
+    },
+    {
+      "url": "https://pic.taobao.com/picture/pictureIndex.htm",
+      "method": "GET",
+      "content_type": "text/html",
+      "fields": [],
+      "response_fields": [],
+      "evidence_level": "candidate",
+      "sources": ["本仓库只读实测（2026-10-05）：GET https://pic.taobao.com/ 返回 302 → https://login.taobao.com/member/login.jhtml?f=tadget&redirectURL=http%3A%2F%2Fpic.taobao.com%2Fpicture%2FpictureIndex.htm%3Fsubdm%3Dtrue"],
+      "notes": "pic.taobao.com 仍是**活的**老图片空间页面（重定向目标 /picture/pictureIndex.htm，且带 f=tadget 标记），不是已下线域名。但它是否仍提供上传、以及上传走哪个端点，未取证。结论：不能标 rejected，但也**不该**优先实测——现役链路的证据都指向 stream-upload。"
+    },
+    {
+      "url": "https://tadget.taobao.com/redaction/getFrozenImage.do?path=",
+      "method": "GET",
+      "content_type": "query string",
+      "fields": ["path（图片路径）"],
+      "response_fields": ["未取证（bundle 用 DO.redaction 判断图片是否被冻结）"],
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js"
+      ],
+      "notes": "查图片是否被平台冻结/违规（status=froze / redaction）。上传后做「这张图能不能用于发布」的预检时会用到。"
+    }
+  ],
+  "frontend_bundle_leads": [
+    {
+      "url": "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic&realtime=true",
+      "found_strings": [
+        "该 URL 就是本仓库已实证的发布页素材中心 iframe（title=「图片选择器」）",
+        "HTML 外壳：title「图片选择器」 + MicroLoader.js + g.alicdn.com/mtb/lib-mtop/2.6.1/mtop.js + icestark 微前端容器 id=ice-container",
+        "脚本：//g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/vendor.js 与 js/index.js",
+        "业务模块由 window.MicroLoader.loadMicroMod({microModName:\"sucai-tu-selector\", version:\"0.0.86\"|\"0.0.12\", moduleName:\"main\", container:\"sucai-tu-selector\"}) 二次加载",
+        "另有 sucai-tu-selector-old 0.0.7 分支（旧选择器）"
+      ],
+      "sources": [
+        "https://market.m.taobao.com/app/crs-qn/sucai-selector-ng/index?type=pic （本仓库用 node fetch 只读抓取原始 HTML，2026-10-05）"
+      ]
+    },
+    {
+      "url": "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js",
+      "found_strings": [
+        "上传常量表（模块 35925）：upload=https://stream-upload.taobao.com/api/upload.api",
+        "waterMarkAddQuery=https://tadget.taobao.com/picture/waterMarkX.htm",
+        "picUploadCollect=https://stream-upload.taobao.com/api/collect_client_upload_rt.api",
+        "getPageConfig=https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8",
+        "agreement/closeFirstAlertStorage/closeLevelChanged=https://mediafront.taobao.com/business/...",
+        "mtop API 名：mtop.taobao.picturecenter.console.user.storage.query / .dir.query / .file.query / .dir.add",
+        "pic-upload-sdk：https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js",
+        "裁剪上传 FormData：append(\"water\",\"false\") / append(\"name\", <新名>.<后缀>) / append(\"_tb_token_\", cookie._tb_token_) / append(\"file\", blob, <新名>.<后缀>)",
+        "上传 query：{_input_charset:\"utf-8\",appkey:\"tu\",autoCompress:!1,folderId:pictureCategoryId,picCompress:!0,resizeWidth:!1,watermark:!1,width:0,hideUserId:removeUid||!1}",
+        "成功回调读字段：e.data.object.fileName / fileId / url / size / pix",
+        "老版本常量：?.picCompress=false&watermark=false + folderId（v0.0.x 老写法）",
+        "存储 key：qn_sucai_tu_storage；埋点 key 前缀 qn_sucai_tu_selector-*",
+        "CSS Module 类名：PicList_PicturesShow_main__UzBcZ、PicList_tip_title__aQfti（与本仓库实测的 div.PicList_pic_background 同族，证明 iframe 与本独立图片空间是同一套代码）",
+        "入口按钮：window.open(\"https://myseller.taobao.com/home.htm/sucai-tu/home\")（图片空间独立页）",
+        "拖入文件夹：递归 isDirectory → addDir({dirId, name}) → 用返回的 pictureCategoryId 作为该子目录文件的 folderId",
+        "错误码分支：-9001 一次最多 200 张 / -600 控制 3M 内 / -601 请选择图片格式文件 / message 含「容量不足」/ errorCode=BAXIA_BLOCKED"
+      ],
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （本仓库只读抓取并正则抽取，2026-10-05）",
+        "路径推导链：sucai-selector-ng/index.js → MicroLoader.loadMicroMod → window.<mod>$<ver>_public_path = https://<cdnHost>/merchant-micro-mods/<mod>/<ver>/ → /js/remoteEntry.js → r.u 映射得 js/main.af890df4.chunk.js"
+      ]
+    },
+    {
+      "url": "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js",
+      "found_strings": [
+        "host = location.protocol + \"//stream.\" + (taobao.net|alibaba-inc ? \"daily.taobao.net\" : \"taobao.com\")",
+        "API_URL_FILE = host + \"/api/upload.api\"",
+        "url = (uploadFileUrl || API_URL_FILE) + \"?appkey=\" + (appkey||\"tu\") + \"&folderId=0&_input_charset=utf-8\"",
+        "file_data_name:\"file\"、filters.max_file_size:\"3MB\"、extensions:\"jpg,jpeg,gif,png,bmp\"、chunk_size:0、multi_selection:true",
+        "风控判定：HTTP 200 且响应 JSON 无 success 字段 → 伪造 {success:false, errorCode:\"BAXIA_BLOCKED\", message:\"操作过于频繁，请滑动验证码之后，重新上传。\"}",
+        "容错：响应不是 JSON 时，从 HTML 的 \"pre-wrap;\">…</pre>\" 中间抠 JSON（说明风控页会以 HTML 形式返回）",
+        "traceId 取自响应头 EagleEye-TraceId"
+      ],
+      "sources": [
+        "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js （本仓库只读抓取并抽取，2026-10-05）"
+      ]
+    },
+    {
+      "url": "https://g.alicdn.com/mtb/lib-mtop/2.6.1/mtop.js",
+      "found_strings": [
+        "对外暴露 mtop.request / mtop.H5Request / mtop.config / mtop.RESPONSE_TYPE / mtop.CLASS / mtop.ERROR",
+        "内置中间件 mtop.middlewares.push，且有 mtop.loginRequest / mtop.antiFloodRequest / mtop.antiCreepRequest / mtop.errorListener"
+      ],
+      "sources": [
+        "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/index?type=pic 的 HTML 外壳（script 标签）",
+        "https://g.alicdn.com/mtb/lib-mtop/2.6.1/mtop.js （只读抓取）"
+      ]
+    },
+    {
+      "url": "https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/index.js",
+      "found_strings": [
+        "这是 icestark 引导壳，不是业务代码；业务代码在 merchant-micro-mods 下",
+        "sucai-selector-ng 自身版本号常量 0.0.86 / 0.0.7（app 版本 vs 模块版本不同名）"
+      ],
+      "sources": ["https://g.alicdn.com/crs-qn/sucai-selector-ng/0.0.82/js/index.js （只读抓取）"]
+    }
+  ],
+  "risk_controls": [
+    {
+      "claim": "上传触发滑块验证码：错误码 BAXIA_BLOCKED，文案「操作过于频繁，请滑动验证码之后，重新上传。」——即图片空间上传走的是阿里 baxia 反爬，超频后要求人工滑动验证。",
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js （错误码常量与文案原文）",
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （errorCode===\"BAXIA_BLOCKED\" 分支：stop() 后逐文件置错，不重试）"
+      ]
+    },
+    {
+      "claim": "单次上传数量与体积上限：一次最多 200 张；单张控制在 3M 内（前端 filters 亦为 3MB）；格式限图片；另有「容量不足」分支。",
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （code=-9001/-600/-601 与「容量不足」文案）",
+        "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js （max_file_size:\"3MB\"、mime_types: jpg,jpeg,gif,png,bmp）"
+      ]
+    },
+    {
+      "claim": "风控页会以 HTML（非 JSON）返回，HTTP 状态仍是 200；因此协议侧不能只看状态码，必须解析 success 字段并识别 baxia 页面。",
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/taefed/pic-upload-sdk/0.0.9/picuploadsdk.js （从 pre-wrap;\">…</pre> 抠 JSON 的兜底分支）",
+        "本仓库只读实测（2026-10-05）：无凭据 GET upload.api 返回 200 + text/html 风控页（含 x5referer、windvane.js、securitySDK）"
+      ]
+    },
+    {
+      "claim": "mtop 库自带 antiCreep / antiFlood 中间件，说明该前端体系里的 mtop 调用也受反爬与频控约束。",
+      "evidence_level": "candidate",
+      "sources": ["https://g.alicdn.com/mtb/lib-mtop/2.6.1/mtop.js （mtop.antiCreepRequest / mtop.antiFloodRequest 方法名）"]
+    },
+    {
+      "claim": "本仓库既有实证：mtop token 过期/为空返回 FAIL_SYS_TOKEN_EXOIRED 并在响应 Set-Cookie 下发新 token；签错返回 FAIL_SYS_ILLEGAL_ACCESS / Sign Error。上传端点本身不需要 mtop 签名，但目录/文件查询需要。",
+      "evidence_level": "verified",
+      "sources": [
+        "本仓库 taobao-publisher/docs/05-证据日志.md（E-005/E-006/E-007，读路径实测）",
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （picturecenter.console.* 为 mtop 调用）"
+      ]
+    },
+    {
+      "claim": "_tb_token_ 参与上传表单：生产 bundle 从 cookie 读取 _tb_token_ 并作为 multipart 字段提交，缺失可能导致上传被拒。",
+      "evidence_level": "verified",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （Ee 分支：a=f().get(\"_tb_token_\")，随后 i.append(\"_tb_token_\", a)）"
+      ]
+    },
+    {
+      "claim": "图片空间有独立的产品服务协议（agreement/sign.json），未签署可能影响上传流程可用性。",
+      "evidence_level": "candidate",
+      "sources": [
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （常量表 agreement）",
+        "https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201707252033_94262.html （第三方 PicGo 插件 README 引用的《淘宝图片空间产品服务协议》）"
+      ]
+    },
+    {
+      "claim": "图片上传后平台会做异步审核；审核失败的素材会被删除。用于发布的图必须等审核通过。",
+      "evidence_level": "candidate",
+      "sources": [
+        "https://doc.fw199.com/docs/h7b/h7b-1fkbdpjlodk8v （抖店素材中心同构描述：非风险图约 4s、风险图 24h 内审核，失败素材会被删除——**这是抖店口径，不可直接搬到淘宝**，仅作风险提示）",
+        "https://g.alicdn.com/merchant-micro-mods/sucai-tu-selector/0.0.12/js/main.af890df4.chunk.js （图片 status/redaction/getFrozenImage 分支说明确存在冻结与未过审状态）"
+      ]
+    },
+    {
+      "claim": "图片空间是店铺级；按文件名做身份会撞名（本仓库已有实测：同店铺历史素材 144/145 张，且不同采集目录文件同名）。",
+      "evidence_level": "verified",
+      "sources": ["本仓库 taobao-publisher/docs/05-证据日志.md、docs/29-云端图片目录树与文件索引.md"]
+    }
+  ],
+  "dead_ends": [
+    {
+      "endpoint_or_keyword": "https://sucai.taobao.com/ 作为图片空间入口",
+      "why_rejected": "只读实测 HTTP 200，GBK 解码后 title=「首页-TOP素材网-淘宝网」，加载的是店铺首页模板（shop/pc-shop-webapp），页面内无任何图片空间/素材中心入口。它是「TOP素材网」店铺首页，不是卖家工具。"
+    },
+    {
+      "endpoint_or_keyword": "https://sc.taobao.com/",
+      "why_rejected": "只读实测 HTTP 404 Not Found。域名下无内容。"
+    },
+    {
+      "endpoint_or_keyword": "https://imgbank.taobao.com/（图片银行）",
+      "why_rejected": "只读实测 302 → https://store.taobao.com/shop/noshop.htm（无此店铺）。该域名已归入店铺域名体系，不再是图片空间入口。以此为主机的旧资料一律不适用。"
+    },
+    {
+      "endpoint_or_keyword": "mtop.taobao.picture.upload / mtop.taobao.pic.* / mtop.taobao.sucai.*",
+      "why_rejected": "在图片空间生产 bundle（sucai-tu-selector 0.0.12 main chunk）里**零命中**。该 bundle 里的全部 mtop API 只有四个 mtop.taobao.picturecenter.console.*（storage.query / dir.query / file.query / dir.add），上传走的是 stream-upload 的普通 HTTP 端点，不经 mtop 网关。即「图片上传是 mtop 调用」这一假设不成立。"
+    },
+    {
+      "endpoint_or_keyword": "taobao.picture.upload（开放平台 TOP 接口，含 picture_category_id / base64_image / image_input_title）",
+      "why_rejected": "它是开放平台（TOP）服务端接口，走 https://eco.taobao.com/router/rest + appkey/appsecret/session 授权，**不是**网页图片空间的上传链路。第三方文档站（doc.fw199.com）把它包成了自家网关 https://kf.fw199.com/gateway/taobao/picture/upload，需要该服务商授权。字段名/返回结构（picture_id / picture_path / pixel / sizes / status / client_type）与网页链路同族，只能用作**响应语义参考**，不能当网页协议端点使用。另注：该域名/接口属旧版开放平台文档，是否仍对新应用开放未取证。"
+    },
+    {
+      "endpoint_or_keyword": "upload.taobao.com 下的上传路径",
+      "why_rejected": "只读实测仅得到一个 302 → login.taobao.com，未登录拿不到任何路径证据；公开检索也没有任何该域的上传端点资料。**没有证据，不猜路径**（标 unknown，非 rejected）。"
+    },
+    {
+      "endpoint_or_keyword": "「图片空间上传必须走 mtop 网关、必须 _m_h5_tk + sign」",
+      "why_rejected": "生产 bundle 与官方 SDK 都证明上传是 stream-upload.taobao.com/api/upload.api 的 multipart POST，签名/鉴权靠 cookie（含 _tb_token_ 表单字段），与 mtop 签名无关。需要 _m_h5_tk+sign 的是**目录/文件查询那四个 mtop API**，不是上传。"
+    },
+    {
+      "endpoint_or_keyword": "在公开 CDN 上直接抓「图片空间」完整前端产物",
+      "why_rejected": "只能抓到引导壳与模块联邦入口，业务 chunk 需按 window.<mod>$<ver>_public_path 规则推导（见 frontend_bundle_leads），且 sucai-tu-selector 无 vendor.js（404，已探 300 条候选路径确认）。这条路走通了，但**不能**靠猜路径——必须按 loadMicroMod 的拼装规则推 remoteEntry.js 再解析 r.u 映射。"
+    },
+    {
+      "endpoint_or_keyword": "第三方网关文档站（如 doc.fw199.com）上的「图片空间-上传图片到图片空间」",
+      "why_rejected": "该文档给的是**抖店**素材中心与第三方网关中转接口（kf.fw199.com/gateway/...），不是淘宝网页图片空间端点。可作字段语义与风险提示参考（如批量 50 张/10M、异步审核），但含抖店专有字段（file_uri、need_distinct、seller_nick、materials），搬到淘宝即为编造。"
+    }
+  ],
+  "top_candidates_ranked": [
+    {
+      "rank": 1,
+      "endpoint": "POST https://stream-upload.taobao.com/api/upload.api?appkey=tu&folderId=<目录ID>&_input_charset=utf-8",
+      "why": "生产 bundle 常量表 + 官方 SDK 拼装规则 + 两个独立公开实现 + 无凭据实测端点存活，四重一致。multipart 字段 file/name/_tb_token_，成功判据 response.success，图片地址在 object.url。"
+    },
+    {
+      "rank": 2,
+      "endpoint": "GET https://stream-upload.taobao.com/api/collect_client_upload_rt.api?file_Id=&rt=&appkey=tu",
+      "why": "生产 bundle 原文，上传完成埋点；可用于确认「一次上传 = 一次落库」，但非必需。"
+    },
+    {
+      "rank": 3,
+      "endpoint": "mtop.taobao.picturecenter.console.file.query（+ dir.query / dir.add / user.storage.query）",
+      "why": "生产 bundle 原文的四个 mtop API，管目录树、文件列表、建目录、容量。上传后进目录选图的正规读路径，比 DOM 数卡片稳。需 mtop 签名（本仓库 mtop.py 已就绪）。"
+    },
+    {
+      "rank": 4,
+      "endpoint": "GET https://sucai.wangpu.taobao.com/getPageConfig.do?_input_charset=utf-8",
+      "why": "下发图片尺寸/比例/格式/needCrop/removeUid 等约束；实测 302 到登录页证明存活。做上传前预检（避免 -600/-601/比例不合格）时是权威来源。"
+    },
+    {
+      "rank": 5,
+      "endpoint": "POST https://tadget.taobao.com/picture/waterMarkX.htm 与 GET https://tadget.taobao.com/redaction/getFrozenImage.do?path=",
+      "why": "同族端点：加水印、查图片是否被冻结。已在 bundle 中确证存在，字段未取证，作为后续可选。"
+    }
+  ],
+  "not_found": [
+    "未能取到任何**真实请求/响应抓包**（本任务禁止登录与写操作，仓库内的 captures 也只有 DOM 结构，没有图片空间网络抓包）。因此 content-type、是否分片、并发与频率阈值都只有前端代码口径，没有服务端观测口径。",
+    "未能取到 mtop.taobao.picturecenter.console.* 的真实 version（bundle 里调用未写版本号，库默认 1.0 未逐字证实）、真实网关域名与 sign 里 appKey 的取值（本仓库读路径实测 12577478 之外的写法未取证）。",
+    "未能取到上传接口的**频率阈值**（多少次/多少秒触发 BAXIA_BLOCKED），只有「触发后要人滑验证码」的定性证据。",
+    "未能取到 user.storage.query（容量）与 getPageConfig（页面约束）的响应字段名。",
+    "未能取到 agreement/sign.json 的请求方法、字段与「未签协议是否阻断上传」的证据。",
+    "未能取到『图片空间上传』是否还有除 stream-upload 之外的第二条上传链路（例如某个 mtop 上传 API）：在 sucai-tu-selector 0.0.12 main chunk 里只出现 stream-upload 一条，但无法排除其他页面/版本里另有端点。",
+    "未能取到 pic.taobao.com/picture/pictureIndex.htm（老图片空间页）当前是否仍可上传、以及它的上传端点。",
+    "未能取到「上传后图片进审核队列的时效与失败删除策略」的淘宝官方口径（只找到抖店口径）。",
+    "GitHub 代码搜索（code search API）需登录，未能执行；改用公开仓库 raw 文件 + 论坛贴 + CDN 产物静态分析替代。"
+  ],
+  "notes_for_pipeline": [
+    "上传与「进目录」是两步：上传只需要 cookie + _tb_token_ + folderId；建目录/列目录才需要 mtop 签名。本地采集图直接带 folderId 上传即可，不必先走 DOM。",
+    "folderId 就是 pictureCategoryId：dir.add 返回 pictureCategoryId → 作为后续上传的 folderId。「整件商品一次上传」= 先 addDir 建商品父目录与子目录（主图/SKU/详情页），再把各目录文件带各自 folderId 上传。",
+    "上传成功后立刻用 file.query(catId=<folderId>, page=1) 反查落地，比当前等 DOM 卡片渲染可靠；fileModule[].fullUrl 即回填发布表单用的图片地址（img.alicdn.com/imgextra/...）。",
+    "成功判据必须是 HTTP 200 **且** response.success 为真；HTTP 200 也可能是 baxia 验证码页（HTML）。遇到 BAXIA_BLOCKED 必须停手交人工，不做重试（与生产代码一致）。",
+    "上传量控：单次 ≤200 张、单张 ≤3MB、格式限 jpg/jpeg/gif/png/bmp（bundle 裁剪分支还允许 webp/avif/apng，会转成 jpeg 再传）。"
+  ]
+}

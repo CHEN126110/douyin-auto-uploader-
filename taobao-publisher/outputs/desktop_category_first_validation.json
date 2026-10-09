@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-04T22:46:01.593829+08:00",
+  "scope": "offline HTTP worker, actual category handler, isolated file model and local deployed binary",
+  "tests": {
+    "category_first": 20,
+    "taobao_package": 1154,
+    "taobao_skipped": 7,
+    "taobao_subtests": 319,
+    "business_safety": 243,
+    "shared_frontend": 51
+  },
+  "new_cases_included_in_package_total": true,
+  "sha256": "6c6adadbeab944b94a4c834e5298183ef6a96ee99645d2cd861b990344744fd2",
+  "model_category_and_next_confirmed": true,
+  "model_next_click_count": 1,
+  "current_contract_model_stop_stage": "upload_images",
+  "platform_controls_still_candidate": true,
+  "live_taobao_tested": false,
+  "whole_form_required_fields_confirmed": false
+}

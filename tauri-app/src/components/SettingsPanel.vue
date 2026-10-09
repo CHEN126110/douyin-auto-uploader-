@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import axios from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Connection,
@@ -20,14 +21,18 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { api, tauriCommands } from "@/services/api";
 import { checkForUpdate } from "@/services/updater";
+import { useProductStore } from "@/stores/productStore";
 import type {
   AutomationConfig,
   CaptureMode,
   CapturePreferences,
   CostItem,
   MaterialComposition,
+  FreightTemplate,
   ModelConfig,
+  PublishSubmitMode,
   Settings,
+  ApiResponse,
 } from "@/types";
 
 type AppInfo = {
@@ -61,6 +66,7 @@ type SettingsTab = "pricing" | "model" | "automation" | "mcp";
 
 const SETTINGS_TABS: SettingsTab[] = ["pricing", "model", "automation", "mcp"];
 const route = useRoute();
+const productStore = useProductStore();
 const routeTab = typeof route.query.tab === "string" ? route.query.tab : "";
 const activeTab = ref<SettingsTab>(
   SETTINGS_TABS.includes(routeTab as SettingsTab) ? (routeTab as SettingsTab) : "pricing"
@@ -243,17 +249,26 @@ const costSummary = computed(() => {
 
 // ========== 自动化设置 ==========
 
-// 运费模板列表
+// 运费模板名单。真源是店铺（见 loadFreightTemplates），这里只是缓存，
+// 读不到店铺时下拉框还有东西可选。
 const shippingTemplates = ref<string[]>([]);
 // 当前选中的运费模板
 const selectedShippingTemplate = ref("");
-// 新增模板名称
-const newTemplateName = ref("");
+
+// 运费模板来自店铺，不在本地维护。每家店的模板都不一样，让用户手工填一份名单，
+// 名字打错或换了店就会在发布时选错模板甚至失败，而且不会有任何报错。
+const freightLoading = ref(false);
+const freightShopName = ref("");
+const freightError = ref("");
+const freightTemplates = ref<FreightTemplate[]>([]);
+let freightQueryVersion = 0;
 const materialOptions = ref<string[]>([]);
 const materialCompositions = ref<MaterialComposition[]>([]);
 const washLabelTagImagePath = ref("");
 const washLabelTagImageLoading = ref(false);
 const publishMode = ref("dom");
+// 提交方式：publish 直接提交上架，stop 全部填好后停下不提交
+const publishSubmitMode = ref<PublishSubmitMode>("publish");
 // 采集偏好：分平台独立配置。1688 和 淘宝/天猫 是两个独立平台，采集协议互不交叉。
 //   - dom（默认）：读浏览器渲染数据（1688 走 window.context；淘宝/天猫 走 mtop SDK）
 //   - protocol（预览版）：CDP 网络拦截抓接口响应，目前数据提取仍回退到 DOM，
@@ -390,50 +405,81 @@ async function clearWashLabelTagImage() {
   }
 }
 
-// 添加运费模板
-function addShippingTemplate() {
-  const name = newTemplateName.value.trim();
-  if (!name) {
-    ElMessage.warning("请输入模板名称");
+/**
+ * 保存的模板名在这家店里不存在时必须说出来。
+ *
+ * 发布流程不会因此报错：DOM 路径找不到就退到兜底值「包邮」，协议路径按「包含」
+ * 匹配到名字相近的一个。两条都会发出去，只是运费规则和用户以为的不一样，
+ * 而且只在日志里留一行。这种静默偏差要在设置里就拦住。
+ */
+const selectedTemplateMissing = computed(() => {
+  if (!selectedShippingTemplate.value || freightTemplates.value.length === 0) return false;
+  return !freightTemplates.value.some((t) => t.name === selectedShippingTemplate.value);
+});
+
+async function loadFreightTemplates(notify = false) {
+  const version = ++freightQueryVersion;
+  const account = productStore.currentShopSession;
+  freightTemplates.value = [];
+  shippingTemplates.value = [];
+  freightShopName.value = "";
+  freightError.value = "";
+  // 两个平台都读，只是读法不同：
+  //   抖店 —— 协议接口（已实证）；
+  //   淘宝 —— **DOM**，从发布表单的运费模板下拉里读（2026-10-03 接通）。
+  // 原先这里对淘宝直接 return，界面上永远是「需切换到抖音账户」——
+  // 而后端其实也一直没能读，两边一起把这件事挡住了。
+  if (account?.platform !== "douyin" && account?.platform !== "taobao") {
+    freightLoading.value = false;
+    freightError.value = "当前账户未确认，请返回主页面刷新账户状态";
+    if (notify) ElMessage.warning(freightError.value);
     return;
   }
-  if (shippingTemplates.value.includes(name)) {
-    ElMessage.warning("该模板名称已存在");
-    return;
+  freightLoading.value = true;
+  try {
+    const response = await api.getShopFreightTemplates();
+    if (version !== freightQueryVersion || productStore.currentShopSession?.active_profile !== account.active_profile) return;
+    const data = response.data;
+    if (!response.success || !data) {
+      throw new Error(response.message || response.msg || "后端未返回运费模板");
+    }
+    freightShopName.value = data?.shop_name || "";
+    freightError.value = data?.error || "";
+    const templates = data?.templates ?? [];
+    freightTemplates.value = templates;
+    if (templates.length > 0) {
+      shippingTemplates.value = templates.map((t) => t.name);
+      if (notify) ElMessage.success(`已读取 ${templates.length} 个运费模板`);
+    } else {
+      // ⚠️ **「没读到」与「没有模板」是两件事。**
+      //
+      // status !== "ok" 说明这次读取本身没成功（页面不对、下拉没展开、结构变了），
+      // 绝不能显示成「该店铺没有模板」——那会让人以为不用配运费模板就能发布。
+      const reason = data?.error || "没有读到运费模板";
+      const hint = data?.status === "need_publish_page"
+        ? "淘宝的运费模板下拉只在「发布表单」里：请先在淘宝发布工作台打开一个商品的发布页，再回来刷新。"
+        : data?.status === "read_failed"
+          ? "下拉展开了但一个选项都没读到；这不等于该店铺没有模板。"
+          : "";
+      freightError.value = hint ? reason + "。" + hint : reason;
+      if (notify) ElMessage.warning(freightError.value);
+    }
+  } catch (error) {
+    if (version !== freightQueryVersion) return;
+    const reason = axios.isAxiosError<ApiResponse>(error)
+      ? error.response?.data?.message || error.response?.data?.msg || error.message
+      : error instanceof Error ? error.message : String(error);
+    freightError.value = `读取运费模板失败：${reason}`;
+    if (notify) ElMessage.error(freightError.value);
+  } finally {
+    if (version === freightQueryVersion) freightLoading.value = false;
   }
-  shippingTemplates.value.push(name);
-  selectedShippingTemplate.value = name; // 自动选中新添加的
-  newTemplateName.value = "";
-  ElMessage.success("添加成功");
 }
 
-// 删除运费模板
-async function removeShippingTemplate(index: number) {
-  const name = shippingTemplates.value[index];
-  
-  // 至少保留一个模板
-  if (shippingTemplates.value.length <= 1) {
-    ElMessage.warning("至少保留一个运费模板");
-    return;
-  }
-  
-  try {
-    await ElMessageBox.confirm(`确定删除模板 "${name}" 吗？`, "提示", {
-      type: "warning",
-    });
-    
-    shippingTemplates.value.splice(index, 1);
-    
-    // 如果删除的是当前选中的，切换到第一个
-    if (selectedShippingTemplate.value === name) {
-      selectedShippingTemplate.value = shippingTemplates.value[0];
-    }
-    
-    ElMessage.success("删除成功");
-  } catch {
-    // 用户取消
-  }
-}
+watch(
+  [() => productStore.currentShopSession?.active_profile, () => productStore.currentShopSession?.platform],
+  () => { void loadFreightTemplates(); }
+);
 
 // ========== 模型API设置 ==========
 
@@ -837,8 +883,7 @@ async function loadSettings() {
   loading.value = true;
   try {
     const response = await api.getSettings();
-    console.log("[Settings] 加载设置响应:", response);
-    
+
     if (response.success && response.data?.settings) {
       const settings = response.data.settings as Settings;
       
@@ -894,6 +939,11 @@ async function loadSettings() {
         materialCompositions.value = normalizeMaterialCompositions(ac.material_compositions);
         washLabelTagImagePath.value = String(ac.wash_label_tag_image_path || "").trim();
         publishMode.value = String(ac.publish_mode || "dom").trim();
+        // 历史配置里可能存着 auto，以后端规范化后的值为准
+        publishSubmitMode.value =
+          (ac.publish_submit_mode_effective ?? ac.publish_submit_mode) === "stop"
+            ? "stop"
+            : "publish";
 
         // 加载采集偏好（分平台独立）
         // 兼容旧的单一字段 capture_mode：如果新字段缺失就用旧字段作为两个平台的初始值
@@ -960,6 +1010,7 @@ async function handleSave() {
         material_compositions: normalizeMaterialCompositions(materialCompositions.value),
         wash_label_tag_image_path: washLabelTagImagePath.value.trim() || null,
         publish_mode: publishMode.value,
+        publish_submit_mode: publishSubmitMode.value,
         // 分平台采集偏好：1688 和 淘宝/天猫 独立保存
         capture_preferences: {
           alibaba_1688_mode: capturePreferences.value.alibaba_1688_mode,
@@ -975,8 +1026,8 @@ async function handleSave() {
       return;
     }
 
-    console.log("[Settings] 保存设置:", settingsToSave);
-
+    // 注意：这里不要打印 settingsToSave —— model_configs[].api_key 是明文密钥，
+    // 控制台日志在打包版同样保留（vite.config.ts 没开 drop_console）。
     const response = await api.updateSettings(settingsToSave);
 
     if (response.success) {
@@ -1019,6 +1070,7 @@ watch(
     materialCompositions,
     () => washLabelTagImagePath.value,
     () => publishMode.value,
+    () => publishSubmitMode.value,
     () => capturePreferences.value.alibaba_1688_mode,
     () => capturePreferences.value.taobao_tmall_mode,
   ],
@@ -1031,7 +1083,9 @@ watch(
 // 初始化设置页面
 onMounted(async () => {
   loadAppInfo();
-  loadSettings();
+  await loadSettings();
+  // 运费模板每次打开设置都重新读：换过店铺的话，上次那批是别人家的。
+  void loadFreightTemplates();
   try {
     appVersion.value = await getVersion();
   } catch {
@@ -1424,6 +1478,34 @@ onMounted(async () => {
 
           <div class="settings-section">
             <h3 class="section-title">
+              <el-icon class="section-icon"><Promotion /></el-icon>
+              提交方式
+            </h3>
+            <div class="capture-strategy-intro">
+              决定点「开始上传」之后，商品是直接上架，还是全部填好后停下来等你检查。
+            </div>
+            <div class="mode-card-group">
+              <label class="mode-card" :class="{ active: publishSubmitMode === 'publish' }">
+                <input type="radio" v-model="publishSubmitMode" value="publish" />
+                <el-icon class="mode-icon"><Promotion /></el-icon>
+                <div class="mode-text">
+                  <div class="mode-name">直接发布</div>
+                  <div class="mode-desc">填完就提交上架，发布前会再确认一次</div>
+                </div>
+              </label>
+              <label class="mode-card" :class="{ active: publishSubmitMode === 'stop' }">
+                <input type="radio" v-model="publishSubmitMode" value="stop" />
+                <el-icon class="mode-icon"><Mouse /></el-icon>
+                <div class="mode-text">
+                  <div class="mode-name">只填写不发布</div>
+                  <div class="mode-desc">全部填好后停下，你自己核对无误再手动发布</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">
               <el-icon class="section-icon"><Connection /></el-icon>
               采集方式
             </h3>
@@ -1487,12 +1569,27 @@ onMounted(async () => {
           </div>
 
           <div class="settings-section">
-            <h3 class="section-title">🚚 运费模板管理</h3>
-            
-            <!-- 当前使用的模板 -->
+            <h3 class="section-title">🚚 运费模板</h3>
+
+            <div class="freight-head">
+              <span class="freight-source">
+                <template v-if="freightShopName">来自店铺「{{ freightShopName }}」</template>
+                <template v-else-if="freightError">{{ freightError }}</template>
+                <template v-else>模板从当前登录的店铺读取</template>
+              </span>
+              <el-button size="small" :loading="freightLoading" :disabled="productStore.currentShopSession?.platform !== 'douyin'" @click="loadFreightTemplates(true)">
+                重新读取
+              </el-button>
+            </div>
+
             <div class="current-template">
-              <label>当前使用：</label>
-              <el-select v-model="selectedShippingTemplate" placeholder="选择运费模板" class="template-select">
+              <label>发布时使用：</label>
+              <el-select
+                v-model="selectedShippingTemplate"
+                :disabled="productStore.currentShopSession?.platform !== 'douyin' || freightLoading"
+                placeholder="选择运费模板"
+                class="template-select"
+              >
                 <el-option
                   v-for="template in shippingTemplates"
                   :key="template"
@@ -1501,53 +1598,36 @@ onMounted(async () => {
                 />
               </el-select>
             </div>
-            
-            <!-- 模板列表 -->
-            <div class="template-list">
+
+            <div v-if="selectedTemplateMissing" class="freight-missing">
+              这家店没有「{{ selectedShippingTemplate }}」这个模板。发布时不会报错，但会退而选用名字相近或兜底的模板，
+              运费规则可能和你以为的不一样，请从下面重新选一个。
+            </div>
+
+            <div v-if="freightTemplates.length > 0" class="template-list">
               <div
-                v-for="(template, index) in shippingTemplates"
-                :key="index"
+                v-for="template in freightTemplates"
+                :key="template.id + template.name"
                 class="template-item"
-                :class="{ active: template === selectedShippingTemplate }"
+                :class="{ active: template.name === selectedShippingTemplate }"
               >
                 <span class="template-name">
-                  <span v-if="template === selectedShippingTemplate" class="active-badge">✓</span>
-                  {{ template }}
+                  <span v-if="template.name === selectedShippingTemplate" class="active-badge">✓</span>
+                  {{ template.name }}
+                  <el-tag v-if="!template.shop_scoped" size="small" type="info" effect="plain">
+                    平台通用
+                  </el-tag>
                 </span>
-                <div class="template-actions">
-                  <el-button
-                    v-if="template !== selectedShippingTemplate"
-                    type="primary"
-                    size="small"
-                    class="template-use-btn"
-                    @click="selectedShippingTemplate = template"
-                  >
-                    使用
-                  </el-button>
-                  <el-button
-                    type="danger"
-                    size="small"
-                    class="automation-delete-btn"
-                    :disabled="shippingTemplates.length <= 1"
-                    @click="removeShippingTemplate(index)"
-                  >
-                    删除
-                  </el-button>
-                </div>
+                <el-button
+                  v-if="template.name !== selectedShippingTemplate"
+                  type="primary"
+                  size="small"
+                  class="template-use-btn"
+                  @click="selectedShippingTemplate = template.name"
+                >
+                  使用
+                </el-button>
               </div>
-            </div>
-            
-            <!-- 添加新模板 -->
-            <div class="add-template-form">
-              <el-input
-                v-model="newTemplateName"
-                placeholder="输入新的运费模板名称"
-                class="template-input"
-                @keyup.enter="addShippingTemplate"
-              />
-              <el-button type="primary" @click="addShippingTemplate">
-                添加模板
-              </el-button>
             </div>
 
             <h3 class="section-title material-title">🧵 产品材质面料</h3>
@@ -1695,7 +1775,7 @@ onMounted(async () => {
               <li>📋 <strong>运费模板</strong> - 管理可用的运费模板列表，选择上传时使用的模板</li>
               <li>🧵 <strong>面料材质</strong> - 仅可选择平台材质选项，并确保总和为100%</li>
               <li>🏷️ <strong>水洗标/吊牌图</strong> - 优先使用商品目录中的吊牌图片；没有则使用这里配置的全局图片；如果两者都没有，就按上面的材质配置填写面料材质</li>
-              <li>🔍 <strong>自动匹配</strong> - 脚本会在抖音运费模板下拉列表中查找匹配的选项</li>
+              <li>🔍 <strong>自动匹配</strong> - 脚本会在运费模板下拉列表中查找匹配的选项</li>
               <li>⚠️ <strong>注意</strong> - 模板名称需与抖音后台设置的完全一致</li>
             </ul>
           </div>
@@ -2613,6 +2693,29 @@ onMounted(async () => {
 .template-use-btn {
   // 强制保证文字始终白色，避免被全局 el-button text 默认色或主题色覆盖
   color: #fff !important;
+}
+
+.freight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.freight-source {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.freight-missing {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(217, 130, 43, 0.1);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: #9a5b00;
 }
 
 .add-template-form {

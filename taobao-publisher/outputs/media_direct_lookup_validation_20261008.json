@@ -1,0 +1,74 @@
+{
+  "scope": "上传回执直达选图、目录别名归一化、就绪检查与图片 ID 交接",
+  "evidence_levels": {
+    "source_and_isolated_browser": "verified",
+    "current_taobao_page": "candidate"
+  },
+  "final_targeted_tests": {
+    "passed": 101,
+    "subtests_passed": 2
+  },
+  "broader_regression": {
+    "passed": 146,
+    "subtests_passed": 9,
+    "initial_failures": 1,
+    "resolved": "旧 DOM 模型显式指定 DOM 路线；该用例在最终 101 项中通过"
+  },
+  "model_click_counts": {
+    "same_selected_directory_three_requests_before": 6,
+    "same_selected_directory_three_requests_after": 0,
+    "main_stage_target_directory_clicks": 1,
+    "main_stage_sku_or_detail_directory_clicks": 0
+  },
+  "guards_verified": [
+    "错误 ID 与 URL 组合在点击前拒绝",
+    "延迟旧卡片不会冒充目标图片",
+    "不同账户/内容回执仍拒绝",
+    "准备阶段不冒充云端已定位",
+    "实际回填后更新本地图片索引",
+    "已有上传回执不导致再次上传"
+  ],
+  "frozen_build": {
+    "checked_at": "2026-10-08T21:49:16.275734+08:00",
+    "frozen_modules_match_source": {
+      "media_library": true,
+      "media_manifest": true,
+      "upload_client": true,
+      "price_policy": true,
+      "sku_batch": true,
+      "required_attrs": true,
+      "form_adapters": true,
+      "stages": true,
+      "page": true
+    },
+    "capture_fix_preserved": {
+      "_capture_taobao_tmall_product_for_store": true,
+      "_extract_taobao_ice_data": true,
+      "_extract_taobao_tmall_product_snapshot": true,
+      "_import_capture_product_record": true,
+      "import_capture_result": true,
+      "start_capture": true,
+      "run_capture_task": true
+    },
+    "source_manifest_files": 82,
+    "archive_entries": 634,
+    "backend_sha256": "b579ffef8ef2626a8c64dd153723704f8e7ebdb6ad1fb09130f897932a9f0e31"
+  },
+  "runtime": {
+    "checked_at": "2026-10-08T21:49:29.6512856+08:00",
+    "startup_check_exit_code": 0,
+    "shortcut_used": true,
+    "window_observed_seconds": 7.04,
+    "health_ok_seconds": 10.38,
+    "gui_processes": 1,
+    "backend_bootloader_and_worker_processes": 2,
+    "compiler_processes_seen": [],
+    "vite_1420_seen": false,
+    "backend_sha256": "b579ffef8ef2626a8c64dd153723704f8e7ebdb6ad1fb09130f897932a9f0e31",
+    "desktop_sha256": "dcbc6b51d8aec42e205ed2edfa4575a45c74763e57fdde96a2e45d94ad56c8b4",
+    "stderr_log_start_bytes": 0,
+    "real_taobao_flow_tested": false
+  },
+  "live_platform_tested": false,
+  "submitted_or_draft_saved": false
+}

@@ -1,0 +1,923 @@
+{
+  "scope": "local_synthetic_browser_with_real_http_worker",
+  "live_platform_tested": false,
+  "server_uploads_simulated": true,
+  "main_slots": 5,
+  "upload_batches": [
+    {
+      "roles": [
+        "main",
+        "sku",
+        "detail"
+      ],
+      "count": 9
+    }
+  ],
+  "lookup_batch_sizes": [
+    9,
+    9
+  ],
+  "model_files": 9,
+  "submitted_or_saved_draft": false,
+  "result": {
+    "success": true,
+    "stage": "done",
+    "error": {},
+    "steps": [
+      {
+        "name": "session",
+        "label": "连接调试浏览器",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "模型会话边界（不读取真实浏览器或账户）"
+      },
+      {
+        "name": "precheck",
+        "label": "发布前置检查",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "基础检查通过（阻塞 0，告警 0；SKU 2 条，主图 5 张）",
+        "data": {
+          "ready": true,
+          "blockers": [],
+          "warnings": [],
+          "checks": {
+            "stage": "full",
+            "require_write": true,
+            "read_only": false,
+            "authorization": {
+              "source": "desktop_form_filling",
+              "granted": [
+                "save_draft",
+                "upload_image"
+              ],
+              "submit_unlocked": false,
+              "read_only": false,
+              "ignored_tokens": []
+            },
+            "page_checked": true,
+            "title_length": 12,
+            "sku_count": 2,
+            "main_image_count": 5
+          },
+          "deferred_adapter_blockers": {}
+        }
+      },
+      {
+        "name": "select_category",
+        "label": "选择商品类目",
+        "status": "ok",
+        "elapsed_ms": 219,
+        "summary": "类目已选中并进入填写页：模型上级>中筒袜（店铺 catId=900000001，品牌=无品牌）",
+        "data": {
+          "target_path": [
+            "模型上级",
+            "中筒袜"
+          ],
+          "brand": "无品牌",
+          "category_id": "900000001",
+          "steps": [
+            {
+              "step": "search",
+              "keyword": "中筒袜"
+            },
+            {
+              "step": "switch_tab",
+              "tab": "类目"
+            },
+            {
+              "ok": true,
+              "clickedText": "模型上级>中筒袜",
+              "clickedClass": "sell-rich-text path-text"
+            },
+            {
+              "ok": true,
+              "picked": "无品牌"
+            }
+          ]
+        }
+      },
+      {
+        "name": "upload_images",
+        "label": "上传商品图片",
+        "status": "ok",
+        "elapsed_ms": 77,
+        "summary": "主图已选入主图位并回读确认：5 张（本次新上传 5 张，空间里原有 0 张）；SKU 素材 2 张、详情素材 2 张已准备",
+        "data": {
+          "selected": [
+            "主图01.jpg",
+            "主图02.jpg",
+            "主图03.jpg",
+            "主图04.jpg",
+            "主图05.jpg"
+          ],
+          "uploaded_now": [
+            "主图01.jpg",
+            "主图02.jpg",
+            "主图03.jpg",
+            "主图04.jpg",
+            "主图05.jpg"
+          ],
+          "filled": 5,
+          "filled_before": 0,
+          "prepared_media": {
+            "sku": 2,
+            "detail": 2
+          }
+        }
+      },
+      {
+        "name": "fill_base",
+        "label": "填写标题与基础信息",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "已填并回读校验：宝贝标题='阶段联跑标题'；跳过：商家编码（未提供）",
+        "data": {
+          "fields": [
+            {
+              "label": "宝贝标题",
+              "written": "阶段联跑标题",
+              "read_back": "阶段联跑标题"
+            }
+          ],
+          "skipped": [
+            "商家编码（未提供）"
+          ]
+        }
+      },
+      {
+        "name": "fill_props",
+        "label": "填写类目属性",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "已填并回读校验 1 条属性：品牌='无品牌'",
+        "data": {
+          "props": [
+            {
+              "label": "品牌",
+              "written": "无品牌",
+              "read_back": "无品牌",
+              "how": "kept_selected_brand"
+            }
+          ],
+          "captured_skipped": []
+        }
+      },
+      {
+        "name": "fill_required_attrs",
+        "label": "补齐必填项",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "必填项已补齐并逐项回读：新填 0 项，已有 0 项；商品事实留给人 0 项",
+        "data": {
+          "required": {
+            "adopted": null,
+            "filled": [],
+            "already": [],
+            "needs_human": [],
+            "failed": [],
+            "category_leaf": "中筒袜"
+          },
+          "empty_after": []
+        }
+      },
+      {
+        "name": "fill_skus",
+        "label": "填写销售规格(SKU)",
+        "status": "ok",
+        "elapsed_ms": 437,
+        "summary": "自定义规格、对应图片及逐行售价库存已写入并回读",
+        "data": {
+          "row_count": 2,
+          "filled_rows": [
+            {
+              "row": 1,
+              "specs": "燕麦-咖啡【5双装】+均码(35-40)【甄选优质棉】",
+              "price": "29.80",
+              "stock": "100"
+            },
+            {
+              "row": 2,
+              "specs": "黑色-白色【5双装】+均码(35-40)【甄选优质棉】",
+              "price": "20.80",
+              "stock": "100"
+            }
+          ],
+          "runtime_control_checks": {
+            "scope": "current_dom_and_readback",
+            "mode_unique": true,
+            "native_radio": true,
+            "empty_draft_before_action": true,
+            "names_read_back": 2,
+            "bound_images_read_back": 2
+          }
+        }
+      },
+      {
+        "name": "fill_detail",
+        "label": "填写商品详情",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "详情图片按采集顺序写入并回读",
+        "data": {
+          "detail_count": 2,
+          "runtime_control_checks": {
+            "scope": "current_dom_and_readback",
+            "image_count": 2
+          }
+        }
+      },
+      {
+        "name": "fill_freight",
+        "label": "填写物流与发货",
+        "status": "ok",
+        "elapsed_ms": 30,
+        "summary": "运费模板已选并回读确认：'模型商家默认模板'（写入前为 '模型商家默认模板'；该店铺共 1 个模板）",
+        "data": {
+          "template": "模型商家默认模板",
+          "before": "模型商家默认模板",
+          "options": [
+            "模型商家默认模板"
+          ]
+        }
+      },
+      {
+        "name": "fill_price_stock",
+        "label": "填写价格与库存",
+        "status": "ok",
+        "elapsed_ms": 0,
+        "summary": "已填并回读校验：一口价='42.00'、总库存='200'（总库存写入前为 ''）",
+        "data": {
+          "fields": [
+            {
+              "label": "一口价",
+              "written": "42.00",
+              "read_back": "42.00"
+            },
+            {
+              "label": "总库存",
+              "written": "200",
+              "read_back": "200"
+            }
+          ],
+          "stock_before": "",
+          "price": 42,
+          "stock": 200
+        }
+      },
+      {
+        "name": "set_listing_time",
+        "label": "设置上架时间",
+        "status": "ok",
+        "elapsed_ms": 94,
+        "summary": "上架时间已设为 '放入仓库' 并回读确认",
+        "data": {
+          "listing_mode": "放入仓库",
+          "all_option_state": {
+            "立刻上架": false,
+            "定时上架": false,
+            "放入仓库": true
+          }
+        }
+      },
+      {
+        "name": "readback",
+        "label": "回读页面校验",
+        "status": "ok",
+        "elapsed_ms": 15,
+        "summary": "回读核对通过：9 项全部一致（宝贝标题、品牌、一口价、总库存、主图内容、SKU 规格值、SKU 价格、SKU 逐行价格库存、运费模板）；当前可见类目必填属性 2 项有值（覆盖 label.required 属性行，尚不代表整页必填项均已验证）；顺带读到的**平台默认值**（本流水线不设，但影响上架结果）：上架时间=放入仓库，发货时间=未读到，提取方式=未读到",
+        "data": {
+          "matched": [
+            {
+              "label": "宝贝标题",
+              "value": "阶段联跑标题"
+            },
+            {
+              "label": "品牌",
+              "value": "无品牌"
+            },
+            {
+              "label": "一口价",
+              "value": "42.00"
+            },
+            {
+              "label": "总库存",
+              "value": "200"
+            },
+            {
+              "label": "主图内容",
+              "value": "https://img.example.invalid/%E4%B8%BB%E5%9B%BE01.jpg｜https://img.example.invalid/%E4%B8%BB%E5%9B%BE02.jpg｜https://img.example.invalid/%E4%B8%BB%E5%9B%BE03.jpg｜https://img.example.invalid/%E4%B8%BB%E5%9B%BE04.jpg｜https://img.example.invalid/%E4%B8%BB%E5%9B%BE05.jpg"
+            },
+            {
+              "label": "SKU 规格值",
+              "value": "2 行：燕麦-咖啡【5双装】+均码(35-40)【甄选优质棉】｜黑色-白色【5双装】+均码(35-40)【甄选优质棉】"
+            },
+            {
+              "label": "SKU 价格",
+              "value": "至少一行价格大于 0"
+            },
+            {
+              "label": "SKU 逐行价格库存",
+              "value": "[[[\"燕麦-咖啡【5双装】+均码(35-40)【甄选优质棉】\"],\"29.8\",\"100\"],[[\"黑色-白色【5双装】+均码(35-40)【甄选优质棉】\"],\"20.8\",\"100\"]]"
+            },
+            {
+              "label": "运费模板",
+              "value": "模型商家默认模板"
+            }
+          ],
+          "mismatched": [],
+          "unreadable": [],
+          "vetoes_passed": [
+            {
+              "label": "提交按钮",
+              "value": "可点",
+              "note": "只做否决；通过不构成放行信号"
+            }
+          ],
+          "required_field_coverage": {
+            "known": true,
+            "scope": "visible_publish_rows_required",
+            "completePage": false,
+            "rowCount": 7,
+            "required": [
+              {
+                "label": "宝贝详情",
+                "hitCount": 1,
+                "marker": "label",
+                "supportedReader": true,
+                "filled": true,
+                "valid": true,
+                "reader": "native_rich_text"
+              },
+              {
+                "label": "上架时间",
+                "hitCount": 1,
+                "marker": "label",
+                "supportedReader": true,
+                "filled": true,
+                "valid": true,
+                "reader": "radio_groups",
+                "groupCount": 1
+              }
+            ],
+            "unownedRequiredCount": 0,
+            "coverageLimits": [
+              "virtual_or_unrendered_sections_not_proven",
+              "platform_private_validation_not_run"
+            ],
+            "checked": [
+              {
+                "label": "宝贝详情",
+                "value": "native_rich_text",
+                "fact": "dedicated_reader"
+              },
+              {
+                "label": "上架时间",
+                "value": "radio_groups",
+                "fact": "dedicated_reader"
+              }
+            ],
+            "checkedCount": 2
+          },
+          "visible_form_requirements": {
+            "known": true,
+            "scope": "visible_publish_rows_required",
+            "completePage": false,
+            "rowCount": 7,
+            "required": [
+              {
+                "label": "宝贝详情",
+                "hitCount": 1,
+                "marker": "label",
+                "supportedReader": true,
+                "filled": true,
+                "valid": true,
+                "reader": "native_rich_text"
+              },
+              {
+                "label": "上架时间",
+                "hitCount": 1,
+                "marker": "label",
+                "supportedReader": true,
+                "filled": true,
+                "valid": true,
+                "reader": "radio_groups",
+                "groupCount": 1
+              }
+            ],
+            "unownedRequiredCount": 0,
+            "coverageLimits": [
+              "virtual_or_unrendered_sections_not_proven",
+              "platform_private_validation_not_run"
+            ]
+          },
+          "default_notice": {
+            "上架时间": [
+              "放入仓库"
+            ],
+            "发货时间": [],
+            "提取方式": []
+          }
+        }
+      },
+      {
+        "name": "save_draft",
+        "label": "保存草稿",
+        "status": "skipped",
+        "elapsed_ms": 0,
+        "summary": "未请求保存草稿（默认不做任何动作）"
+      }
+    ],
+    "blockers": [],
+    "dry_run": false,
+    "stopped_before_submit": true,
+    "data": {
+      "item_summary": {
+        "record_id": 7,
+        "record_name": "商品七",
+        "title_length": 12,
+        "category_id": "900000001",
+        "prop_count": 1,
+        "sku_count": 2,
+        "main_image_count": 5,
+        "detail_image_count": 2,
+        "has_white_bg": false,
+        "freight_template_id": ""
+      },
+      "step_plan": [
+        "session",
+        "precheck",
+        "select_category",
+        "upload_images",
+        "fill_base",
+        "fill_props",
+        "fill_required_attrs",
+        "fill_skus",
+        "fill_detail",
+        "fill_freight",
+        "fill_price_stock",
+        "set_listing_time",
+        "readback",
+        "save_draft"
+      ],
+      "payload_field_count": 0,
+      "preflight_warnings": [],
+      "preflight_warnings_source": "precheck_stage",
+      "stages_executed": [
+        "session",
+        "precheck",
+        "select_category",
+        "upload_images",
+        "fill_base",
+        "fill_props",
+        "fill_required_attrs",
+        "fill_skus",
+        "fill_detail",
+        "fill_freight",
+        "fill_price_stock",
+        "set_listing_time",
+        "readback"
+      ],
+      "stages_skipped": [
+        "save_draft"
+      ],
+      "protocol_route_gaps": [
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.title",
+          "detail": "字段「item.title」的平台字段名未实证（platform_field=None，evidence=unknown）",
+          "severity": "blocker",
+          "evidence": "unknown",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_base"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.category_id",
+          "detail": "字段「item.category_id」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "select_category"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.category_path",
+          "detail": "字段「item.category_path」的平台字段名未实证（platform_field=None，evidence=unknown）",
+          "severity": "blocker",
+          "evidence": "unknown",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": false,
+            "stage": "select_category"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.props",
+          "detail": "字段「item.props」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_props"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.sale_props",
+          "detail": "字段「item.sale_props」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_skus"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "item.sale_prop_values",
+          "detail": "字段「item.sale_prop_values」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_skus"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "sku.price",
+          "detail": "字段「sku.price」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_price_stock"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "sku.stock",
+          "detail": "字段「sku.stock」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "fill_price_stock"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "media.main_images",
+          "detail": "字段「media.main_images」的平台字段名未实证（platform_field=None，evidence=candidate）",
+          "severity": "blocker",
+          "evidence": "candidate",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": true,
+            "stage": "upload_images"
+          }
+        },
+        {
+          "code": "EVIDENCE_INSUFFICIENT",
+          "field": "media.detail_images",
+          "detail": "字段「media.detail_images」的平台字段名未实证（platform_field=None，evidence=unknown）",
+          "severity": "blocker",
+          "evidence": "unknown",
+          "source": "contracts/field_mapping.json",
+          "extra": {
+            "required": false,
+            "stage": "upload_images"
+          }
+        }
+      ],
+      "protocol_route_note": "以上 10 条是 mtop 协议路线的字段映射缺口；本次走 DOM 路线，不依赖它们。要用协议路线才需要补齐。",
+      "media_observations": [
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图01.jpg",
+          "name": "主图01.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图02.jpg",
+          "name": "主图02.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图03.jpg",
+          "name": "主图03.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图04.jpg",
+          "name": "主图04.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图05.jpg",
+          "name": "主图05.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\SKU\\规格0.jpg",
+          "name": "规格0.jpg",
+          "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
+          "role": "sku",
+          "cloud_folder": "SKU",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\SKU\\规格1.jpg",
+          "name": "规格1.jpg",
+          "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
+          "role": "sku",
+          "cloud_folder": "SKU",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\详情页\\详情0.jpg",
+          "name": "详情0.jpg",
+          "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
+          "role": "detail",
+          "cloud_folder": "详情页",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\详情页\\详情1.jpg",
+          "name": "详情1.jpg",
+          "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
+          "role": "detail",
+          "cloud_folder": "详情页",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图01.jpg",
+          "name": "主图01.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图02.jpg",
+          "name": "主图02.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图03.jpg",
+          "name": "主图03.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图04.jpg",
+          "name": "主图04.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\主图\\800\\主图05.jpg",
+          "name": "主图05.jpg",
+          "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
+          "role": "main",
+          "cloud_folder": "主图",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\SKU\\规格0.jpg",
+          "name": "规格0.jpg",
+          "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
+          "role": "sku",
+          "cloud_folder": "SKU",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\SKU\\规格1.jpg",
+          "name": "规格1.jpg",
+          "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
+          "role": "sku",
+          "cloud_folder": "SKU",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\详情页\\详情0.jpg",
+          "name": "详情0.jpg",
+          "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
+          "role": "detail",
+          "cloud_folder": "详情页",
+          "status": "located",
+          "folder_path": []
+        },
+        {
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_five_main_slots_and_other0\\模型商品\\详情页\\详情1.jpg",
+          "name": "详情1.jpg",
+          "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
+          "role": "detail",
+          "cloud_folder": "详情页",
+          "status": "located",
+          "folder_path": []
+        }
+      ],
+      "form_verification": {
+        "status": "partial",
+        "complete": false,
+        "required_field_coverage": {
+          "known": true,
+          "scope": "visible_publish_rows_required",
+          "completePage": false,
+          "rowCount": 7,
+          "required": [
+            {
+              "label": "宝贝详情",
+              "hitCount": 1,
+              "marker": "label",
+              "supportedReader": true,
+              "filled": true,
+              "valid": true,
+              "reader": "native_rich_text"
+            },
+            {
+              "label": "上架时间",
+              "hitCount": 1,
+              "marker": "label",
+              "supportedReader": true,
+              "filled": true,
+              "valid": true,
+              "reader": "radio_groups",
+              "groupCount": 1
+            }
+          ],
+          "unownedRequiredCount": 0,
+          "coverageLimits": [
+            "virtual_or_unrendered_sections_not_proven",
+            "platform_private_validation_not_run"
+          ],
+          "checked": [
+            {
+              "label": "宝贝详情",
+              "value": "native_rich_text",
+              "fact": "dedicated_reader"
+            },
+            {
+              "label": "上架时间",
+              "value": "radio_groups",
+              "fact": "dedicated_reader"
+            }
+          ],
+          "checkedCount": 2
+        },
+        "visible_form_requirements": {
+          "known": true,
+          "scope": "visible_publish_rows_required",
+          "completePage": false,
+          "rowCount": 7,
+          "required": [
+            {
+              "label": "宝贝详情",
+              "hitCount": 1,
+              "marker": "label",
+              "supportedReader": true,
+              "filled": true,
+              "valid": true,
+              "reader": "native_rich_text"
+            },
+            {
+              "label": "上架时间",
+              "hitCount": 1,
+              "marker": "label",
+              "supportedReader": true,
+              "filled": true,
+              "valid": true,
+              "reader": "radio_groups",
+              "groupCount": 1
+            }
+          ],
+          "unownedRequiredCount": 0,
+          "coverageLimits": [
+            "virtual_or_unrendered_sections_not_proven",
+            "platform_private_validation_not_run"
+          ]
+        },
+        "reason": "本次已执行字段的回读通过，整页必填覆盖尚未确认"
+      },
+      "readiness": {
+        "contract_problems": [],
+        "protocol_write_ready": false,
+        "dom_write_ready": true,
+        "publish_route_ready": true,
+        "publishable": true,
+        "implemented_stages": [
+          "session",
+          "precheck",
+          "select_category",
+          "upload_images",
+          "fill_base",
+          "fill_props",
+          "fill_required_attrs",
+          "fill_skus",
+          "fill_detail",
+          "fill_freight",
+          "fill_price_stock",
+          "set_listing_time",
+          "readback",
+          "save_draft",
+          "submit"
+        ],
+        "unimplemented_stages": [],
+        "incomplete_stages": [],
+        "live_unverified_stages": [
+          "upload_images",
+          "fill_required_attrs",
+          "fill_skus",
+          "fill_detail",
+          "set_listing_time",
+          "readback",
+          "save_draft",
+          "submit"
+        ],
+        "blocked_required_fields": [
+          "item.title",
+          "item.category_id",
+          "item.props",
+          "item.sale_props",
+          "item.sale_prop_values",
+          "sku.price",
+          "sku.stock",
+          "media.main_images",
+          "logistics.freight_template_id",
+          "publish.listing_mode"
+        ],
+        "blocked_write_critical_selectors": [],
+        "field_evidence": {
+          "verified": 0,
+          "candidate": 11,
+          "unknown": 6,
+          "rejected": 0
+        }
+      },
+      "authorization": {
+        "source": "desktop_form_filling",
+        "granted": [
+          "save_draft",
+          "upload_image"
+        ],
+        "submit_unlocked": false,
+        "read_only": false,
+        "ignored_tokens": []
+      },
+      "generated_at": "2026-10-09T23:11:19+08:00",
+      "deferred_adapter_blockers": {}
+    }
+  },
+  "test_source_sha256": "a89a76ba73c3e0bad02d1e16d599b1d7be826c215c6246c39afbda14971aadff"
+}
