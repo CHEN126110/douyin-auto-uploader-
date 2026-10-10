@@ -7,13 +7,15 @@
 `判据=directory_missing` 让人去建那个**已经存在**的目录。
 
 本文件钉住新语义：
-* 云端有的同名文件 → 身份一致才采纳（`uploaded_now=False`）；
+* 云端有的同名文件 → **URL 身份**（同资源号）或**内容身份**（平台 md5 与本地文件一致）
+  有一致才采纳（`uploaded_now=False`）；
 * 云端没有的 → 用协议上传补进它该去的那个 folderId，**回读核对**后才算落库，并写进账本；
 * 身份对不上 / 账本没有本批回执 → **如实失败且一个字节都不上传**（不覆盖、不将就）。
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -66,8 +68,15 @@ def completion(monkeypatch, prepared_case):
         return "https://img.example.invalid/" + source.sha256 + ".jpg"
 
     def read_directory_files(_client, directory, **_kwargs):
-        return {"files": [{"name": name, "url": url, "picture_id": "pid-" + name}
-                          for name, url in cloud.get(tuple(directory), {}).items()]}
+        rows = []
+        for name, value in cloud.get(tuple(directory), {}).items():
+            entry = {"name": name, "picture_id": "pid-" + name}
+            if isinstance(value, dict):     # 带 md5 的条目（内容身份用）
+                entry.update(value)
+            else:
+                entry["url"] = value
+            rows.append(entry)
+        return {"files": rows}
 
     def ensure_child_directory(_client, parent, name, **_kwargs):
         key = tuple(parent) + (str(name),)
@@ -131,6 +140,44 @@ def _complete(completion):
     return module._complete_existing(completion.client, completion.manifest,
                                      [completion.manifest.folder_name], "account-A",
                                      port=PORT, authorization=AUTH)
+
+
+def test_platform_reupload_is_adopted_by_content_identity(completion):
+    """平台把同一张图**重传过**（资源号变了）→ 按内容认账，并记下这次观测到的回执。
+
+    真机 2026-10-10：整目录导入把 33 张全部重传了一遍，资源号与账本不同；
+    而平台 ``fileModule`` 的 ``md5`` 与本地文件逐张一致（SKU 5/5 实测）。
+    只比 URL 会把内容完全相同的图判成「不是同一张图」，把用户无故卡住。
+    """
+
+    manifest = completion.manifest
+    product_dir = Path(manifest.product_dir)
+    for source in manifest.images:
+        name = Path(source.relative_path).name
+        digest = hashlib.md5((product_dir / source.relative_path).read_bytes()).hexdigest()
+        completion.cloud.setdefault(_cloud_path(manifest, source.relative_path), {})[name] = {
+            "url": "https://img.example.invalid/reuploaded-" + name, "md5": digest}
+        completion.ledger.entries[(name, source.sha256)] = {
+            "url": "https://img.example.invalid/old-" + name, "picture_id": "old"}
+    prepared = _complete(completion)
+    prepared.validate("account-A")
+    assert completion.uploads == [], "内容一致就不该重传"
+    assert ({row["name"] for row in completion.ledger.recorded}
+            == {Path(source.relative_path).name for source in manifest.images}), \
+        "按内容认账时要把这次观测到的回执记进账本"
+
+
+def test_same_content_but_not_byte_identical_still_fails(completion):
+    """md5 对不上就不能认——「按内容认账」必须真的是**内容**。"""
+
+    _adopt_all(completion)
+    source = completion.manifest.images[0]
+    name = Path(source.relative_path).name
+    completion.cloud[_cloud_path(completion.manifest, source.relative_path)][name] = {
+        "url": "https://img.example.invalid/别的资源号.jpg", "md5": "0" * 32}
+    with pytest.raises(PageError, match="不是同一张图"):
+        _complete(completion)
+    assert completion.uploads == []
 
 
 def test_present_files_are_adopted_without_any_upload(completion):

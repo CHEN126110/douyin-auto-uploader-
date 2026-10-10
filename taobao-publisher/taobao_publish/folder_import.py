@@ -158,7 +158,79 @@ def send_directory(client, directory):
     return target['method']
 
 
-def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None):
+#: 点击目录后等平台自己的 `file.query` / `dir.query` 回来。
+_LISTING_OBSERVE_SECONDS = 4.0
+
+
+def _cloud_files(client, listing, path, *, folder_id):
+    """读某一层云端的**文件清单**，权威来源是平台自己的 ``file.query``。
+
+    DOM 只负责**触发导航**（点目录树），清单本身取自 ``fileModule``。
+
+    :returns: 文件条目列表；**返回 ``None`` 表示「读不出来」**——与「目录是空的」（``[]``）
+        是两件不同的事。调用方必须区分：把读不出来当成空目录，就会重复上传（真机踩过）。
+    """
+
+    from . import media_library
+    if listing is None:
+        # 没有收响应的能力时**不要点**：调用方会退回 DOM 读取，而 DOM 读取自带导航。
+        return None
+    media_library.open_directory(client, path, context_id=None,
+                                 page=media_library.PAGE_MATERIAL_CENTER)
+    listing.observe(_LISTING_OBSERVE_SECONDS)
+    return listing.files(folder_id)
+
+
+def _cloud_product_root(client, listing, folder_name):
+    """商品目录在云端到底存不存在。**返回 ``[名字]`` / ``None`` / 抛错**。
+
+    判据优先级（真机 2026-10-10：这里误判一次，云端就多一个同名目录 + 33 张重传）：
+
+    1. 平台自己的 ``dir.query`` 说了算——它列出**全部**目录（含 id），不受虚拟列表影响；
+    2. 读到了目录清单、里面确实没有这个名字 → 才是「不存在」，可以走整目录导入；
+    3. **没读到目录清单**（``dir_responses == 0``）→ 先点回根层、再**刷新一次**把它逼出来
+       （平台只在页面加载时发目录清单）；两条都不行才**如实失败**，
+       绝不把「读不出来」当成「不存在」。
+    """
+
+    from . import media_library
+    if listing is None:
+        return media_library.product_root_path(client, folder_name, context_id=None,
+                                               page=media_library.PAGE_MATERIAL_CENTER)
+    if listing.dir_responses == 0:
+        # 页面可能早就开着、这次没重新拉目录——先点回根层试一次（点，不刷新）。
+        try:
+            media_library.open_root_directory(client, context_id=None)
+        except Exception:  # noqa: BLE001
+            pass
+        listing.observe(_LISTING_OBSERVE_SECONDS)
+    if listing.dir_responses == 0:
+        # 还是没有：目录清单只在**页面加载**时发一次，所以刷新一次把它逼出来。
+        # 这一步只发生在 `import_directory` 刚进来、页面还没被动过的时候；
+        # 没有权威目录树就判「没有这个商品目录」= 云端多一个同名目录 + 全部图片重传。
+        try:
+            listing.reload_and_observe()
+        except Exception:  # noqa: BLE001
+            pass
+    matches = listing.find_directories(folder_name)
+    if len(matches) > 1:
+        raise page.PageError('图片空间存在多个同名商品目录，不能确认该用哪一个：' + folder_name)
+    if matches:
+        return [folder_name]
+    if listing.dir_responses == 0:
+        # 刷新都拿不到清单：这时**只能**接受 DOM 的**肯定**结论（看见了就是看见了），
+        # 看不见则如实失败——绝不把「读不出来」当成「不存在」。
+        dom = media_library.product_root_path(client, folder_name, context_id=None,
+                                              page=media_library.PAGE_MATERIAL_CENTER)
+        if dom:
+            return dom
+        raise page.PageError(
+            '没有读到平台对图片空间的目录清单响应（dir.query）：读不到不等于目录不存在，'
+            '拒绝据此走整目录导入（那会在云端新建同名目录并重传全部图片）')
+    return None
+
+
+def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None, listing=None):
     """每个图片目录只读一次。旧账本必须与当前账户图库中的实际资源一致。"""
     from . import media_library
     from .upload_api import same_image
@@ -168,10 +240,25 @@ def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None)
     receipts = []
     for folder, sources in grouped.items():
         _cancelled(should_cancel)
-        contents = media_library.read_directory_files(client, [*root, *folder], context_id=None,
-                                                      page=media_library.PAGE_MATERIAL_CENTER)
-        files = {entry['name']: entry for entry in contents['files']}
-        if len(files) != len(contents['files']):
+        # 目录 id 从平台自己的目录树里按 `pid` + 名字取（DOM 点击只负责触发 file.query）。
+        folder_id = None
+        if listing is not None:
+            roots = listing.find_directories(manifest.folder_name)
+            if len(roots) == 1:
+                node = roots[0]
+                for part in folder:
+                    node = listing.find_child(node['id'], str(part))
+                    if node is None:
+                        break
+                folder_id = node['id'] if node else None
+        entries = _cloud_files(client, listing, [*root, *folder], folder_id=folder_id)
+        if entries is None:
+            contents = media_library.read_directory_files(
+                client, [*root, *folder], context_id=None,
+                page=media_library.PAGE_MATERIAL_CENTER)
+            entries = contents['files']
+        files = {entry['name']: entry for entry in entries}
+        if len(files) != len(entries):
             raise page.PageError('商品子目录存在同名图片，无法确认来源：' + '/'.join(folder))
         for source in sources:
             name = PurePosixPath(source.relative_path).name
@@ -202,8 +289,31 @@ def _folder_id_for(client, root, parts):
     return folder_id
 
 
+def _content_matches(entry, manifest, source):
+    """**按内容**判同一张图：平台给的 ``md5`` 与本地文件逐字节一致。
+
+    为什么需要它（真机 2026-10-10 实测）：平台把*整目录导入*的图片重新上传过一次，
+    同一张图的资源号变了（``O1CN01…`` 不同），于是「比 URL 身份」会把
+    **内容完全相同**的图判成「不是同一张图」，用户明明什么都没做错却被卡住。
+    平台在 ``fileModule`` 里给了 ``md5``，实测与本地文件 md5 逐张一致（SKU 5/5 ✓），
+    所以这里不用下载也能判定；**拿不到 md5 就不算同一张图**（不猜）。
+    """
+
+    digest = str(entry.get('md5') or '')
+    if not digest:
+        return False
+    path = Path(manifest.product_dir) / source.relative_path
+    if not path.is_file():
+        return False
+    actual = hashlib.md5()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b''):
+            actual.update(chunk)
+    return actual.hexdigest() == digest
+
+
 def _complete_existing(client, manifest, root, account_profile, *, port, authorization,
-                       progress=None, should_cancel=None):
+                       progress=None, should_cancel=None, listing=None):
     """云端已有该商品目录时：**按证据决定哪些图要补传**。
 
     ## 为什么不能"有目录就当成已完成"，也不能"整目录重来"
@@ -221,8 +331,11 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
       与协议路线 `ensure_cloud_folders` 同一动作、同一道写授权门），再读它的文件；
     * 云端**没有**的同名文件 → 用已验证的 ``upload.api``（E-212/E-216/E-221/E-247）
       直接传进它该去的那个 ``folderId``，传完**回读核对** URL 才算落库，并写进账本；
-    * 云端**有**同名文件 → 只接受身份一致的（``same_image`` 比 URL）；
-      对不上（或账本没有本批回执）就**如实失败**——不覆盖、不改名、不将就。
+    * 云端**有**同名文件 → 身份判定两条路：**URL 身份**（账本回执与云端同资源号）
+      或**内容身份**（平台 ``fileModule`` 的 ``md5`` 与本地文件逐字节一致，实测 SKU 5/5 一致）。
+      两条都不成立才**如实失败**——不覆盖、不改名、不将就。
+      内容一致但资源号变了，说明平台把同一张图重传过（整目录导入就是），
+      这时把**这次观测到**的回执记进账本，下一次核对就是干净的。
 
     每一步都过写授权门（``upload_image``）；没有授权时一个字节都不会发出去。
     """
@@ -247,11 +360,16 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
         # 写授权门（`import_directory` 开头已 `require(WRITE_UPLOAD_IMAGE)`）。
         # 已存在时 `ensure_child_directory` 幂等，不会建出重复目录。
         folder_id = _folder_id_for(client, root, folder)
-        contents = media_library.read_directory_files(
-            client, [*root, *folder], context_id=None,
-            page=media_library.PAGE_MATERIAL_CENTER)
-        files = {entry['name']: entry for entry in contents['files']}
-        if len(files) != len(contents['files']):
+        # 文件清单以平台自己的 `file.query` 为准（DOM 一刷新就读不到，真机踩过）；
+        # 读不到响应时才退回 DOM 读取，而 DOM 的「空」由下面的守卫兜住（拒绝重传）。
+        entries = _cloud_files(client, listing, [*root, *folder], folder_id=folder_id)
+        if entries is None:
+            contents = media_library.read_directory_files(
+                client, [*root, *folder], context_id=None,
+                page=media_library.PAGE_MATERIAL_CENTER)
+            entries = contents['files']
+        files = {entry['name']: entry for entry in entries}
+        if len(files) != len(entries):
             raise page.PageError('商品子目录存在同名图片，无法确认来源：' + '/'.join(folder))
         missing = []
         suspicious = []
@@ -270,16 +388,31 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
                     missing.append(source)
                 continue
             old = ledger.lookup({'name': name, 'sha256': source.sha256})
-            if old is None:
-                raise page.PageError('图片空间已有同名素材，但账本里没有本批回执，'
-                                     '不能确认是不是同一张图：' + source.relative_path)
-            if not same_image(actual['url'], old['url']):
+            # 身份判定两条路：**URL 身份**（账本回执与云端同资源号）或**内容身份**
+            # （平台给的 md5 与本地文件逐字节一致）。后者是为了「平台把同一张图重传过、
+            # 资源号变了」这种情形——真机 2026-10-10：整目录导入把 33 张全重传了一遍，
+            # 只比 URL 会把内容完全相同的图判成「不是同一张图」，把用户无故卡住。
+            same_as_receipt = old is not None and same_image(actual['url'], old['url'])
+            if not same_as_receipt and not _content_matches(actual, manifest, source):
+                if old is None:
+                    raise page.PageError('图片空间已有同名素材，但账本里没有本批回执，'
+                                         '内容也与本地文件不一致，不能确认是不是同一张图：'
+                                         + source.relative_path)
                 raise page.PageError('图片空间里的同名素材与本批上传回执不是同一张图：'
+                                     '既不是同一个资源号，内容也与本地文件不一致：'
                                      + source.relative_path)
+            if not same_as_receipt:
+                # 内容一致 = 同一张图：把**这次观测到**的回执记进账本，下一次就是干净的。
+                ledger.record({'name': name, 'sha256': source.sha256,
+                               'path': str(Path(manifest.product_dir) / source.relative_path)},
+                              {'url': actual['url'],
+                               'picture_id': str(actual.get('picture_id') or '')},
+                              folder_id=folder_id)
             receipts.append(UploadedImageReceipt(
                 source.relative_path, name, (manifest.folder_name, *folder), actual['url'],
                 source.sha256, uploaded_now=False,
-                picture_id=str(actual.get('picture_id') or '') or str(old.get('picture_id') or '')))
+                picture_id=str(actual.get('picture_id') or '')
+                or str((old or {}).get('picture_id') or '')))
         if suspicious:
             raise page.PageError(
                 '云端这一层读不到本该在里面的素材（{}）：账本记录它们就传在 {} 目录里。'
@@ -383,15 +516,42 @@ def import_directory(client, manifest, account_profile, *, authorization, progre
     tree = media_library.read_directory(client, context_id=None)
     if not tree.get('supported') or not tree.get('paths'):
         raise page.PageError('素材中心目录尚未加载，不能把空树当作商品目录不存在')
-    root = media_library.product_root_path(client, manifest.folder_name, context_id=None,
-                                          page=media_library.PAGE_MATERIAL_CENTER)
-    if root:
-        # 目录在 ≠ 图在：逐张核对，缺的用协议上传补进它该去的那一层。
-        prepared = _complete_existing(client, manifest, root, account_profile, port=port,
-                                     authorization=authorization, progress=progress,
-                                     should_cancel=should_cancel)
-        if progress: progress('原商品目录与当前图片空间已逐张核对，缺失的素材已补齐')
-        return prepared
+    # 目录存不存在，以平台自己的 `dir.query` 为准（DOM 树是虚拟列表，读不到就会误判成
+    # 「没有这个目录」→ 走整目录导入 → **云端多一个同名目录 + 全部图片重传**）。
+    listing = _attach_listing(port)
+    try:
+        root = _cloud_product_root(client, listing, manifest.folder_name)
+        if root:
+            # 目录在 ≠ 图在：逐张核对，缺的用协议上传补进它该去的那一层。
+            prepared = _complete_existing(client, manifest, root, account_profile, port=port,
+                                         authorization=authorization, progress=progress,
+                                         should_cancel=should_cancel, listing=listing)
+            if progress: progress('原商品目录与当前图片空间已逐张核对，缺失的素材已补齐')
+            return prepared
+        return _import_fresh(client, manifest, account_profile, listing=listing,
+                             authorization=authorization, progress=progress,
+                             should_cancel=should_cancel, timeout=timeout)
+    finally:
+        if listing is not None:
+            listing.close()
+
+
+def _attach_listing(port):
+    """连上素材中心页收平台自己的响应；连不上就返回 ``None``（调用方退回 DOM 判据）。"""
+
+    if not port:
+        return None
+    try:
+        from .cloud_listing import CloudListing
+        return CloudListing.attach(int(port))
+    except Exception:  # noqa: BLE001 - 收不到响应是能力缺失，不该让整条流程起不来
+        return None
+
+
+def _import_fresh(client, manifest, account_profile, *, listing, authorization, progress=None,
+                  should_cancel=None, timeout=300.0):
+    from . import media_library
+    from .upload_panel import ensure_all_images
     _open_panel(client)
     ensure_all_images(client,context_id=None)
     if page.read_media_queue_state(client,context_id=None)['items']:
@@ -437,14 +597,34 @@ def import_directory(client, manifest, account_profile, *, authorization, progre
         page.click_media_finish(client,context_id=None,wait=0.3)
         deadline=time.monotonic()+15
         root=None
+        read_ok=False
         while root is None:
             _cancelled(should_cancel)
-            root=media_library.product_root_path(client,manifest.folder_name,context_id=None,
-                                                page=media_library.PAGE_MATERIAL_CENTER)
+            # 目录清单仍然以平台自己的 `dir.query` 为准（DOM 树读不到就当成没建好，
+            # 会把已经建好的目录误判成失败）。
+            if listing is not None:
+                listing.observe(1.5)
+            if listing is None or listing.dir_responses:
+                read_ok = True
+                matches = (listing.find_directories(manifest.folder_name)
+                           if listing is not None else
+                           (media_library.product_root_path(
+                               client, manifest.folder_name, context_id=None,
+                               page=media_library.PAGE_MATERIAL_CENTER) or []))
+                if len(matches) > 1:
+                    raise page.PageError('图片空间出现多个同名商品目录：' + manifest.folder_name)
+                if matches:
+                    root = [manifest.folder_name]
             if root is not None:break
-            if time.monotonic()>=deadline:raise page.PageError('上传队列已完成，但图片空间未出现原商品文件夹')
+            if time.monotonic()>=deadline:
+                raise page.PageError(
+                    '上传队列已完成，但图片空间里没有出现原商品文件夹'
+                    if read_ok else
+                    '上传队列已完成，但没有读到图片空间的目录清单响应（dir_query），'
+                    '无法确认目录是否已建好')
             time.sleep(0.2)
-        receipts = _read_receipts(client, manifest, root, should_cancel=should_cancel)
+        receipts = _read_receipts(client, manifest, root, should_cancel=should_cancel,
+                                  listing=listing)
     result=PreparedProductMedia(manifest,account_profile,tuple(receipts))
     result.validate(account_profile)
     if progress:progress('商品目录与 {} 张图片已确认入库（{}）'.format(len(receipts),method))
