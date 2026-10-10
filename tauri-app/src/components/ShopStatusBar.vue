@@ -146,7 +146,7 @@ const hintText = computed(() => {
   }
   if (!state) return sessionError.value;
   if (state.status === "logged_in") {
-    return state.platform === "taobao" ? taobaoIdentityNote(state) : state.shop_id ? `店铺 ID ${state.shop_id}` : "";
+    return state.platform === "taobao" ? taobaoIdentityNote(state) : state.platform === "xiaohongshu" ? "小红书：店铺名读自页面元素（候选级证据）；读不到就显示「未读到」，不会拿本地备注冒充。" : state.shop_id ? `店铺 ID ${state.shop_id}` : "";
   }
   if (["no_browser", "logged_out", "no_fxg_tab", "no_taobao_tab", "no_xhs_tab"].includes(state.status)) {
     return `打开账户菜单并选择${state.platform === "taobao" ? "淘宝" : state.platform === "xiaohongshu" ? "小红书千帆" : "抖音"}账户，即可打开登录页；登录成功后自动确认，不用再点一次。`;
