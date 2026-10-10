@@ -145,3 +145,62 @@ def test_fill_only_reports_gaps_even_if_they_read_empty():
     report = run_fill_only(page, FillPlan(title=GOOD_TITLE))
     assert report["ok"] is True
     assert "gaps" in report
+
+
+# --- fill_gaps：读缺口 → 补 → 复读（三种情形） -------------------------------
+
+class GapSequencePage:
+    """按调用次序返回不同的缺口序列，用来观察 fill_gaps 的循环行为。"""
+
+    def __init__(self, sequence: list) -> None:
+        self.sequence = list(sequence)
+        self.reads = 0
+
+        outer = self
+
+        class _Client:
+            @staticmethod
+            def evaluate(script: str):
+                if "required-icon" in script:
+                    index = min(outer.reads, len(outer.sequence) - 1)
+                    outer.reads += 1
+                    return {"required_count": 13, "unfilled": list(outer.sequence[index]),
+                            "filled": []}
+                return {"key_attrs": ["关键属性 6/7"], "required": ["1 项必填"]}
+
+        self.client = _Client()
+
+
+def test_fill_gaps_stops_immediately_when_no_gaps():
+    from xiaohongshu_publish.flow import fill_gaps
+
+    page = GapSequencePage([[]])
+    called = []
+    out = fill_gaps(page, lambda gaps: called.append(gaps))
+    assert called == []                       # 没缺口就不该调 filler
+    assert out["rounds"][0]["note"] == "无必填缺口"
+    assert out["final"]["unfilled"] == []
+
+
+def test_fill_gaps_fills_then_rereads_until_clear():
+    from xiaohongshu_publish.flow import fill_gaps
+
+    page = GapSequencePage([["物流模板"], ["物流模板"], []])
+    out = fill_gaps(page, lambda gaps: {"filled": gaps["unfilled"]})
+    assert len(out["rounds"]) == 3
+    assert out["rounds"][0]["unfilled"] == ["物流模板"]
+    assert out["rounds"][-1]["unfilled"] == []
+    assert out["final"]["unfilled"] == []
+
+
+def test_fill_gaps_records_filler_error_and_stops():
+    from xiaohongshu_publish.flow import fill_gaps
+
+    page = GapSequencePage([["运费模板"]])
+
+    def boom(gaps):
+        raise RuntimeError("模板还没建")
+
+    out = fill_gaps(page, boom)
+    assert out["rounds"][0]["error"] == "模板还没建"   # 记录而不是吞掉
+    assert len(out["rounds"]) == 1                     # 出错即停

@@ -51,6 +51,39 @@ def required_gaps(page: XhsPage) -> dict:
     }
 
 
+def fill_gaps(page: XhsPage, filler, max_rounds: int = 3) -> dict:
+    """「读缺口 → 补 → 复读」循环（fill_only 的收尾阶段）。
+
+    `filler(gaps)` 由调用方注入，负责"按缺口做具体填写"（它才知道每个字段怎么填）；
+    本函数只做三件事：**读平台判据 → 交给 filler → 复读**，并把每一轮都记成证据。
+
+    边界：
+    - **不做任何提交**，也不点「下一步」以外的东西；
+    - 轮数有限（默认 3），缺口没变就停（避免无意义空转）；
+    - `filler` 抛错则记录并停止（**不吞错**，也不假装填成功）。
+    """
+    history: list = []
+    for round_index in range(max_rounds):
+        gaps = required_gaps(page)
+        unfilled = list(gaps.get("unfilled") or [])
+        record: dict = {"round": round_index + 1, "unfilled": unfilled,
+                        "judges": gaps.get("judges")}
+        history.append(record)
+        if not unfilled:
+            record["note"] = "无必填缺口"
+            break
+        try:
+            outcome = filler(gaps)
+        except Exception as error:  # noqa: BLE001 - 记录后停止，不吞错
+            record["error"] = str(error)
+            break
+        record["filled_by_hook"] = outcome
+        if not outcome:
+            record["note"] = "filler 未报告任何填写，停止循环"
+            break
+    return {"rounds": history, "final": required_gaps(page)}
+
+
 def run_fill_only(page: XhsPage, plan: FillPlan,
                   upload_fn: Callable[[list], dict] | None = None) -> dict:
     """执行 fill_only。返回结构化结果（含逐步证据），不抛业务异常。
