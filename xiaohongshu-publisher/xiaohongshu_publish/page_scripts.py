@@ -188,6 +188,56 @@ def open_field_script(label: str) -> str:
     return OPEN_FIELD.replace("LABEL", json.dumps(label, ensure_ascii=False))
 
 
+#: 通用动作：按文本找到**被绘制的**元素，并采样一个"未被覆盖"的点。
+#:
+#: 这是本项目反复重写过 6 次以上的模式（选类目、选属性值、开字段下拉、点下一步、点标签…），
+#: 现已收敛到一处。两条经验固化在内：
+#:   ① **只认被绘制的元素** —— 未展开下拉的 `li.option` 也在 DOM 里且"看着可见" ✗，
+#:      必须用 `elementFromPoint` 确认该点命中的就是它或其子孙 ✓；
+#:   ② **中心点常常点不中** —— 可能被遮罩/表格/动作栏覆盖 ✗ → 在元素矩形内网格采样，
+#:      取第一个"命中自己"的点 ✓；返回 `reason` 便于诊断（`not_found` / `fully_covered`）。
+#: `EXACT` 为 true 时要求文本完全相等，否则用包含匹配（并取文本最短者，最具体 ✓）。
+FIND_PAINTED_BY_TEXT = """(() => {
+  const TARGET = TEXT;
+  const EXACT_MATCH = EXACT;
+  const cands = Array.from(document.querySelectorAll(SELECTOR)).filter(e => {
+    const t = (e.textContent || '').trim().replace(/\\s+/g, '');
+    if (EXACT_MATCH) return t === TARGET;
+    return t.indexOf(TARGET) >= 0 && t.length <= TARGET.length + 12;
+  });
+  if (!cands.length) return {ok: false, reason: 'not_found', scanned: 0};
+  cands.sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+  for (const el of cands) {
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 4 && r.height > 4)) continue;
+    const inside = (x, y) => { const top = document.elementFromPoint(x, y);
+      return !!top && (top === el || el.contains(top)); };
+    for (let dy = 2; dy < r.height - 1; dy += 3) {
+      for (let dx = 2; dx < r.width - 1; dx += 5) {
+        const x = Math.round(r.x + dx), y = Math.round(r.y + dy);
+        if (inside(x, y)) return {ok: true, x, y,
+          text: (el.textContent || '').trim().slice(0, 20),
+          tag: el.tagName.toLowerCase(), cls: String(el.className || '').slice(0, 40),
+          rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]};
+      }
+    }
+  }
+  return {ok: false, reason: 'fully_covered', scanned: cands.length};
+})()"""
+
+
+def find_painted_script(text: str, *, selector: str = "div,span,li,a,button",
+                        exact: bool = False) -> str:
+    """生成"按文本找被绘制元素 + 采样可点位置"的表达式。
+
+    `selector` 可收窄搜索范围（例如只找 `button,[class*="d-button"]`）；
+    `exact=True` 时要求文本完全相等（默认包含匹配，并取最短者）。
+    """
+    script = FIND_PAINTED_BY_TEXT.replace("TEXT", json.dumps(text, ensure_ascii=False))
+    script = script.replace("SELECTOR", json.dumps(selector, ensure_ascii=False))
+    return script.replace("EXACT", "true" if exact else "false")
+
+
 def set_title_script(title: str) -> str:
     """生成"填标题"表达式（JSON 转义，避免中文/引号注入）。"""
     return SET_TITLE_TEMPLATE.replace("TEXT", json.dumps(title, ensure_ascii=False))

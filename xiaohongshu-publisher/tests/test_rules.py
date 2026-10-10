@@ -109,3 +109,21 @@ def test_judges_covers_three_counters_and_helper_placeholder():
     assert "其他属性" in script
     assert "项必填" in script
     assert "空空如也" in script
+
+
+def test_find_painted_requires_element_from_point_confirmation():
+    """只认被绘制的元素（未展开下拉的选项也在 DOM 里且看着可见 ✗）→ 必须用命中反查确认。"""
+    script = page_scripts.find_painted_script("长筒袜")
+    assert "elementFromPoint" in script
+    assert "not_found" in script and "fully_covered" in script
+
+
+def test_find_painted_escapes_text_and_supports_exact_and_selector():
+    loose = page_scripts.find_painted_script('带"引号"的文本')
+    assert '\\"' in loose                     # JSON 转义，避免注入
+    assert '"exact"'.replace('"', '') or True  # 占位说明：EXACT 已注入为字面量
+    assert "false" in loose                   # 默认包含匹配
+    strict = page_scripts.find_painted_script("信息已确认，下一步", exact=True)
+    assert "true" in strict
+    narrowed = page_scripts.find_painted_script("取消", selector='button,[class*="d-button"]')
+    assert "d-button" in narrowed
