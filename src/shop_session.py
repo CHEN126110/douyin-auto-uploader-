@@ -339,7 +339,10 @@ def create_profile(platform: str = "douyin", label: Optional[str] = None) -> str
                 save_registry(registry)
                 return slug
         for _ in range(20):
-            slug = "{}-{}".format("taobao" if platform == "taobao" else "shop", uuid.uuid4().hex[:8])
+            # 目录前缀按平台区分（抖店沿用历史默认 "shop" ✓；小红书用 "xhs"）。
+            # 与 PLATFORM_LABELS / ACCOUNT_PLATFORMS 对应，加平台时三处一起补 ✓。
+            prefix = {"douyin": "shop", "taobao": "taobao", "xiaohongshu": "xhs"}.get(platform, "shop")
+            slug = "{}-{}".format(prefix, uuid.uuid4().hex[:8])
             if slug not in existing and not has_login_data(slug):
                 break
         else:
