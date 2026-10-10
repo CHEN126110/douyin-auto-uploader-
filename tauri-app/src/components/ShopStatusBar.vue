@@ -214,7 +214,7 @@ async function refresh(silent = true, force = false) {
     if (!response.success || !state) {
       throw new Error(response.message || response.msg || "后端未返回账户状态");
     }
-    if (state.platform !== "douyin" && state.platform !== "taobao") {
+    if (state.platform !== "douyin" && state.platform !== "taobao" && state.platform !== "xiaohongshu") {
       throw new Error("账户平台未确认，请检查后端版本后刷新账户状态");
     }
     if (!isValidProfileName(state.active_profile)) {
@@ -307,7 +307,7 @@ async function loadProfiles() {
     }
     if (!Array.isArray(response.data.profiles) || !isValidProfileName(response.data.active_profile) || response.data.profiles.some((profile) =>
       !profile || !isValidProfileName(profile.profile_name) ||
-      (profile.platform !== "douyin" && profile.platform !== "taobao") || typeof profile.is_active !== "boolean"
+      (profile.platform !== "douyin" && profile.platform !== "taobao" && profile.platform !== "xiaohongshu") || typeof profile.is_active !== "boolean"
     )) {
       throw new Error("账户列表响应缺少有效账户列表或选中编号");
     }
@@ -772,6 +772,7 @@ defineExpose({ refresh, session });
           <el-radio-group v-model="accountDraft.platform">
             <el-radio-button value="douyin">抖音 / 抖店</el-radio-button>
             <el-radio-button value="taobao">淘宝</el-radio-button>
+            <el-radio-button value="xiaohongshu">小红书千帆</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="账户名称（选填）">
