@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """小红书千帆：Sidecar HTTP 适配（Flask Blueprint）。
 
 边界（与 `taobao-publisher` 同级红线）：
@@ -36,17 +36,26 @@ def _load_xhs_modules():
 
 
 def default_status_probe(port: int = 9336) -> dict:
-    """只读体检：能否连上调试浏览器、当前页在不在创建页、标签页可见性。"""
-    _flow, xhs_browser = _load_xhs_modules()
+    """只读体检：能否连上调试浏览器、当前页在不在创建页、标签页可见性、**还差哪些必填项**。
+
+    `gaps` 读的是平台自己的判据（`required-icon` 标记 + 三套完成度计数）；
+    读不到只记 error，不影响其余体检结果（一项读不到不该让整体体检失败）。
+    """
+    flow, xhs_browser = _load_xhs_modules()
     browser, page, client, _session = xhs_browser.connect(port)
     try:
         state = page.state()
-        return {"port": port, "url": state.get("url", ""),
-                "visibility": page.visibility(),
-                "title_counter": state.get("title_counter", ""),
-                "category_lines": state.get("category_lines", []),
-                "errors": state.get("errors", []),
-                "drawer": page.drawer_state()}
+        result = {"port": port, "url": state.get("url", ""),
+                  "visibility": page.visibility(),
+                  "title_counter": state.get("title_counter", ""),
+                  "category_lines": state.get("category_lines", []),
+                  "errors": state.get("errors", []),
+                  "drawer": page.drawer_state()}
+        try:
+            result["gaps"] = flow.required_gaps(page)
+        except Exception as error:  # noqa: BLE001 - 判据是附加信息
+            result["gaps"] = {"error": str(error)}
+        return result
     finally:
         client.close()
         browser.close()

@@ -23,6 +23,23 @@
       <li v-for="(line, index) in status.category_lines" :key="index">{{ line }}</li>
     </ul>
 
+    <el-descriptions v-if="status && status.gaps" :column="1" size="small" border class="xhs-desc">
+      <el-descriptions-item label="必填缺口">
+        <span v-if="status.gaps.error">判据读取失败：{{ status.gaps.error }}</span>
+        <template v-else-if="status.gaps.unfilled && status.gaps.unfilled.length">
+          <el-tag v-for="item in status.gaps.unfilled" :key="item" type="warning" size="small"
+                  class="xhs-tag">{{ item }}</el-tag>
+        </template>
+        <span v-else-if="status.gaps.required_count">
+          无缺口（{{ status.gaps.required_count }} 项必填均已填）
+        </span>
+        <span v-else>（当前页没有必填标记，可能不在创建页）</span>
+      </el-descriptions-item>
+      <el-descriptions-item label="完成度判据">
+        {{ judgeSummary }}
+      </el-descriptions-item>
+    </el-descriptions>
+
     <el-divider />
 
     <el-form label-width="96px" size="small" @submit.prevent>
@@ -55,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 
@@ -74,6 +91,13 @@ const running = ref(false)
 const title = ref('')
 const allowUpload = ref(false)
 const report = ref<XhsReport | null>(null)
+
+/** 把三套完成度判据拼成一行（各取第一条，缺失则跳过）。 */
+const judgeSummary = computed(() => {
+  const judges = status.value?.gaps?.judges
+  const parts = [judges?.key_attrs?.[0], judges?.other_attrs?.[0], judges?.required?.[0]]
+  return parts.filter(Boolean).join(' ｜ ') || '（无）'
+})
 
 async function checkStatus() {
   checking.value = true

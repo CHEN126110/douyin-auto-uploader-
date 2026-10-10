@@ -326,6 +326,14 @@ export const api = {
     category_lines: string[];
     errors: string[];
     drawer: { drawers: number; masks: number; visibility: string };
+    /** 平台自己的必填判据：还差哪些字段 + 三套完成度计数（读不到时含 error） */
+    gaps?: {
+      required_count?: number;
+      unfilled?: string[];
+      filled?: string[];
+      judges?: { key_attrs?: string[]; other_attrs?: string[]; required?: string[] };
+      error?: string;
+    };
   }>> {
     return http.get("/api/xhs/status");
   },

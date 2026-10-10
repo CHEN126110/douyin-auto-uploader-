@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """小红书千帆 sidecar 接口回归（离线：注入假执行器，不连浏览器）。
 
 重点守两件事：
@@ -47,6 +47,40 @@ def test_status_is_read_only_and_wrapped_in_api_ok(client):
     body = response.get_json()
     assert body["success"] is True
     assert body["data"]["visibility"] == "visible"
+
+
+def test_status_passes_through_gaps():
+    """体检要能把"还差什么"带出来（前端面板据此显示必填缺口）。"""
+    def probe_with_gaps() -> dict:
+        return {"port": 9336, "url": "https://ark.xiaohongshu.com/app-item/good/create",
+                "visibility": "visible", "title_counter": "56/60",
+                "category_lines": [], "errors": [], "drawer": {"drawers": 0},
+                "gaps": {"required_count": 13, "unfilled": ["物流模板", "运费模板"],
+                         "filled": ["商品标题"], "judges": {"required": ["1 项必填"]}}}
+
+    app = Flask(__name__)
+    app.register_blueprint(create_xhs_blueprint(runner=lambda payload: {},
+                                                status_probe=probe_with_gaps))
+    body = app.test_client().get("/api/xhs/status").get_json()
+    assert body["success"] is True
+    assert body["data"]["gaps"]["unfilled"] == ["物流模板", "运费模板"]
+    assert body["data"]["gaps"]["required_count"] == 13
+
+
+def test_status_passes_through_gap_read_error_without_failing():
+    """判据读不到时体检整体仍应成功，只在 gaps 里带 error（一项读不到不该让整体失败）。"""
+    def probe_with_gap_error() -> dict:
+        return {"port": 9336, "url": "https://ark.xiaohongshu.com/app-item/good/create",
+                "visibility": "hidden", "gaps": {"error": "页面内执行报错"}}
+
+    app = Flask(__name__)
+    app.register_blueprint(create_xhs_blueprint(runner=lambda payload: {},
+                                                status_probe=probe_with_gap_error))
+    response = app.test_client().get("/api/xhs/status")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["gaps"]["error"] == "页面内执行报错"
 
 
 def test_fill_only_requires_title(client):
