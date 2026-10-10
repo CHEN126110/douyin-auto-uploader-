@@ -99,9 +99,11 @@ npm run package:release -- -EmitUpdaterManifest -ReleaseNotes "本次更新说�
 
 ### 当前状态（2026-10-10）
 
-- 正式最新版：**`v4.0.29`**（`prerelease=false`、`make_latest=true`），已通过 4.0.28 → 4.0.29 真实升级验收，逐项证据见[升级验收记录_4.0.29_2026-10-10.md](升级验收记录_4.0.29_2026-10-10.md)。
-- 候选阶段的三个资源在提升为正式版时**字节未变**：`DouyinSockPublisher_4.0.29_x64-setup.exe`（165,869,457 字节）、`…exe.sig`、`latest.json`。提升动作只改了 Release 元数据（标题说明）和 `latest.json` 的 `notes`，安装包与 `signature` 均未触碰。
-- 本地开发机 `tauri-app/src-tauri/target/release/douyin-sock-publisher.exe` 仍是 4.0.28 的旧构建；重新编译不会自动发布，同版本也不会触发升级，要收更新必须重新构建或安装新版。
+- 正式最新版：**`v4.0.30`**（`prerelease=false`、`make_latest=true`），已通过 4.0.29 → 4.0.30 真实升级验收，逐项证据见[升级验收记录_4.0.30_2026-10-10.md](升级验收记录_4.0.30_2026-10-10.md)。
+- `v4.0.29` 的验收记录见[升级验收记录_4.0.29_2026-10-10.md](升级验收记录_4.0.29_2026-10-10.md)（4.0.28 → 4.0.29）。
+- **为什么发 4.0.30 而不是覆盖 4.0.29**：当天那批修复原本只在开发版后端里，已发布的 4.0.29 安装包还是修复前的代码；同号覆盖不会给已装 4.0.29 的机器推送更新，所以必须升号。
+- 候选阶段的三个资源在提升为正式版时**字节未变**：`DouyinSockPublisher_4.0.30_x64-setup.exe`（165,931,476 字节，远端 sha256 `145282cd02eeb9bc0026b205d7ea4b326724430473cbc01d7c1602c3792d329d`）、`…exe.sig`、`latest.json`。提升动作只改了 Release 元数据（标题说明）和 `latest.json` 的 `notes`，安装包与 `signature` 均未触碰。
+- 本地开发机 `tauri-app/src-tauri/target/release/douyin-sock-publisher.exe` 仍是 10-09 的旧构建；源码版本号已升到 4.0.30，因此它启动后会从正式链路看到 4.0.30，点更新或装新版即可用上。
 
 ### 每次发版的验收顺序
 
