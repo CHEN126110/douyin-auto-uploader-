@@ -16,6 +16,28 @@
 | 创建页 | `https://ark.xiaohongshu.com/app-item/good/create`（多步向导） |
 | 探针目录 | `tmp/`（gitignore），脱敏产物才进 `captures/` |
 
+## 与应用共享库对接的约定（真机踩出来的）
+
+加入「账户平台」支持时，代码跨了三个位置：`src/shop_session.py`（共享库）、
+`tauri-app/src/**`（前端）、`tauri-app/python-sidecar/app.py`（依赖组装）。三条硬约定：
+
+1. **`src/` 里的模块不要指望 `taobao_publish` 在 `sys.path` 上。**
+   本仓库的约定是"**调用方负责给路径**" ✓：`app.py` 在用淘宝实现前会自己
+   `sys.path.insert(0, <repo>/taobao-publisher)`（见 `app.py` 8637/8717/11875 行），
+   打包配置也把 `taobao-publisher` 放进 `pathex` 并把 `taobao_publish` 列为 hiddenimport ✓。
+   但**共享库函数**不该依赖"恰好有人加过路径" ✗ —— 实测：在只加仓库根的环境里
+   `from taobao_publish import cdp` 直接 `ModuleNotFoundError` ✗。
+   → 需要列表/求值时，用**标准库 `urlopen`** 读 `/json/list` ✓，
+   用仓库既有的 **`websocket` 依赖**直连 `ws://…/devtools/page/…` 求值 ✓。
+2. **`websocket.create_connection` 必须传完整 `ws://` URL** ✓
+   —— 传去掉协议的 `host:port/path` 会抛 `ValueError: hostname is invalid`（踩过两次 ✗）。
+3. **新增平台要同步四处**：`ACCOUNT_PLATFORMS`、`PLATFORM_LABELS`、目录前缀映射、
+   `read_account_identity` 的分派 ✓ —— 分派尤其危险 ✗：它原来的写法是
+   "taobao 走淘宝，**其余全落抖店**"，新平台不加分支就会被**误用抖店读法** ✗。
+4. **证据等级要写进返回值**：小红书店铺名来自 DOM（`[class*="store-name"]`），
+   标 `identity_evidence = "candidate"` ✓，不冒充接口级 ✓；读不到一律 `None`，
+   上层如实显示「未读到」，**不得拿本地账户备注冒充店铺身份** ✓。
+
 ## 四条实现纪律（全部由真机失败逼出来，违反就会踩坑）
 
 1. **必须在可见标签页里操作。** `document.visibilityState !== 'visible'` 时**不执行点击**
