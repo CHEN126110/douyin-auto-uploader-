@@ -63,10 +63,22 @@ XHS_LOGIN_PAGE_HINTS = ("customer.xiaohongshu.com/login",)
 XHS_PROFILE_DIR = ".runtime/chrome-xhs-cdp"
 XHS_CDP_PORT = 9336
 
-#: **店铺身份读取尚未取证**：实测只能从界面文字看到店铺名（如「涩计似空的店」），
-#: 域名/接口级的稳定读法**没有验证过** ✗。因此这里显式声明不支持，
-#: 上层应当如实显示「未登录／未读到」，**不得拿本地账户备注冒充店铺身份** ✓。
-XHS_IDENTITY_SUPPORTED = False
+#: **店铺身份读法证据等级：`candidate`（DOM 派生，非接口级）**。
+#: 真机实测 2026-10-10：千帆顶栏有语义类名 ``store-name`` 的元素（y≈17），
+#: 其文本与页面上的店铺名一致（探针只打首字以示意 ✓）。据此可读店铺名，
+#: 但**尚未验证**：平台改版是否改类名、多店铺切换时该元素是否同步 ✗ →
+#: 读不到时一律返回 None，让上层如实显示「未读到」，**不得拿本地备注冒充** ✓。
+XHS_IDENTITY_SUPPORTED = True
+
+#: 读小红书顶栏店铺名（DOM 派生）。失败返回 reason，绝不猜值 ✓。
+XHS_READ_STORE_NAME = """(() => {
+  const nodes = Array.from(document.querySelectorAll('[class*="store-name"]'));
+  for (const el of nodes) {
+    const t = (el.textContent || '').trim();
+    if (t && t.length <= 30) return {ok: true, name: t, source: 'dom:store-name'};
+  }
+  return {ok: false, reason: 'store_name_element_not_found'};
+})()"""
 
 _REGISTRY_FILENAME = "shop_profiles.json"
 
@@ -1256,12 +1268,19 @@ def read_xiaohongshu_identity(debug_address: str, timeout: float = 10.0) -> Dict
     }
     base = debug_address if debug_address.startswith("http") else "http://" + debug_address
     list_url = base.rstrip("/") + "/json/list"
+    # 注意：这里**不能**依赖 taobao-publisher 包 ✗ —— 本模块在 sidecar / PyInstaller 环境里
+    # 运行时，sys.path 上只有仓库根与 src/，`import taobao_publish` 会 ModuleNotFoundError
+    # （实测踩过：探针里能用只是因为探针自己加了路径 ✗）。所以列表读取走标准库 ✓。
     try:
-        from taobao_publish import cdp as taobao_cdp  # 复用仓库已有的目标列表读取 ✓
+        from urllib.request import urlopen
 
-        targets = taobao_cdp.list_targets(list_url, timeout=min(3.0, timeout))
+        with urlopen(list_url, timeout=min(3.0, timeout)) as response:
+            targets = json.loads(response.read().decode("utf-8", "replace"))
+        if not isinstance(targets, list):
+            raise ValueError("json/list 返回的不是数组")
     except Exception as error:  # noqa: BLE001 - 浏览器不可达属可预期失败
-        result["error"] = str(error)[:120]
+        result["status"] = "unreachable"
+        result["error"] = "{}: {}".format(type(error).__name__, str(error)[:100])
         return result
 
     pages = [t for t in targets if str(t.get("type") or "") == "page"]
@@ -1277,10 +1296,41 @@ def read_xiaohongshu_identity(debug_address: str, timeout: float = 10.0) -> Dict
         result["status"] = "logged_out"
         result["url"] = url
         return result
-    # 有千帆页面且不在登录页 → 视为已登录；**但店铺身份不去猜** ✓
+    # 有千帆页面且不在登录页 → 视为已登录；随后**尝试**读店铺名（DOM 派生，candidate）。
     result["status"] = "logged_in"
     result["url"] = url
     result["title"] = str(active.get("title") or "")
+    ws_url = str(active.get("webSocketDebuggerUrl") or "")
+    if not ws_url:
+        result["identity_note"] = "no_webSocketDebuggerUrl"
+        return result
+    try:
+        import websocket as _ws  # 与本模块其它 CDP 读法用同一个依赖 ✓
+
+        # 注意：create_connection 接受**完整 ws:// URL** ✓ —— 传去掉协议的 "host:port/path"
+        # 会被当成 URL 解析并抛 ValueError: hostname is invalid（实测踩过一次 ✗）。
+        conn = _ws.create_connection(ws_url, timeout=min(8.0, timeout),
+                                     suppress_origin=True)
+        try:
+            conn.send(json.dumps({"id": 1, "method": "Runtime.evaluate",
+                                  "params": {"expression": XHS_READ_STORE_NAME,
+                                             "returnByValue": True}}))
+            deadline = time.monotonic() + min(6.0, timeout)
+            while time.monotonic() < deadline:
+                message = json.loads(conn.recv())
+                value = (((message.get("result") or {}).get("result") or {}).get("value"))
+                if isinstance(value, dict):
+                    if value.get("ok"):
+                        result["shop_name"] = value.get("name")
+                        result["identity_source"] = value.get("source")
+                        result["identity_evidence"] = "candidate"  # DOM 派生，非接口级 ✓
+                    else:
+                        result["identity_note"] = value.get("reason") or "store_name_not_read"
+                    break
+        finally:
+            conn.close()
+    except Exception as error:  # noqa: BLE001 - 读不到就如实空着 ✓
+        result["identity_note"] = "{}: {}".format(type(error).__name__, str(error)[:80])
     return result
 
 
