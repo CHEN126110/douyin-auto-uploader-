@@ -51,6 +51,23 @@ PLATFORM_LABELS = {
     "xiaohongshu": "小红书千帆",
 }
 
+# ---- 小红书千帆（ark.xiaohongshu.com）----------------------------------------
+# 全部来自真机实测，见 ``xiaohongshu-publisher/docs/05-证据日志.md``：
+#   E-XHS-ENV-20261010（独立 profile，端口 9336，与抖店 9333 / 淘宝 9334 不复用）
+#   E-XHS-LOGIN-20261010（未登录会跳 customer.xiaohongshu.com/login）
+#   E-XHS-CREATE-STEP1-20261010（创建页路由）
+XHS_DOMAINS = ("ark.xiaohongshu.com", "customer.xiaohongshu.com", "school.xiaohongshu.com")
+XHS_CREATE_URL = "https://ark.xiaohongshu.com/app-item/good/create"
+XHS_HOME_URL = "https://ark.xiaohongshu.com/app-system/home"
+XHS_LOGIN_PAGE_HINTS = ("customer.xiaohongshu.com/login",)
+XHS_PROFILE_DIR = ".runtime/chrome-xhs-cdp"
+XHS_CDP_PORT = 9336
+
+#: **店铺身份读取尚未取证**：实测只能从界面文字看到店铺名（如「涩计似空的店」），
+#: 域名/接口级的稳定读法**没有验证过** ✗。因此这里显式声明不支持，
+#: 上层应当如实显示「未登录／未读到」，**不得拿本地账户备注冒充店铺身份** ✓。
+XHS_IDENTITY_SUPPORTED = False
+
 _REGISTRY_FILENAME = "shop_profiles.json"
 
 
