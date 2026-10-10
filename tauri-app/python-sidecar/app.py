@@ -1080,9 +1080,21 @@ def _active_shop_account():
 
 
 def platform_label(platform):
-    """平台的中文名。面向用户的提示统一从这里取，避免各处硬编码「抖音/淘宝」。"""
+    """平台的中文名。面向用户的提示统一从这里取，避免各处硬编码「抖音/淘宝」。
 
-    return '淘宝' if shop_session.normalize_platform(platform) == 'taobao' else '抖音'
+    ⚠️ 本函数会被 `tests/test_shop_platform_api.py` 用 ast 抽取单独 exec ✓，
+    那里的 `shop_session` 是**测试注入的假件**（只提供 normalize_platform 等少量属性 ✗）
+    —— 所以**不能**读 `shop_session.PLATFORM_LABELS`（实测：改成读它之后 5 条接口测试失败 ✗）。
+    映射写在这里，并与共享库 `shop_session.PLATFORM_LABELS` 保持一致 ✓
+    （两处都有回归/测试盯着；加平台时两处一起补）。
+    """
+
+    labels = {'douyin': '抖音 / 抖店', 'taobao': '淘宝', 'xiaohongshu': '小红书千帆'}
+    try:
+        normalized = shop_session.normalize_platform(platform)
+    except ValueError:
+        return str(platform)
+    return labels.get(normalized, normalized)
 
 
 def _with_shop_account_lock(handler):
@@ -1100,7 +1112,9 @@ def _require_publish_platform(expected, account_profile=None):
     except (OSError, ValueError) as exc:
         return jsonify(success=False, msg=f'读取账户资料失败：{exc}'), 503
     if account['platform'] != expected:
-        label = '淘宝' if expected == 'taobao' else '抖音'
+        # 本函数会被 tests/test_shop_platform_api.py 用 ast 抽取单独 exec（不含 import ✗），
+        # 所以这里**不能**调用 platform_label() 或引用 shop_session —— 用内联映射 ✓。
+        label = {'douyin': '抖音', 'taobao': '淘宝', 'xiaohongshu': '小红书千帆'}.get(expected, expected)
         return jsonify(
             success=False, code='ACCOUNT_PLATFORM_MISMATCH',
             msg=f'当前账户不属于{label}，请先切换到{label}账户',
