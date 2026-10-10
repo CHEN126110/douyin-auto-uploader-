@@ -429,7 +429,7 @@ async function loadFreightTemplates(notify = false) {
   //   淘宝 —— **DOM**，从发布表单的运费模板下拉里读（2026-10-03 接通）。
   // 原先这里对淘宝直接 return，界面上永远是「需切换到抖音账户」——
   // 而后端其实也一直没能读，两边一起把这件事挡住了。
-  if (account?.platform !== "douyin" && account?.platform !== "taobao") {
+  if (account?.platform !== "douyin" && account?.platform !== "taobao" && account?.platform !== "xiaohongshu") {
     freightLoading.value = false;
     freightError.value = "当前账户未确认，请返回主页面刷新账户状态";
     if (notify) ElMessage.warning(freightError.value);

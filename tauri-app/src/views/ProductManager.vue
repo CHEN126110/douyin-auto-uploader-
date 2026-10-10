@@ -98,7 +98,7 @@ const shopAccountBusy = ref(false);
 const uploadTaskCancelling = ref(false);
 const publishPlatformLabel = computed(() =>
   productStore.targetPublishPlatform === "douyin" ? "抖音" :
-    productStore.targetPublishPlatform === "taobao" ? "淘宝" : ""
+    productStore.targetPublishPlatform === "taobao" ? "淘宝" : (productStore.targetPublishPlatform === "xiaohongshu" ? "小红书千帆" : "")
 );
 const publishActionText = computed(() => `开始${publishPlatformLabel.value}发布`);
 const publishButtonDisabled = computed(() =>
