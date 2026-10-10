@@ -4666,9 +4666,13 @@ def _activate_shop_profile(target_profile, open_browser=True, browser_url=None):
     }
 
     if open_browser:
-        # 两个平台都打开登录页。淘宝原本不打开，是因为当时淘宝只做「本地资料准备」；
-        # 现在淘宝也走真实登录链路，逻辑与抖音一致。
-        login_url = browser_url or (_TAOBAO_SHOP_LOGIN_URL if account['platform'] == 'taobao' else _SHOP_LOGIN_URL)
+        # 三个平台各开各自的登录页（原写法是"淘宝 else 抖店"两分支，新平台会被打开抖店后台 ✗）。
+        # 小红书的 URL 取自共享库常量（唯一来源 ✓），不要再写字面量 ✗。
+        login_url = browser_url or {
+            'douyin': _SHOP_LOGIN_URL,
+            'taobao': _TAOBAO_SHOP_LOGIN_URL,
+            'xiaohongshu': shop_session.XHS_HOME_URL,
+        }.get(account['platform'], _SHOP_LOGIN_URL)
         try:
             gui.page = get_page(login_url, profile_name=target_profile)
             result['browser_opened'] = True
