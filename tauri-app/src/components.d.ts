@@ -11,8 +11,13 @@ declare module 'vue' {
     ContextMenu: typeof import('./components/ContextMenu.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElCard: typeof import('element-plus/es')['ElCard']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElConfigProvider: typeof import('element-plus/es')['ElConfigProvider']
+    ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
+    ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
     ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElDivider: typeof import('element-plus/es')['ElDivider']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
     ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
     ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
@@ -45,6 +50,7 @@ declare module 'vue' {
     TaobaoPreflightSummary: typeof import('./components/TaobaoPreflightSummary.vue')['default']
     TaobaoPublishPanel: typeof import('./components/TaobaoPublishPanel.vue')['default']
     WhiteBgPanel: typeof import('./components/WhiteBgPanel.vue')['default']
+    XhsPublishPanel: typeof import('./components/XhsPublishPanel.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

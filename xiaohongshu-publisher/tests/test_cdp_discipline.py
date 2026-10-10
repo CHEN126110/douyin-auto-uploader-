@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """小红书千帆：`XhsPage` 的离线回归（假 client，不连浏览器）。
 
 重点验证"纪律守卫"真的会**拒绝执行**——这些拒绝正是历史事故的防线。
@@ -89,7 +89,7 @@ def test_close_drawer_clicks_its_own_cancel():
 
     def evaluate(script: str):
         if "drawer.querySelectorAll" in script:
-            return {"found": True, "x": 1125, "y": 1238}
+            return {"ok": True, "x": 1125, "y": 1238}
         return {"drawers": state["drawers"], "masks": state["drawers"], "visibility": "visible"}
 
     def send(method: str, params: dict):

@@ -85,7 +85,28 @@ def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
         target = targets[0]
         browser.call("Target.activateTarget", {"targetId": target.target_id})
         time.sleep(1.5)
-        chosen = (target, PageClient.connect(target.web_socket_url, target_url=target.url))
+        probe = PageClient.connect(target.web_socket_url, target_url=target.url)
+        if probe.evaluate("document.visibilityState") != "visible":
+            # 纪律 1 的兜底：激活无效（窗口在后台/该标签非当前标签）→ 新开一个前台标签页。
+            # 新建标签页实测是 visible 的，因此点击才能生效。
+            probe.close()
+            created = browser.call("Target.createTarget", {"url": CREATE_URL})
+            new_id = (created or {}).get("targetId")
+            fresh = None
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                fresh = next((t for t in browser.list_targets()
+                              if t.kind == "page" and t.target_id == new_id), None)
+                if fresh and "good/create" in (fresh.url or ""):
+                    break
+                time.sleep(0.5)
+            if fresh is None:
+                browser.close()
+                raise RuntimeError("无法建立可见标签页（新建标签页失败）")
+            probe = PageClient.connect(fresh.web_socket_url, target_url=fresh.url)
+            time.sleep(6.0)
+            target = fresh
+        chosen = (target, probe)
     target, client = chosen
     session_id = browser.attach(target.target_id)
     page = XhsPage(client, browser=browser, target_id=target.target_id)

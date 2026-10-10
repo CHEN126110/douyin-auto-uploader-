@@ -51,6 +51,59 @@ def required_gaps(page: XhsPage) -> dict:
     }
 
 
+#: 服务信息组的字段（真机实测的必填项；详见 `docs/07-字段测绘表.md` §8.9）
+SERVICE_FIELDS = ("物流模板", "物流类型", "运费模板", "发货模式", "现货发货时间",
+                  "开售时间", "售后服务")
+
+
+def make_service_filler(page: XhsPage, values: dict | None = None):
+    """生成 `fill_gaps` 用的 filler：**打开字段下拉 → 选值**，逐项填服务信息组。
+
+    两半动作都取自真机验证过的表达式：`page_scripts.open_field_script`（行级定位 +
+    采样未被覆盖的点）与 `page_scripts.pick_option_script`（只认被绘制的选项）。
+
+    边界：
+    - `values` 里**没有**的字段 → 明确报告「未提供取值（不猜）」，绝不瞎选；
+    - 打开失败 / 选项没被绘制 → 报告该字段的具体原因，**继续下一项**（不静默跳过）；
+    - 非服务信息组的字段 → 交给别的步骤（报告 `skipped`）；
+    - **不点提交**，也不点「下一步」。
+    """
+    import time  # 局部导入：只在这个小助手用得到
+
+    from . import page_scripts
+
+    values = dict(values or {})
+
+    def fill(gaps: dict) -> dict:
+        outcome: dict = {}
+        for label in gaps.get("unfilled") or []:
+            if label not in SERVICE_FIELDS:
+                outcome[label] = {"skipped": "非服务信息组字段，交由其它步骤处理"}
+                continue
+            value = values.get(label)
+            if value is None:
+                outcome[label] = {"skipped": "未提供取值（不猜）"}
+                continue
+            opened = page.client.evaluate(page_scripts.open_field_script(label))
+            if not opened.get("ok"):
+                outcome[label] = {"ok": False, "stage": "open",
+                                  "reason": opened.get("reason")}
+                continue
+            page._dispatch_click(opened["x"], opened["y"])  # noqa: SLF001 - 库内协作
+            time.sleep(1.5)
+            picked = page.client.evaluate(page_scripts.pick_option_script(value))
+            if not picked.get("ok"):
+                outcome[label] = {"ok": False, "stage": "pick", "value": value,
+                                  "reason": picked.get("reason")}
+                continue
+            page._dispatch_click(picked["x"], picked["y"])  # noqa: SLF001
+            time.sleep(1.2)
+            outcome[label] = {"ok": True, "value": value}
+        return outcome
+
+    return fill
+
+
 def fill_gaps(page: XhsPage, filler, max_rounds: int = 3) -> dict:
     """「读缺口 → 补 → 复读」循环（fill_only 的收尾阶段）。
 
