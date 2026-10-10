@@ -35,13 +35,28 @@ def _load_xhs_modules():
     return xhs_flow, xhs_browser
 
 
-def default_status_probe(port: int = 9336) -> dict:
+def _default_port() -> int:
+    """小红书调试端口只保留**一处定义**：``src.shop_session.XHS_CDP_PORT`` ✓。
+
+    以前这个 9336 同时写在后端常量、本模块与启动命令里 ✗，改端口时极易漏掉一处 ✓。
+    导入失败也不要让接口挂掉（退化成同一个字面值，并让调用方仍能显式指定 port ✓）。
+    """
+    try:
+        from ..shop_session import XHS_CDP_PORT  # type: ignore[import-not-found]
+
+        return int(XHS_CDP_PORT)
+    except Exception:  # noqa: BLE001 - 常量拿不到不该让接口不可用
+        return 9336
+
+
+def default_status_probe(port: int | None = None) -> dict:
     """只读体检：能否连上调试浏览器、当前页在不在创建页、标签页可见性、**还差哪些必填项**。
 
     `gaps` 读的是平台自己的判据（`required-icon` 标记 + 三套完成度计数）；
     读不到只记 error，不影响其余体检结果（一项读不到不该让整体体检失败）。
     """
     flow, xhs_browser = _load_xhs_modules()
+    port = int(port or _default_port())
     browser, page, client, _session = xhs_browser.connect(port)
     try:
         state = page.state()
