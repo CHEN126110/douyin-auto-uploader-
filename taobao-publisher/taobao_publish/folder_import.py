@@ -167,6 +167,9 @@ def _cloud_files(client, listing, path, *, folder_id):
 
     DOM 只负责**触发导航**（点目录树），清单本身取自 ``fileModule``。
 
+    ⚠️ 页面**已经停在这一层**时，再点它是不会重发请求的（真机 2026-10-10 实测：
+    于是读数恒为「读不出来」）。所以读不到就先退回上一层再进一次，逼它重新拉一遍。
+
     :returns: 文件条目列表；**返回 ``None`` 表示「读不出来」**——与「目录是空的」（``[]``）
         是两件不同的事。调用方必须区分：把读不出来当成空目录，就会重复上传（真机踩过）。
     """
@@ -178,7 +181,29 @@ def _cloud_files(client, listing, path, *, folder_id):
     media_library.open_directory(client, path, context_id=None,
                                  page=media_library.PAGE_MATERIAL_CENTER)
     listing.observe(_LISTING_OBSERVE_SECONDS)
+    entries = listing.files(folder_id)
+    if entries is not None:
+        return entries
+    # 强制重拉：退回上一层（或根层）再进来一次。
+    parent = list(path[:-1])
+    try:
+        if parent:
+            media_library.open_directory(client, parent, context_id=None,
+                                         page=media_library.PAGE_MATERIAL_CENTER)
+        else:
+            media_library.open_root_directory(client, context_id=None)
+        listing.observe(_LISTING_OBSERVE_SECONDS)
+        media_library.open_directory(client, path, context_id=None,
+                                     page=media_library.PAGE_MATERIAL_CENTER)
+        listing.observe(_LISTING_OBSERVE_SECONDS)
+    except Exception:  # noqa: BLE001 - 重拉失败就如实返回「读不出来」
+        return None
     return listing.files(folder_id)
+
+
+#: 权威清单读不到时的**如实**报错文案（不是「目录是空的」）。
+_NO_LISTING = ('没有读到平台对目录 {} 的文件清单响应（file.query）：'
+               '读不到不等于目录是空的，拒绝据此判断缺图或重传')
 
 
 def _cloud_product_root(client, listing, folder_name):
@@ -253,6 +278,8 @@ def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None,
                 folder_id = node['id'] if node else None
         entries = _cloud_files(client, listing, [*root, *folder], folder_id=folder_id)
         if entries is None:
+            if listing is not None:
+                raise page.PageError(_NO_LISTING.format('/'.join([*root, *folder])))
             contents = media_library.read_directory_files(
                 client, [*root, *folder], context_id=None,
                 page=media_library.PAGE_MATERIAL_CENTER)
@@ -359,11 +386,27 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
         # （`ensure_cloud_folders` 就是这么做的，E-287），且与上传共用同一道
         # 写授权门（`import_directory` 开头已 `require(WRITE_UPLOAD_IMAGE)`）。
         # 已存在时 `ensure_child_directory` 幂等，不会建出重复目录。
-        folder_id = _folder_id_for(client, root, folder)
+        # ⚠️ 商品目录**根层**也会放图（白底图工具的 `白底图.jpg` 就落在这一层）：
+        # 它的 folderId 不是空串，而是商品目录自己的 id。
+        if folder:
+            folder_id = _folder_id_for(client, root, folder)
+        else:
+            folder_id = ""
+            if listing is not None:
+                matches = listing.find_directories(manifest.folder_name)
+                if len(matches) == 1:
+                    folder_id = matches[0]['id']
+            if not folder_id:
+                raise page.PageError('商品目录根层有图片，但没读到该商品目录的 id（dir.query），'
+                                     '无法核对这一层：' + manifest.folder_name)
         # 文件清单以平台自己的 `file.query` 为准（DOM 一刷新就读不到，真机踩过）；
         # 读不到响应时才退回 DOM 读取，而 DOM 的「空」由下面的守卫兜住（拒绝重传）。
         entries = _cloud_files(client, listing, [*root, *folder], folder_id=folder_id)
         if entries is None:
+            if listing is not None:
+                # 有收响应的能力却读不到清单：**不许**拿 DOM 的读数顶上（那个页面读不准，
+                # 而且「读不到」会被误当成「目录是空的」→ 重复上传）。如实失败。
+                raise page.PageError(_NO_LISTING.format('/'.join([*root, *folder])))
             contents = media_library.read_directory_files(
                 client, [*root, *folder], context_id=None,
                 page=media_library.PAGE_MATERIAL_CENTER)
