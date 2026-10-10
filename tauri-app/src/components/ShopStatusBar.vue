@@ -806,6 +806,13 @@ defineExpose({ refresh, session });
         :closable="false"
         show-icon
       />
+      <p
+        v-else-if="(pendingAccountAction?.platform || accountDraft.platform) === 'xiaohongshu'"
+        class="account-hint"
+      >
+        添加后打开小红书千帆登录页；登录完成后读取店铺名（来源为页面元素，属候选级证据），
+        读不到就如实显示「未读到」，不会拿本地账户备注冒充店铺身份。
+      </p>
       <p v-else class="account-hint">添加后打开抖店登录页，店铺身份以实际登录检测结果为准。</p>
       <template #footer>
         <template v-if="pendingAccountAction">

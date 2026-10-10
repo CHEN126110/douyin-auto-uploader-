@@ -89,7 +89,11 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
-export type TargetPublishPlatform = "douyin" | "taobao";
+/**
+ * 目标发布平台。与后端 `src/shop_session.py` 的 `ACCOUNT_PLATFORMS` 一一对应 ✓
+ * —— 后端加平台时这里必须同步，否则类型检查会挡下前端对它的比较（实测如此 ✓）。
+ */
+export type TargetPublishPlatform = "douyin" | "taobao" | "xiaohongshu";
 
 export interface ProductSaveResult {
   id: number;
