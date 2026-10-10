@@ -97,6 +97,11 @@ def completion(monkeypatch, prepared_case):
     FakeLedger.current = ledger
     monkeypatch.setattr(media_library, "read_directory_files", read_directory_files)
     monkeypatch.setattr(media_library, "ensure_child_directory", ensure_child_directory)
+    # 回读前的「进目录 + 让页面重拉这一层」在这里没有真实页面，桩成无副作用；
+    # 云端内容由上面的 read_directory_files 假实现提供。
+    monkeypatch.setattr(media_library, "open_directory",
+                        lambda _client, path, **_kwargs: list(path))
+    monkeypatch.setattr(media_library, "refresh_gallery", lambda _client, **_kwargs: True)
     monkeypatch.setattr("taobao_publish.protocol_media.UploadLedger", FakeLedger)
     monkeypatch.setattr("taobao_publish.cdp_ws.CdpBrowser", lambda **_k: Mock())
     monkeypatch.setattr("taobao_publish.upload_page.open_session",
@@ -176,6 +181,59 @@ def test_missing_files_are_uploaded_into_their_own_role_folder(completion):
     # 补传成功后写回账本，键里带目录，避免以后又被"有回执"挡住
     assert {item["folder_id"] for item in completion.ledger.recorded} == {
         call["folder_id"] for call in completion.uploads}
+
+
+def test_read_returning_nothing_while_ledger_says_uploaded_refuses_to_reupload(completion):
+    """**读不到 ≠ 不存在**：账本说图就传在这个目录，页面却读到 0 张 → 拒绝重传。
+
+    真机 2026-10-10 的代价：素材中心的文件列表与选图器不是同一套 class，读取器
+    把「目录里明明有 5 张图」读成 0 张，于是补传了 5 张**同名重复素材**。
+    现在这种自相矛盾的状态一律停下来：重复素材比停下来难收拾得多。
+    """
+
+    manifest = completion.manifest
+    # 账本记录这批图就传在各自的角色目录里，但云端一个文件都读不到
+    for source in manifest.images:
+        parts = tuple(Path(source.relative_path).parts[:-1])
+        name = Path(source.relative_path).name
+        completion.ledger.entries[(name, source.sha256)] = {
+            "url": completion.cloud_url(source),
+            "folder_id": completion.folder_ids.setdefault(
+                (manifest.folder_name, *parts), "fid-" + "-".join(parts)),
+        }
+
+    with pytest.raises(PageError) as caught:
+        _complete(completion)
+    assert "拒绝重复上传" in str(caught.value)
+    assert completion.uploads == [], "这种情况下一个字节都不许传"
+
+
+def test_missing_role_folder_is_created_then_filled(completion):
+    """用途目录云端还不存在时：**先建目录，再把图补进去**，而不是报 directory_missing。
+
+    真机 2026-10-10：本地商品目录当时有 33 张图 / 5 个子目录（`白底图`、`SKU_1x1`
+    是白底图流水线后来生成的），云端只有 3 个目录。旧顺序「先读后建」在
+    `ID-986833932804/SKU_1x1` 上又报了一次 `判据=directory_missing`——
+    而建目录本来就是协议路线的既定动作（`ensure_cloud_folders`，E-287）。
+    """
+
+    manifest = completion.manifest
+    completion.cloud.clear()
+    completion.ledger.entries.clear()
+
+    prepared = _complete(completion)
+    prepared.validate("account-A")
+
+    assert all(receipt.uploaded_now for receipt in prepared.receipts)
+    # 每个用途目录都被建出来，且图按目录分组成批上传
+    expected_paths = {_cloud_path(manifest, source.relative_path)
+                      for source in manifest.images}
+    assert set(completion.folder_ids) == expected_paths
+    assert len(completion.uploads) == len(expected_paths)
+    for call in completion.uploads:
+        parts = next(key for key, value in completion.folder_ids.items()
+                     if value == call["folder_id"])
+        assert parts[0] == manifest.folder_name and len(parts) == 2
 
 
 def test_same_name_with_different_identity_fails_and_uploads_nothing(completion):

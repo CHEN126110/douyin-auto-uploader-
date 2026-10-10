@@ -301,6 +301,10 @@ def test_old_ledger_requires_same_resource_in_current_account(prepared_case, mon
     monkeypatch.setattr(media_library, 'product_root_path', lambda *args, **kwargs: [prepared.manifest.folder_name])
     monkeypatch.setattr(media_library, 'read_directory', lambda *args, **kwargs: {'supported': True, 'paths': [[prepared.manifest.folder_name]]})
     monkeypatch.setattr(media_library, 'read_directory_files', lambda client, directory, **kwargs: {'files': groups[tuple(directory)]})
+    # 用途目录的 folderId 解析不在本条用例范围内（这里 client=None，没有页面）：
+    # 目录已存在，桩成直接返回 id 即可，考的仍是账本身份校验。
+    monkeypatch.setattr(media_library, 'ensure_child_directory',
+                        lambda client, parent, name, **kwargs: 'fid-' + str(name))
     send = Mock(side_effect=AssertionError('已有素材不得再次发送目录'))
     monkeypatch.setattr(module, 'send_directory', send)
     result = module.import_directory(None, prepared.manifest, 'account-A', authorization=AUTH)

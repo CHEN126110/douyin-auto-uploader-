@@ -572,6 +572,7 @@ def _wait_for_child_render(client, path, *, context_id, timeout=None):
         timeout = _CHILD_RENDER_TIMEOUT
     deadline = time.monotonic() + max(0.0, timeout)
     last_nudge = None
+    last_reclick = None
     while True:
         state = read_directory(client, context_id=context_id)
         if any(list(known)[-len(wanted):] == wanted for known in (state.get('paths') or [])):
@@ -582,6 +583,19 @@ def _wait_for_child_render(client, path, *, context_id, timeout=None):
         if last_nudge is None or now - last_nudge >= _CHILD_RENDER_NUDGE_INTERVAL:
             last_nudge = now
             _nudge_children_render(client, wanted[:-1], context_id=context_id)
+        # ⚠️ 父节点**已经有别的子节点**渲染出来时，助推按设计什么都不点——而那正是
+        # 「刚建好的兄弟目录被一次重渲染丢掉」的情形（2026-10-10 真机：建完
+        # `SKU_1x1` 紧接着读它，报 directory_missing，而单独建完立刻读是好的）。
+        # 这时点一次父节点标签，让素材中心重拉这一层——`folder_expression` 的 click
+        # 分支就是为此写的（"素材中心靠点当前节点重新拉列表"，已选中也真点一次）。
+        # 点不到不算判决：本函数的返回值才是判决，调用方等不到仍如实报 missing。
+        if len(wanted) > 1 and (last_reclick is None or now - last_reclick >= 1.6):
+            last_reclick = now
+            try:
+                client.evaluate(folder_expression(wanted[:-1], action='click'),
+                                context_id=context_id)
+            except Exception:  # noqa: BLE001 - 助推失败不掩盖回读本身的判决
+                pass
         time.sleep(0.25)
 
 
@@ -1373,11 +1387,19 @@ def read_directory_files(client, directory, *, context_id, page=PAGE_PICKER):
     目录非空就直接把整条路径交给 `open_directory`，由它逐层进。
     页面没有目录树时它产出 ``判据=directory_tree_not_supported``、
     ``目标=`` 那条完整路径（不是「没有受支持的目录树」这种模糊中文）。
+
+    ⚠️ **卡片选择器按页面选**（真机 2026-10-10）：选图器与素材中心**文件卡片不是
+    同一套 class**。用错的话读数恒为 0 张且 ``complete=true``——「目录里明明有图」
+    会被判成空目录，进而**重复上传同名素材**。所以这里不接受调用方传选择器，
+    由 ``page`` 决定，避免任何调用点漏传。
     """
-    from .page import list_media_images, PageError
+    from .page import (MEDIA_CENTER_FILE_CARD, MEDIA_IMAGE_CARD, list_media_images,
+                       PageError)
     actual = open_directory(client, directory, context_id=context_id,
                             page=page) if directory else []
-    result = list_media_images(client, context_id=context_id)
+    card_selector = (MEDIA_CENTER_FILE_CARD if page == PAGE_MATERIAL_CENTER
+                     else MEDIA_IMAGE_CARD)
+    result = list_media_images(client, context_id=context_id, card_selector=card_selector)
     if not result['complete']:
         # 分页没读完 = **读不出来**，不是「目录里没有图」：判据写 reason_missing，
         # 目标写实际列过的那个目录（不截断路径，括号里点明是分页问题）。

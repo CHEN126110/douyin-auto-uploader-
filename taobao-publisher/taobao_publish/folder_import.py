@@ -174,6 +174,8 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
 
     所以按证据做**最小动作**：
 
+    * 用途目录**不存在** → 先在素材中心建出来（`ensure_child_directory` 幂等，
+      与协议路线 `ensure_cloud_folders` 同一动作、同一道写授权门），再读它的文件；
     * 云端**没有**的同名文件 → 用已验证的 ``upload.api``（E-212/E-216/E-221/E-247）
       直接传进它该去的那个 ``folderId``，传完**回读核对** URL 才算落库，并写进账本；
     * 云端**有**同名文件 → 只接受身份一致的（``same_image`` 比 URL）；
@@ -195,6 +197,13 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
     pending = []
     for folder, sources in grouped.items():
         _cancelled(should_cancel)
+        # ⚠️ **必须先确保目录存在，再读它**（2026-10-10 真机踩到）：
+        # 本地新生成的 `白底图/`、`SKU_1x1/` 在云端还没有目录，先读会直接报
+        # `判据=directory_missing`——而建目录本来就是协议路线的既定动作
+        # （`ensure_cloud_folders` 就是这么做的，E-287），且与上传共用同一道
+        # 写授权门（`import_directory` 开头已 `require(WRITE_UPLOAD_IMAGE)`）。
+        # 已存在时 `ensure_child_directory` 幂等，不会建出重复目录。
+        folder_id = _folder_id_for(client, root, folder)
         contents = media_library.read_directory_files(
             client, [*root, *folder], context_id=None,
             page=media_library.PAGE_MATERIAL_CENTER)
@@ -202,11 +211,20 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
         if len(files) != len(contents['files']):
             raise page.PageError('商品子目录存在同名图片，无法确认来源：' + '/'.join(folder))
         missing = []
+        suspicious = []
         for source in sources:
             name = PurePosixPath(source.relative_path).name
             actual = files.get(name)
             if actual is None:
-                missing.append(source)
+                # ⚠️ **读不到 ≠ 不存在**（2026-10-10 真机踩过，代价是 5 张重复素材）：
+                # 账本记录这张图**就传在这个目录里**，页面却读不到它——两者不可能同时为真，
+                # 说明是读取器读不出来（素材中心的文件列表与选图器不同套 class）。
+                # 此时**拒绝重传**：重传只会造出同名重复素材，比停下来更难收拾。
+                old_receipt = ledger.lookup({'name': name, 'sha256': source.sha256})
+                if old_receipt is not None and str(old_receipt.get('folder_id') or '') == str(folder_id):
+                    suspicious.append(source.relative_path)
+                else:
+                    missing.append(source)
                 continue
             old = ledger.lookup({'name': name, 'sha256': source.sha256})
             if old is None:
@@ -219,8 +237,13 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
                 source.relative_path, name, (manifest.folder_name, *folder), actual['url'],
                 source.sha256, uploaded_now=False,
                 picture_id=str(actual.get('picture_id') or '') or str(old.get('picture_id') or '')))
+        if suspicious:
+            raise page.PageError(
+                '云端这一层读不到本该在里面的素材（{}）：账本记录它们就传在 {} 目录里。'
+                '读不出来不等于不存在，**已拒绝重复上传**；'
+                '请重载素材中心标签页后重试'.format('、'.join(suspicious[:3]), '/'.join(folder)))
         if missing:
-            pending.append((_folder_id_for(client, root, folder), folder, missing))
+            pending.append((folder_id, folder, missing))
 
     if pending:
         total = sum(len(item[2]) for item in pending)
@@ -258,10 +281,27 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
                         '补传缺失素材失败（{}）：{}'.format('/'.join(folder), detail))
                 by_name = {item.name: item for item in report.receipts}
                 # 上传成功不算数：**回读**到同一个 URL 才算落库（与协议路线同一判据）。
-                contents = media_library.read_directory_files(
-                    client, [*root, *folder], context_id=None,
-                    page=media_library.PAGE_MATERIAL_CENTER)
-                files = {entry['name']: entry for entry in contents['files']}
+                #
+                # ⚠️ 协议上传是**页面外**发的请求，素材中心页并不知道（真机 2026-10-10：
+                # 5 张全传成功，紧接着读该目录却仍是空的）。必须先进目录、再点一次
+                # 当前目录让页面重拉这一层（`refresh_gallery` 就是为此而写），
+                # 并给云端一点传播时间——有界重试，不无限等。
+                deadline = time.monotonic() + 15.0
+                files = {}
+                while True:
+                    media_library.open_directory(client, [*root, *folder], context_id=None,
+                                                 page=media_library.PAGE_MATERIAL_CENTER)
+                    media_library.refresh_gallery(client, context_id=None)
+                    contents = media_library.read_directory_files(
+                        client, [*root, *folder], context_id=None,
+                        page=media_library.PAGE_MATERIAL_CENTER)
+                    files = {entry['name']: entry for entry in contents['files']}
+                    if all(PurePosixPath(source.relative_path).name in files
+                           for source in sources):
+                        break
+                    if time.monotonic() >= deadline:
+                        break
+                    time.sleep(1.0)
                 for source in sources:
                     name = PurePosixPath(source.relative_path).name
                     receipt = by_name.get(name)

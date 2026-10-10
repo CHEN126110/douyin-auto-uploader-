@@ -37,6 +37,31 @@
   <ul class="next-tree next-node-indent" role="tree" popupcontainer="synthetic"></ul>
 </div>
 
+<!--
+  文件列表：形状取自真机（2026-10-10）——
+  卡片外层 `div.PicturesShow_..._main-document-show` 的 **id 属性就是 pictureId**，
+  名字在 `span.PicturesShow_tooltipText`，图片是 `_320x320` 缩略图（资源号与原文一致），
+  复选框的 value 是 React 对象的字符串化结果 `[object Object]`（**不能当 id 用**）。
+  ⚠️ 这套 class 与选图器的 `PicList_pic_background` **不同**：读它必须用
+  `page.MEDIA_CENTER_FILE_CARD`，用错会恒读 0 张。
+-->
+<div class="PicturesShow_PicturesShow_main__x" id="file-list">
+  <div class="PicturesShow_PicturesShow_main-document-show__y" id="1114908857980654750">
+    <div class="PicturesShow_pic_background__z">
+      <label>
+        <div class="PicturesShow_pic_imgBox__a">
+          <img src="https://img.example.invalid/O1CN01xtdVaH7RcWK3thOC_!!2214966481149.jpg_320x320?t=1" alt="">
+        </div>
+        <label class="next-checkbox-wrapper PicturesShow_checkbox__b">
+          <span class="next-checkbox"><span class="next-checkbox-inner"></span>
+            <input type="checkbox" class="next-checkbox-input" value="[object Object]"></span>
+        </label>
+      </label>
+    </div>
+    <p><span class="PicturesShow_tooltipText__c">主图_01.jpg</span></p>
+  </div>
+</div>
+
 <div class="next-dialog" id="create-dialog">
   <input type="text" id="folder-name" placeholder="请输入文件夹名称">
   <button type="button" id="create-ok">确定</button>
@@ -115,7 +140,15 @@
         // `mounted === false` = 真机素材中心页的虚拟列表形态：节点自己说 expanded=true，
         // 子节点却不在 DOM 里（2026-10-10 真机实证，`tmp/material-center-children-timeline.json`）。
         if (item.children && item.children.length && item.mounted !== false) {
-          li.appendChild(build(item.children, full));
+          var children = item.children;
+          if (item.hideOnce) {
+            // 只跳过一次渲染：模拟「刚建好的子目录被一次重渲染丢掉，再拉一次就回来」
+            // （2026-10-10 真机：建完 SKU_1x1 紧接着读它报 directory_missing）。
+            var skipped = item.hideOnce;
+            item.hideOnce = null;
+            children = children.filter(function (child) { return child.name !== skipped; });
+          }
+          li.appendChild(build(children, full));
         }
         ul.appendChild(li);
       });
@@ -164,6 +197,16 @@
     var node = findNode(data, path);
     if (!node) { return false; }
     node.mounted = false;
+    render();
+    return true;
+  };
+
+  // 测试专用：让某个子目录**只消失一次渲染**（下次渲染就回来），
+  // 复现真机「刚建好的兄弟目录被一次重渲染丢掉、父节点还有别的子节点」的形态。
+  window.__synthetic_hideChildOnce = function (parentPath, childName) {
+    var node = findNode(data, parentPath);
+    if (!node) { return false; }
+    node.hideOnce = childName;
     render();
     return true;
   };

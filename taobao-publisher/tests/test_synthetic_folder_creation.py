@@ -84,6 +84,14 @@ def synthetic_browser(tmp_path_factory):
             if time.monotonic() >= deadline:
                 pytest.fail('隔离测试页面未完成加载')
             time.sleep(0.05)
+        # 文档 complete 之后还要等**目录树渲染出来**：合成页的树是脚本建的，
+        # 全量回归时机器被别的隔离浏览器占着，这里会输掉竞态——
+        # 表现为 `read_directory` 报 supported=False（2026-10-10 组合运行时实测一次）。
+        while not client.evaluate(
+                "document.querySelectorAll('[role=\"tree\"]').length > 0", timeout=2):
+            if time.monotonic() >= deadline + 10:
+                pytest.fail('隔离测试页面的目录树没有渲染出来')
+            time.sleep(0.05)
         yield SimpleNamespace(client=client, port=port, target_id=matches[0]["id"])
     finally:
         if client is not None:
@@ -211,6 +219,24 @@ def test_unmounted_children_are_nudged_back_instead_of_declared_missing(syntheti
     assert ["ID-1", "主图"] in after
 
 
+def test_material_center_file_cards_use_the_material_center_selector(synthetic_client):
+    """素材中心页的文件卡片是**另一套 class**，读它必须用素材中心的选择器。
+
+    真机 2026-10-10：在素材中心页用选图器的选择器读文件，读数恒为 0 张且
+    ``complete=true``——「目录里明明有图」被判成空目录，于是**重复上传了 5 张同名素材**
+    （两张同名卡片随后会让读取器判 `ambiguous`，整条流水线又停住）。
+    pictureId 也必须取对：素材中心卡片的复选框 value 是 `[object Object]`，
+    真正的 pictureId 在卡片的 `id` 属性上。
+    """
+
+    contents = media_library.read_directory_files(
+        synthetic_client, ["ID-1"], context_id=None,
+        page=media_library.PAGE_MATERIAL_CENTER)
+    files = {entry["name"]: entry for entry in contents["files"]}
+    assert "主图_01.jpg" in files, "素材中心页的文件卡片没有被读到"
+    assert files["主图_01.jpg"]["picture_id"] == "1114908857980654750"
+
+
 def test_still_missing_directory_fails_loudly_and_builds_nothing(synthetic_client, monkeypatch):
     """助推 + 有界等待之后仍读不到 → 照原样如实报 ``directory_missing``。
 
@@ -227,3 +253,25 @@ def test_still_missing_directory_fails_loudly_and_builds_nothing(synthetic_clien
     assert "判据=directory_missing" in message
     assert "目标=ID-1/并不存在的角色" in message
     assert synthetic_client.evaluate("JSON.stringify(window.__synthetic_state.data)") == before
+
+
+def test_child_dropped_by_a_rerender_is_recovered_by_reclicking_the_parent(synthetic_client):
+    """父节点**还有别的子节点**在渲染时，被丢掉的那个也要能找回来。
+
+    真机 2026-10-10：`ensure_child_directory` 建完 `SKU_1x1` 已返回 folderId，
+    紧接着 `read_directory_files` 读它却报 `判据=directory_missing`——因为
+    `_nudge_children_render` 只在「父节点一个子节点都没渲染」时才点开关，
+    这种情形它按设计什么都不做（真机两次全量都复现）。
+    修法：再点一次父节点标签，让素材中心重拉这一层。
+    """
+
+    assert synthetic_client.evaluate(
+        "window.__synthetic_hideChildOnce(['ID-1'], '主图')") is True
+    rendered = [list(path) for path in
+                media_library.read_directory(synthetic_client, context_id=None)["paths"]]
+    assert ["ID-1"] in rendered
+    assert ["ID-1", "主图"] not in rendered, "目标子节点应当已被丢掉，否则这条用例什么都没测"
+
+    actual = media_library.open_directory(synthetic_client, ["ID-1", "主图"], context_id=None,
+                                          page=media_library.PAGE_MATERIAL_CENTER)
+    assert actual == ["ID-1", "主图"]

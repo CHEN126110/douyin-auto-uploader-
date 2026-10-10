@@ -3347,6 +3347,18 @@ def wait_for_media_images(client: "PageClient", expected_names: Sequence[str], *
 #: 永远匹配不上，表现为「卡片数 0、报 no_cards」，而列表里明明有图（实测踩过）。
 MEDIA_IMAGE_CARD = '[class*="PicList_pic_background"]'
 
+#: 素材中心页（``qn.taobao.com/.../sucai-tu``）里文件卡片的类名子串。
+#:
+#: ⚠️ **与选图器不是同一套 class**（真机 2026-10-10）：选图器卡片是
+#: ``PicList_pic_background``，素材中心是 ``PicturesShow_..._main-document-show``。
+#: 在素材中心页用选图器的选择器读文件，结果**恒为 0 张且 complete=true**——
+#: 「目录里明明有图」会被判成空目录，进而重复上传同名素材（实测踩过）。
+#:
+#: ⚠️ 指向**同时含图片与文件名、且带 `id`（pictureId）的那个卡片 div**：
+#: 素材中心里 ``PicturesShow_pic_background`` 只是卡片内部的图片区，名字是它的
+#: 兄弟节点；指到那里会读不出文件名（``判据=directory_file_name_unconfirmed``）。
+MEDIA_CENTER_FILE_CARD = '[class*="PicturesShow_main-document-show"]'
+
 #: 主图位。空位里含 ``.image-empty``，已填位里是 ``img``。
 MEDIA_MAIN_SLOT = ".sell-component-material-item-view"
 
@@ -3752,7 +3764,15 @@ def _build_media_lookup_expression(name_hint: str, *, batch_names=None, select: 
             if (!receipt.ok) return receipt;
             receipt.page_number = pageNumber();
             const ids = Array.from(card.querySelectorAll('input[type="checkbox"][value]'));
-            if (ids.length === 1 && ids[0].value) receipt.picture_id = ids[0].value;
+            // 选图器：复选框 value 就是 pictureId。
+            // **素材中心页不是**（真机 2026-10-10）：它的复选框 value 是 React 对象的
+            // 字符串化结果 `[object Object]`，真正的 pictureId 在**卡片的 id 属性**上
+            // （`<div class="PicturesShow_..._main-document-show" id="1114908857980654750">`）。
+            // 取不到数字就当没有，不把 `[object Object]` 当成 id 带出去。
+            const checkboxId = ids.length === 1 ? String(ids[0].value || '') : '';
+            const cardId = String(card.getAttribute('id') || '');
+            if (/^\d{10,}$/.test(checkboxId)) receipt.picture_id = checkboxId;
+            else if (/^\d{10,}$/.test(cardId)) receipt.picture_id = cardId;
             if (files.has(name) && files.get(name).url !== receipt.url)
               return {ok:false, reason:'ambiguous', name, matched:2};
             files.set(name, receipt);
