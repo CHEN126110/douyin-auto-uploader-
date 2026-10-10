@@ -112,3 +112,36 @@ def test_no_upload_needed_when_images_empty():
     report = run_fill_only(page, FillPlan(title=GOOD_TITLE))
     assert report["ok"] is True
     assert "run:upload_images" not in page.actions
+
+
+def test_required_gaps_reads_platform_judges():
+    """"还差什么"必须读平台判据（required-icon 标记 + 三套计数），不能自己猜。"""
+    from xiaohongshu_publish.flow import required_gaps
+
+    class GapClient:
+        @staticmethod
+        def evaluate(script: str):
+            if "required-icon" in script:
+                return {"required_count": 13,
+                        "unfilled": ["物流模板", "运费模板"],
+                        "filled": ["商品标题", "商品主图"]}
+            return {"key_attrs": ["关键属性 6/7"], "other_attrs": ["其他属性 4/8"],
+                    "required": ["1 项必填"], "helper_placeholder": True}
+
+    class GapPage:
+        client = GapClient()
+
+    gaps = required_gaps(GapPage())
+    assert gaps["required_count"] == 13
+    assert gaps["unfilled"] == ["物流模板", "运费模板"]
+    assert gaps["filled"] == ["商品标题", "商品主图"]
+    assert gaps["judges"]["key_attrs"] == ["关键属性 6/7"]
+    assert gaps["judges"]["helper_placeholder"] is True
+
+
+def test_fill_only_reports_gaps_even_if_they_read_empty():
+    """判据读不到不应判填写失败（gaps 是附加信息）。"""
+    page = FakePage()
+    report = run_fill_only(page, FillPlan(title=GOOD_TITLE))
+    assert report["ok"] is True
+    assert "gaps" in report

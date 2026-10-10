@@ -29,6 +29,28 @@ class FillPlan:
     allow_advance: bool = False                     # 是否允许点「下一步」（默认停在当前步）
 
 
+def required_gaps(page: XhsPage) -> dict:
+    """读**平台自己的**必填判据，回答"还差什么"。
+
+    两个来源（真机实证）：
+    - `REQUIRED_FIELDS`：按平台的 `required-icon` 标记列出必填字段及其是否已填
+      （标记是空文本元素 → `innerText` 里读不到 `*`，只能按 class 找）；
+    - `JUDGES`：三套完成度计数（关键属性 N/7、其他属性 N/8、N 项必填）+ 发布助手占位语义。
+
+    **不要**用"看起来重要"来猜必填项——这是本项目反复强调的纪律。
+    """
+    from . import page_scripts
+
+    required = page.client.evaluate(page_scripts.REQUIRED_FIELDS) or {}
+    judges = page.client.evaluate(page_scripts.JUDGES) or {}
+    return {
+        "required_count": required.get("required_count", 0),
+        "unfilled": list(required.get("unfilled") or []),
+        "filled": list(required.get("filled") or []),
+        "judges": judges,
+    }
+
+
 def run_fill_only(page: XhsPage, plan: FillPlan,
                   upload_fn: Callable[[list], dict] | None = None) -> dict:
     """执行 fill_only。返回结构化结果（含逐步证据），不抛业务异常。
@@ -94,6 +116,12 @@ def run_fill_only(page: XhsPage, plan: FillPlan,
         report["blocked"].append(
             "类目未开通（{} 项）：需人工在千帆后台办理类目资质".format(len(unopened)))
         report["category_unopened"] = unopened
+
+    # 5) 读平台自己的判据：还差哪些必填项（实现里不猜必填）
+    try:
+        report["gaps"] = required_gaps(page)
+    except Exception as error:  # noqa: BLE001 - 判据读不到不该让整个填写失败
+        report["gaps"] = {"error": str(error)}
 
     report["evidence"] = page.evidence()
     return report
