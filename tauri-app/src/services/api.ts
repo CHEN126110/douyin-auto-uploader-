@@ -312,6 +312,41 @@ export const api = {
     return http.get("/api/taobao/publish/tasks");
   },
 
+  // ========== 小红书千帆（fill_only：只填满，不含提交） ==========
+  //
+  // 对应 sidecar 的 src/sidecar/xhs_routes.py。红线：这两条接口**没有提交能力**，
+  // 上传必须显式传 allow_upload（默认 false = 未授权，服务端也会再兜一次默认值）。
+
+  /** 只读体检：调试浏览器是否可达、当前页状态、标题计数器、类目与平台报错 */
+  getXhsStatus(): Promise<ApiResponse<{
+    port: number;
+    url: string;
+    visibility: string;
+    title_counter: string;
+    category_lines: string[];
+    errors: string[];
+    drawer: { drawers: number; masks: number; visibility: string };
+  }>> {
+    return http.get("/api/xhs/status");
+  },
+
+  /** 填满（图片 → 标题 → 失焦解锁类目）；不点提交、不点下一步 */
+  xhsFillOnly(payload: {
+    title: string;
+    images?: string[];
+    allow_upload?: boolean;
+    port?: number;
+  }): Promise<ApiResponse<{
+    ok: boolean;
+    blocked: string[];
+    title_counter?: string;
+    title_check?: { ok: boolean; units: number; words: number; reasons: string[] };
+    category_unopened?: string[];
+    steps?: Array<Record<string, unknown>>;
+  }>> {
+    return http.post("/api/xhs/fill-only", payload);
+  },
+
   // ========== 上传功能 ==========
 
   /** 开始上传 */

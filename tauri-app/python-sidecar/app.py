@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 # BUILD_MARKER_V3_20260521
 
 import traceback, os as _boot_os
@@ -264,6 +264,7 @@ from src.sidecar.whitebg_routes import create_whitebg_blueprint
 from src.sidecar.whitebg_service import WhiteBgService
 from src.sidecar.responses import api_error, api_ok
 from src.sidecar.update_routes import create_update_blueprint
+from src.sidecar.xhs_routes import create_xhs_blueprint
 _bootstrap_log('import config done')
 _bootstrap_log('import ops_engine start')
 from src.ops_engine import (
@@ -14137,6 +14138,7 @@ def _active_update_tasks():
 
 
 app.register_blueprint(create_update_blueprint(_active_update_tasks))
+app.register_blueprint(create_xhs_blueprint())
 app.register_blueprint(create_media_blueprint(
     record_model=Record, active_account=_active_shop_account, resolve_data_file=resolve_data_file,
     edit_blocked=_record_edit_blocked, product_revision=_product_edit_revision,
