@@ -258,6 +258,7 @@ from src.config import (settings_manager, LLM_PROVIDER_PRESETS, ALLOWED_PUBLISH_
                         MATERIAL_NAME_MAX_LENGTH, resolve_publish_submit_mode)
 from src.llm_client import LLMClient, LLMError
 from src import shop_session
+from src import product_media
 from src.sidecar.media_routes import create_media_blueprint
 from src.sidecar.whitebg_routes import create_whitebg_blueprint
 from src.sidecar.whitebg_service import WhiteBgService
@@ -8982,9 +8983,16 @@ def _run_taobao_publish_task(task_id, row, request_payload, options):
             try:
                 product_media.save_receipts(resolve_data_file('media_catalog'), row,
                                              media_account_profile, observations)
-            except (ValueError, OSError) as exc:
-                # 保留平台结果，同时明确报告本地索引未保存，避免误导用户重传图片。
-                media_record_error = '图片目录记录保存失败：' + str(exc)
+            except Exception as exc:  # noqa: BLE001
+                # ⚠️ 这里**只该影响本地索引**，绝不能把平台结果一起丢掉。
+                # 2026-10-10 实测：这一行少了一个导入名（NameError），异常穿透出去，
+                # 于是「填写 100% 全 ok」的任务被报成「淘宝发布失败」——用户看到的
+                # 是发布被截停，其实平台侧全做完了。所以这里连未预期的异常也一并
+                # **如实报出来**（带类型名），而不是让它顶掉 payload。
+                # 本次新增导入名本身就是根因修复；这一层是防止**下一次**同类疏漏
+                # 再把成功误报成失败。
+                media_record_error = '图片目录记录保存失败（{}）：{}'.format(
+                    type(exc).__name__, exc)
                 payload.setdefault('data', {})['media_record_error'] = media_record_error
                 _bootstrap_log(media_record_error)
         with _taobao_tasks_lock:
