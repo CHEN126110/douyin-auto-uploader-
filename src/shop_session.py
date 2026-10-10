@@ -1230,6 +1230,60 @@ def read_taobao_identity(debug_address: str, timeout: float = 10.0) -> Dict[str,
     return result
 
 
+def read_xiaohongshu_identity(debug_address: str, timeout: float = 10.0) -> Dict[str, Any]:
+    """小红书千帆：**只判登录态与页面存在性**，店铺身份如实报"未读到"。
+
+    为什么单独一个函数（而不是复用抖店那套）：
+    三个平台的身份来源完全不同（cookie 名、接口、判定顺序都不一样 ✗），
+    共用会诱使人把一方的结论套到另一方 —— 这正是本模块开头与
+    :func:`read_account_identity` docstring 反复警告的事。
+
+    依据（均为真机实测，见 ``xiaohongshu-publisher/docs/05-证据日志.md``）：
+    - ``XHS_DOMAINS``：千帆后台与登录页所在域名；
+    - ``XHS_LOGIN_PAGE_HINTS``：未登录会跳 ``customer.xiaohongshu.com/login``；
+    - ``XHS_IDENTITY_SUPPORTED = False``：**店铺身份读取尚未取证** ✗ →
+      这里只报 ``logged_in`` / ``logged_out`` / ``no_xhs_tab`` / ``unreachable``，
+      ``shop_name`` 一律为 ``None``（上层应显示"未读到"，不得拿本地备注冒充 ✓）。
+    """
+    result: Dict[str, Any] = {
+        "platform": "xiaohongshu",
+        "status": "unreachable",
+        "shop_id": None,
+        "shop_name": None,
+        "account_name": None,
+        "identity_supported": XHS_IDENTITY_SUPPORTED,
+        "note": "小红书仅判登录态；店铺身份读取尚未取证，如实显示未读到",
+    }
+    base = debug_address if debug_address.startswith("http") else "http://" + debug_address
+    list_url = base.rstrip("/") + "/json/list"
+    try:
+        from taobao_publish import cdp as taobao_cdp  # 复用仓库已有的目标列表读取 ✓
+
+        targets = taobao_cdp.list_targets(list_url, timeout=min(3.0, timeout))
+    except Exception as error:  # noqa: BLE001 - 浏览器不可达属可预期失败
+        result["error"] = str(error)[:120]
+        return result
+
+    pages = [t for t in targets if str(t.get("type") or "") == "page"]
+    xhs_pages = [p for p in pages
+                 if any(domain in str(p.get("url") or "") for domain in XHS_DOMAINS)]
+    if not xhs_pages:
+        result["status"] = "no_xhs_tab"
+        return result
+
+    active = xhs_pages[0]
+    url = str(active.get("url") or "")
+    if any(hint in url for hint in XHS_LOGIN_PAGE_HINTS):
+        result["status"] = "logged_out"
+        result["url"] = url
+        return result
+    # 有千帆页面且不在登录页 → 视为已登录；**但店铺身份不去猜** ✓
+    result["status"] = "logged_in"
+    result["url"] = url
+    result["title"] = str(active.get("title") or "")
+    return result
+
+
 def read_account_identity(
     debug_address: str, platform: str = "douyin", timeout: float = 10.0
 ) -> Dict[str, Any]:
@@ -1238,10 +1292,15 @@ def read_account_identity(
     抖店与淘宝的身份来源完全不同（cookie 名、接口、判定顺序都不一样），
     所以这里是**分派**而不是共用一套逻辑。共用会诱使人把一方的结论套到另一方，
     那正是本模块开头警告的事。
+
+    小红书同样是**独立分派**（且更保守：只判登录态，身份读取未取证 ✓）。
     """
 
-    if normalize_platform(platform) == "taobao":
+    normalized = normalize_platform(platform)
+    if normalized == "taobao":
         return read_taobao_identity(debug_address, timeout=timeout)
+    if normalized == "xiaohongshu":
+        return read_xiaohongshu_identity(debug_address, timeout=timeout)
     return read_shop_identity(debug_address, timeout=timeout)
 
 
