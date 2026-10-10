@@ -6,6 +6,7 @@ import { api, productMediaImageUrl } from "@/services/api";
 import { useProductStore } from "@/stores/productStore";
 import type { ProductMediaEntry, ProductMediaReceipt } from "@/types";
 import WhiteBgPanel from "@/components/WhiteBgPanel.vue";
+import XhsPublishPanel from "@/components/XhsPublishPanel.vue";
 
 const props = defineProps<{ modelValue: boolean; recordId: number | null; processingDisabled?: boolean }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: boolean): void }>();
@@ -107,6 +108,13 @@ async function openLocal() {
       </div>
       <WhiteBgPanel ref="whiteBgPanelRef" :record-id="recordId" :record-name="listing?.product_name" :active="visible"
         :disabled="processingDisabled" @done="handleProcessingDone" />
+    </section>
+    <section class="xhs-publishing" aria-label="小红书千帆">
+      <div class="media-processing-copy">
+        <h3>小红书千帆</h3>
+        <p>只做 fill_only（填满不提交），提交上架永不自动执行。</p>
+      </div>
+      <XhsPublishPanel />
     </section>
     <div class="whitebg-selection" aria-live="polite">
       <div><strong>发布白底图</strong>
