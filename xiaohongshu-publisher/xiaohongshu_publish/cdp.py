@@ -36,6 +36,30 @@ class DisciplineError(RuntimeError):
     """违反四条纪律时抛出——**不要**捕获后继续点，那正是历史事故的成因。"""
 
 
+#: 抽屉「取消」按钮的可点位置：先取 rect，再采样"未被覆盖"的点（第 57/58 轮教训：
+#: 直接点中心可能落在遮罩/别的层上而落空）。返回 `reason` 便于诊断失败原因。
+_DRAWER_CANCEL_POINT = """(() => {
+  const visible=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);
+    return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
+  const drawer=Array.from(document.querySelectorAll('[class*="material-space-drawer"]')).filter(visible)[0];
+  if(!drawer) return {ok:false, reason:'drawer_not_open'};
+  const btn=Array.from(drawer.querySelectorAll('button,[class*="d-button"]')).filter(visible)
+    .filter(e=>(e.textContent||'').trim()==='取消')[0];
+  if(!btn) return {ok:false, reason:'cancel_button_not_found'};
+  const r=btn.getBoundingClientRect();
+  const inside=(x,y)=>{const top=document.elementFromPoint(x,y); return !!top && (top===btn || btn.contains(top));};
+  for(let dy=2; dy<r.height-1; dy+=3){
+    for(let dx=2; dx<r.width-1; dx+=4){
+      const x=Math.round(r.x+dx), y=Math.round(r.y+dy);
+      if(inside(x,y)) return {ok:true, x, y, reason:'sampled',
+        rect:[Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]};
+    }
+  }
+  return {ok:false, reason:'cancel_covered',
+          rect:[Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]};
+})()"""
+
+
 class XhsPage:
     """小红书千帆创建页的受约束封装。
 
@@ -79,12 +103,15 @@ class XhsPage:
         """尝试关掉素材空间抽屉；返回是否已关闭。
 
         只点**抽屉自己的**「取消」——点遮罩与 Esc 真机实测都关不掉。
+        点击位置用"采样未被覆盖的点"求得（抽屉页脚可能被别的东西压住，
+        直接点中心会落空——第 26 轮就是这么失败的）。
         """
         if not self.drawer_state().get("drawers"):
             return True
-        found = self.client.evaluate(page_scripts.DRAWER_CANCEL)
-        if found.get("found"):
-            self._dispatch_click(found["x"], found["y"])
+        point = self.client.evaluate(_DRAWER_CANCEL_POINT)
+        self.last_close_reason = point.get("reason", "")
+        if point.get("ok"):
+            self._dispatch_click(point["x"], point["y"])
             time.sleep(1.5)
         return not self.drawer_state().get("drawers")
 

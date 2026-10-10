@@ -84,6 +84,43 @@ READ_STATE = """(() => {
 })()"""
 
 
+#: 必填字段全集：读平台的 `required-icon` 标记（空文本元素 → innerText 里看不到 `*`）。
+#: 真机实测 13 项必填；实现里"还差什么"一律读它，不要按"看起来重要"猜。
+REQUIRED_FIELDS = """(() => {
+  const marks = Array.from(document.querySelectorAll('[class*="required-icon"]'));
+  const out = [];
+  for (const m of marks) {
+    let row = m, depth = 0, label = '';
+    while (row && depth < 6) {
+      const t = (row.textContent || '').trim().replace(/\\s+/g, '');
+      if (t && t.length <= 14) { label = t; break; }
+      row = row.parentElement; depth++;
+    }
+    const text = row ? (row.textContent || '') : '';
+    const input = row ? row.querySelector('input,textarea') : null;
+    const value = input ? (input.value || '').trim() : '';
+    const unfilled = /请选择/.test(text) || (input ? value.length === 0 : true);
+    out.push({label: label, unfilled: unfilled});
+  }
+  const uniq = []; const seen = new Set();
+  for (const x of out) { const k = x.label + '|' + x.unfilled; if (!seen.has(k)) { seen.add(k); uniq.push(x); } }
+  return {required_count: marks.length,
+          unfilled: uniq.filter(x => x.unfilled).map(x => x.label),
+          filled: uniq.filter(x => !x.unfilled).map(x => x.label)};
+})()"""
+
+#: 三套完成度判据（互相印证）：发布助手计数 / 关键属性 N/7 / 其他属性 N/8。
+#: 注意：发布助手按**区块**统计，对未滚动到的区块显示「空空如也／请移动到页面后查看」。
+JUDGES = """(() => {
+  const lines = (document.body.innerText || '').split('\\n').map(t => t.trim()).filter(Boolean);
+  const pick = re => lines.filter(t => re.test(t)).slice(0, 3);
+  return {key_attrs: pick(/关键属性\\s*\\d+\\/\\d+/),
+          other_attrs: pick(/其他属性\\s*\\d+\\/\\d+/),
+          required: pick(/\\d+\\s*项必填/),
+          helper_placeholder: /空空如也/.test(document.body.innerText || '')};
+})()"""
+
+
 def set_title_script(title: str) -> str:
     """生成"填标题"表达式（JSON 转义，避免中文/引号注入）。"""
     return SET_TITLE_TEMPLATE.replace("TEXT", json.dumps(title, ensure_ascii=False))

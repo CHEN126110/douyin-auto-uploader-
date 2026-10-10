@@ -90,3 +90,22 @@ def test_drawer_cancel_only_searches_inside_the_drawer():
     """踩过的坑：查「取消」时若排除抽屉内元素就会 found:false（那个按钮恰在抽屉里）。"""
     script = page_scripts.DRAWER_CANCEL
     assert "drawer.querySelectorAll" in script
+
+
+# --- 必填判据与完成度判据（第 70/71/76 轮真机实证后固化） ---------------------
+
+def test_required_fields_uses_platform_marker_class():
+    """必填标记是空文本元素（innerText 看不到 `*`）→ 只能按 class `required-icon` 找。"""
+    script = page_scripts.REQUIRED_FIELDS
+    assert "required-icon" in script
+    assert "unfilled" in script and "filled" in script
+    assert "请选择" in script          # 未填的判据之一
+
+
+def test_judges_covers_three_counters_and_helper_placeholder():
+    """三套判据：关键属性 N/7、其他属性 N/8、N 项必填；外加发布助手的"空空如也"语义。"""
+    script = page_scripts.JUDGES
+    assert "关键属性" in script
+    assert "其他属性" in script
+    assert "项必填" in script
+    assert "空空如也" in script
