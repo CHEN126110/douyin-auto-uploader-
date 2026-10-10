@@ -4667,11 +4667,17 @@ def _activate_shop_profile(target_profile, open_browser=True, browser_url=None):
 
     if open_browser:
         # 三个平台各开各自的登录页（原写法是"淘宝 else 抖店"两分支，新平台会被打开抖店后台 ✗）。
-        # 小红书的 URL 取自共享库常量（唯一来源 ✓），不要再写字面量 ✗。
+        #
+        # ⚠️ 这里**不能**写 `shop_session.XHS_HOME_URL` ✗：本函数会被
+        # `tests/test_shop_platform_api.py` 用 ast 抽取后单独 exec（只含模块级常量 + 指定函数），
+        # 那个上下文里没有 `from src import shop_session` → 会在 open_browser=True 分支上
+        # 抛 NameError（实测：5 条店铺接口测试因此失败 ✗）。该测试的注释正是警告这件事。
+        # 共享库里的 `shop_session.XHS_HOME_URL` 仍是应用其它位置的唯一来源 ✓，两处需保持一致。
+        _xhs_login_url = 'https://ark.xiaohongshu.com/app-system/home'
         login_url = browser_url or {
             'douyin': _SHOP_LOGIN_URL,
             'taobao': _TAOBAO_SHOP_LOGIN_URL,
-            'xiaohongshu': shop_session.XHS_HOME_URL,
+            'xiaohongshu': _xhs_login_url,
         }.get(account['platform'], _SHOP_LOGIN_URL)
         try:
             gui.page = get_page(login_url, profile_name=target_profile)
