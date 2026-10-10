@@ -6,7 +6,11 @@ from dataclasses import dataclass, asdict
 from typing import Dict, Any, List, Optional
 from .runtime_paths import resolve_data_file
 
-default = "\nbase:\n  name: 抖音袜子发布工具\n  version: 4.0.0\n  access_token: ''\n"
+#: 无 ``cfg.yaml`` 时的默认配置模板。``base.version`` 必须与当前发布版本一致 ✓ ——
+#: 它曾是 **4.0.0** ✗，而仓库/远端最新版是 **4.0.30** ✓：全新安装会从这份模板生成 cfg.yaml，
+#: 于是「关于/更新检查」里显示的是 4.0.0 ✗（差 30 个版本）。**改版本号时这里要一起改** ✓
+#: （是否已被 bump 脚本覆盖：见 `tauri-app/scripts/bump-version.ps1`，本次未核实 ✗）。
+default = "\nbase:\n  name: 抖音袜子发布工具\n  version: 4.0.30\n  access_token: ''\n"
 
 # 材质名称长度上限（防脏数据写入配置；平台真实材质名远短于此）
 MATERIAL_NAME_MAX_LENGTH = 40
