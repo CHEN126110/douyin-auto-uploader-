@@ -204,3 +204,64 @@ def test_fill_gaps_records_filler_error_and_stops():
     out = fill_gaps(page, boom)
     assert out["rounds"][0]["error"] == "模板还没建"   # 记录而不是吞掉
     assert len(out["rounds"]) == 1                     # 出错即停
+
+
+# --- 服务信息组 filler（三情形） ---------------------------------------------
+
+class _ScriptedClient:
+    """按脚本内容返回预设结果，并记录是否被求值。"""
+
+    def __init__(self, open_result: dict, pick_result: dict) -> None:
+        self.open_result = open_result
+        self.pick_result = pick_result
+        self.evaluated: list = []
+
+    def evaluate(self, script: str):
+        self.evaluated.append(script)
+        return self.pick_result if "option_not_painted" in script else self.open_result
+
+
+class _ClickPage:
+    def __init__(self, open_result: dict, pick_result: dict) -> None:
+        self.client = _ScriptedClient(open_result, pick_result)
+        self.clicks: list = []
+
+    def _dispatch_click(self, x: int, y: int) -> None:
+        self.clicks.append((x, y))
+
+
+def test_service_filler_skips_fields_without_values():
+    """没给取值就明确跳过——绝不瞎选一个值凑数。"""
+    from xiaohongshu_publish.flow import make_service_filler
+
+    page = _ClickPage({"ok": True, "x": 1, "y": 2}, {"ok": True, "x": 3, "y": 4})
+    filler = make_service_filler(page, values={})
+    out = filler({"unfilled": ["物流模板"]})
+    assert out["物流模板"] == {"skipped": "未提供取值（不猜）"}
+    assert page.clicks == []                     # 一次都没点
+    assert page.client.evaluated == []           # 一次都没求值
+
+
+def test_service_filler_reports_open_failure_with_stage():
+    """打开失败要报 stage=open + 原因（例如模板未建），而不是静默跳过。"""
+    from xiaohongshu_publish.flow import make_service_filler
+
+    page = _ClickPage({"ok": False, "reason": "template_missing"},
+                      {"ok": True, "x": 3, "y": 4})
+    filler = make_service_filler(page, values={"运费模板": "默认模板"})
+    out = filler({"unfilled": ["运费模板"]})
+    assert out["运费模板"]["ok"] is False
+    assert out["运费模板"]["stage"] == "open"
+    assert out["运费模板"]["reason"] == "template_missing"
+    assert page.clicks == []
+
+
+def test_service_filler_picks_option_and_records_evidence():
+    from xiaohongshu_publish.flow import make_service_filler
+
+    page = _ClickPage({"ok": True, "x": 1, "y": 2}, {"ok": True, "x": 3, "y": 4})
+    filler = make_service_filler(page, values={"物流模板": "默认模板"})
+    out = filler({"unfilled": ["物流模板", "未知字段"]})
+    assert out["物流模板"] == {"ok": True, "value": "默认模板"}
+    assert page.clicks == [(1, 2), (3, 4)]       # 先开字段，再点选项
+    assert out["未知字段"]["skipped"].startswith("非服务信息组字段")

@@ -121,6 +121,73 @@ JUDGES = """(() => {
 })()"""
 
 
+#: 从"已展开的下拉"里选一个选项：只认**被绘制**的选项（布局存在 ≠ 被绘制 ✗，
+#: 本项目为此栽过：未展开下拉的 li.option 也在 DOM 里且"看着可见"）。
+#: 真机验证过两次：选「蚕丝」（面料主材质）、选「长筒袜」（类目）。
+#: 用法：`PICK_OPTION.replace("VALUE", json.dumps("蚕丝", ensure_ascii=False))`
+PICK_OPTION = """(() => {
+  const TARGET = VALUE;
+  const cands = Array.from(document.querySelectorAll(
+    'li.option,[class*="option"],[class*="dropdown"] li,[class*="select"] li'));
+  for (const el of cands) {
+    if ((el.textContent || '').trim() !== TARGET) continue;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 20 && r.height > 10)) continue;
+    const inside = (x, y) => { const top = document.elementFromPoint(x, y);
+      return !!top && (top === el || el.contains(top)); };
+    for (let dy = 2; dy < r.height - 1; dy += 3) {
+      for (let dx = 2; dx < r.width - 1; dx += 5) {
+        const x = Math.round(r.x + dx), y = Math.round(r.y + dy);
+        if (inside(x, y)) return {ok: true, x, y, rect: [Math.round(r.x), Math.round(r.y),
+          Math.round(r.width), Math.round(r.height)]};
+      }
+    }
+  }
+  return {ok: false, reason: 'option_not_painted', scanned: cands.length};
+})()"""
+
+#: 打开某个字段的下拉：从标签爬到"含『请选择』的行容器"，再在行内采样可点位置。
+#: 真机验证过（面料主材质）：行级定位比"按像素带找"可靠（行距约 30px，带一跨就点错行 ✗）。
+OPEN_FIELD = """(() => {
+  const TARGET = LABEL;
+  const all = Array.from(document.querySelectorAll('*'));
+  const label = all.find(e => e.children.length === 0 && (e.textContent || '').trim() === TARGET);
+  if (!label) return {ok: false, reason: 'label_not_found'};
+  let row = label, depth = 0;
+  while (row && depth < 6 && (row.textContent || '').indexOf('请选择') < 0) {
+    row = row.parentElement; depth++;
+  }
+  if (!row) return {ok: false, reason: 'row_not_found'};
+  const holders = Array.from(row.querySelectorAll('*'))
+    .filter(e => e.children.length === 0 && (e.textContent || '').trim() === '请选择');
+  if (!holders.length) return {ok: false, reason: 'placeholder_not_found',
+                               row_text: (row.textContent || '').slice(0, 60)};
+  for (const el of holders) {
+    const r = el.getBoundingClientRect();
+    const inside = (x, y) => { const top = document.elementFromPoint(x, y);
+      return !!top && (top === el || el.contains(top)); };
+    for (let dy = 2; dy < r.height - 1; dy += 3) {
+      for (let dx = 2; dx < r.width - 1; dx += 5) {
+        const x = Math.round(r.x + dx), y = Math.round(r.y + dy);
+        if (inside(x, y)) return {ok: true, x, y, depth,
+          rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]};
+      }
+    }
+  }
+  return {ok: false, reason: 'placeholder_covered'};
+})()"""
+
+
+def pick_option_script(value: str) -> str:
+    """生成"选下拉选项"表达式（JSON 转义，避免中文/引号注入）。"""
+    return PICK_OPTION.replace("VALUE", json.dumps(value, ensure_ascii=False))
+
+
+def open_field_script(label: str) -> str:
+    """生成"打开字段下拉"表达式。"""
+    return OPEN_FIELD.replace("LABEL", json.dumps(label, ensure_ascii=False))
+
+
 def set_title_script(title: str) -> str:
     """生成"填标题"表达式（JSON 转义，避免中文/引号注入）。"""
     return SET_TITLE_TEMPLATE.replace("TEXT", json.dumps(title, ensure_ascii=False))
