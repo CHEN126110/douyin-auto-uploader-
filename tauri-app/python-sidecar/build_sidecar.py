@@ -98,19 +98,16 @@ HIDDEN_IMPORTS = [
     "src.whitebg.clip_gate",
     "src.whitebg.pipeline",
     "src.whitebg.product",
-    "rembg",
-    "rembg.sessions",
-    "rembg.sessions.bria_rmbg",
-    "rembg.sessions.birefnet_general",
-    "rembg.sessions.dis_general_use",
-    "rembg.sessions.u2net",
+    # ⚠️ 2026-10-10 起**不再打包 rembg**：它只为拿到一个 onnxruntime 会话，却要经
+    # pymatting → numba → llvmlite 拖进 39.5 MB 的 llvmlite.dll（sidecar 138.9 MB 里排第一）。
+    # src/whitebg/onnx_session.py 按同一套数值流程直接建会话，逐像素等价已由
+    # lab/whitebg/scripts/verify_onnx_equivalence.py 与 verify_pipeline_equivalence.py 验证。
+    "src.whitebg.onnx_session",
     "onnxruntime",
     "tokenizers",
     "scipy",
     "scipy.ndimage",
     "numpy",
-    "pooch",
-    "natsort",
 ]
 
 # 排除项按「有没有证据」加，不要凭感觉堆包名。
@@ -140,6 +137,15 @@ EXCLUDED_MODULES = [
     "pandas",
     "pytest",
     "_pytest",
+    # 抠图改走 src.whitebg.onnx_session 之后，这条链上没有任何一处还被引用。
+    # 钉死它们是为了**防止哪天又被间接带回来**：pymatting → numba → llvmlite 里
+    # 光 llvmlite 一个 DLL 就有 39.5 MB（实测 2026-10-10）。
+    "rembg",
+    "pymatting",
+    "numba",
+    "llvmlite",
+    "pooch",
+    "natsort",
 ]
 
 # 输出目录里只允许出现「安装包真正需要」的东西。sidecar/ 是 tauri.conf.json
@@ -198,9 +204,9 @@ def build_sidecar() -> bool:
         "DrissionPage",
         "--collect-data",
         "DrissionPage",
-        # pymatting 在导入时读取自己的分发版本；只有模块没有元数据会使冻结版抠图失败。
-        "--copy-metadata",
-        "pymatting",
+        # ⚠️ 这里原本还有 `--copy-metadata pymatting`（pymatting 导入时要读自己的分发版本）。
+        # 2026-10-10 起抠图不再经 rembg/pymatting，这条也随之去掉；pymatting 已在
+        # EXCLUDED_MODULES 里钉死，留着元数据只会让人以为它还在链上。
     ]
 
     for module in EXCLUDED_MODULES:

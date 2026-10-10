@@ -22,22 +22,28 @@ DEFAULT_MODEL = 'birefnet-general'
 
 
 def make_session(model_name: str = DEFAULT_MODEL, model_home: str | None = None):
-    """创建 rembg 会话。model_home 指向存放 models/<name>/<name>.onnx 的目录。"""
+    """建 matte 会话。model_home 指向存放 ``models/<name>/<name>.onnx`` 的目录。
+
+    ⚠️ 不再经 rembg：``rembg → pymatting → numba → llvmlite`` 那条链只为拿到一个
+    onnxruntime 会话，却要给安装包塞进 39.5 MB 的 ``llvmlite.dll``（真机实测 2026-10-10）。
+    现在由 :mod:`whitebg.onnx_session` 按同一套数值流程直接建会话，数值等价在
+    ``lab/whitebg`` 逐像素比对过。
+    """
     if model_home:
-        os.environ['REMBG_HOME'] = str(model_home)
-    from rembg import new_session
-    return new_session(model_name)
+        os.environ.setdefault('REMBG_HOME', str(model_home))
+    from . import onnx_session
+    return onnx_session.make_session(model_name, model_home)
 
 
 def _infer(rgb: np.ndarray, session, infer_side: int) -> np.ndarray:
     """单次 matte 推理，返回与输入同分辨率的 alpha（uint8）。"""
-    from rembg import remove
+    from . import onnx_session
     im = Image.fromarray(rgb)
     work = im
     if infer_side and max(im.size) > infer_side:
         work = im.copy()
         work.thumbnail((infer_side, infer_side), Image.LANCZOS)
-    mask = remove(work, session=session, only_mask=True, post_process_mask=False)
+    mask = onnx_session.predict_mask(session, work)
     if mask.size != im.size:
         mask = mask.resize(im.size, Image.BICUBIC)
     return np.asarray(mask.convert('L'), dtype=np.uint8)
