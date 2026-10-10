@@ -36,24 +36,67 @@ def _cancelled(should_cancel):
         raise TaobaoPublishError('CANCELLED', '已取消素材准备，未进入发布页；已发送的平台上传队列可能仍在处理')
 
 
-def queue_complete(queue, names, directory_names=()):
-    """新建的空队列中，同名文件按数量核对，目录归属稍后逐路径验证。"""
-    wanted=Counter(names)
-    rows=queue['items']
-    failed=[row for row in rows if row['state']=='error']
+def _queue_rows_judgement(queue, names, directory_names=()):
+    """队列**行级判据**（`queue_complete` 与 `queue_evidence_complete` 共用）。
+
+    任何一条不成立就抛错——不把它降级成「返回 False」，否则真实的平台拒绝会被
+    「还没传完」这种模糊判断盖掉。
+    """
+
+    wanted = Counter(names)
+    rows = queue['items']
+    failed = [row for row in rows if row['state'] == 'error']
     if failed:
-        raise TaobaoPublishError('IMAGE_UPLOAD_FAILED','整目录导入被平台拒绝：'+'；'.join(
-            str(row['name'])+'：'+str(row.get('desc') or '上传失败') for row in failed[:3]))
+        raise TaobaoPublishError('IMAGE_UPLOAD_FAILED', '整目录导入被平台拒绝：' + '；'.join(
+            str(row['name']) + '：' + str(row.get('desc') or '上传失败') for row in failed[:3]))
     unexpected = [row['name'] for row in rows if row['name'] not in wanted
                   and row['name'] not in directory_names]
     if unexpected:
         raise page.PageError('整目录队列混入了本批之外的文件：' + '、'.join(unexpected[:3]))
-    actual=Counter(row['name'] for row in rows if row['name'] in wanted)
-    if any(actual[name]>count for name,count in wanted.items()):
+    actual = Counter(row['name'] for row in rows if row['name'] in wanted)
+    if any(actual[name] > count for name, count in wanted.items()):
         raise page.PageError('整目录队列包含超出本批清单的同名文件，不能确认来源')
-    accepted=Counter(row['name'] for row in rows if row['name'] in wanted and row['state']=='success')
-    return (bool(wanted) and accepted==wanted and queue.get('uploading') is not True
-            and all(row['state']=='success' for row in rows))
+    accepted = Counter(row['name'] for row in rows if row['name'] in wanted and row['state'] == 'success')
+    return accepted, wanted
+
+
+def queue_complete(queue, names, directory_names=()):
+    """新建的空队列中，同名文件按数量核对，目录归属稍后逐路径验证。
+
+    **严格版**：还要求面板的 ``uploading`` 横幅消失。真机上这句横幅会在队列全部
+    成功之后仍然挂着（见 :func:`queue_evidence_complete`），所以生产路径不要只看这一条。
+    """
+
+    accepted, wanted = _queue_rows_judgement(queue, names, directory_names)
+    return (bool(wanted) and accepted == wanted and queue.get('uploading') is not True
+            and all(row['state'] == 'success' for row in queue['items']))
+
+
+#: 「按证据收口」需要的稳定窗口（秒）：行集合与状态连续不变这么久，才认为队列真的传完了。
+_QUEUE_SETTLE_SECONDS = 3.0
+
+
+def queue_evidence_complete(queue, names, directory_names=()):
+    """**按证据**判断整目录队列是否传完：每张图的成功数正好等于清单、且没有非 success 行。
+
+    与 :func:`queue_complete` 的差别只有一条：**不要求 ``uploading`` 横幅消失**。
+    真机 2026-10-10：33 张全部 success、队列 39 行全绿，面板仍挂着
+    「39 个文件上传中...」，`uploading` 永远为 True——严格判据会把已经传完的队列
+    一直等到 300 秒超时，用户看到的就是「已完成 33 / 33 张图片」之后卡住不动。
+
+    横幅是平台的提示文案，**行状态才是证据**。为避免在行还在陆续到达时抢跑，
+    调用方必须再叠一个「行集合连续稳定若干秒」的窗口（见 ``_queue_signature``）。
+    """
+
+    accepted, wanted = _queue_rows_judgement(queue, names, directory_names)
+    return (bool(wanted) and accepted == wanted
+            and all(row['state'] == 'success' for row in queue['items']))
+
+
+def _queue_signature(queue):
+    """队列的稳定判据：每行的「名字 + 状态」。行集合或状态一变，签名就变。"""
+
+    return tuple((str(row.get('name')), str(row.get('state'))) for row in (queue.get('items') or []))
 
 
 def _open_panel(client):
@@ -360,10 +403,24 @@ def import_directory(client, manifest, account_profile, *, authorization, progre
         method=send_directory(client,folders[0])
         started=time.monotonic()
         previous_count = None
+        signature = None
+        stable_since = None
         while True:
             _cancelled(should_cancel)
             queue=page.read_media_queue_state(client,context_id=None)
             if queue_complete(queue,names,directory_names):break
+            # ⚠️ **横幅会一直挂着**（真机 2026-10-10）：行全绿了 `uploading` 仍是 True，
+            # 只等严格判据会一直空转到 300 秒超时（用户看到「已完成 33 / 33」之后卡住）。
+            # 所以再叠一条按证据的出口：每张图都成功 + 行集合与状态连续稳定若干秒。
+            current = _queue_signature(queue)
+            if queue_evidence_complete(queue,names,directory_names) and current == signature:
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                elif time.monotonic() - stable_since >= _QUEUE_SETTLE_SECONDS:
+                    break
+            else:
+                stable_since = None
+            signature = current
             completed = sum(row['state']=='success' and row['name'] in names for row in queue['items'])
             if completed != previous_count:
                 if progress: progress('整目录上传：已完成 {} / {} 张图片'.format(completed, len(names)))
@@ -374,7 +431,8 @@ def import_directory(client, manifest, account_profile, *, authorization, progre
             if elapsed>=timeout:
                 raise TaobaoPublishError('IMAGE_UPLOAD_FAILED','整目录上传队列未完成，未进入发布页')
             time.sleep(0.25)
-        if not queue_complete(page.read_media_queue_state(client,context_id=None),names,directory_names):
+        if not queue_evidence_complete(page.read_media_queue_state(client,context_id=None),
+                                       names,directory_names):
             raise TaobaoPublishError('IMAGE_UPLOAD_FAILED','完成前上传队列发生变化，未确认成功')
         page.click_media_finish(client,context_id=None,wait=0.3)
         deadline=time.monotonic()+15

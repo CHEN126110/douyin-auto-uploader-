@@ -124,6 +124,98 @@ def test_one_native_directory_preserves_paths_bytes_and_waits_for_cloud_receipts
     assert client.evaluate('location.href') == url, '素材模块本身没有导航到发布页'
 
 
+def test_queue_completion_ignores_a_stuck_uploading_banner():
+    """严格判据与证据判据的差别只有一条：**横幅不能当完成条件**。
+
+    真机 2026-10-10：39 行全部 success，面板仍挂着「39 个文件上传中...」。
+    `queue_complete`（严格）此时仍为 False——它是给「面板自己会落旗」的场合用的；
+    生产路径用 `queue_evidence_complete`（行证据）再叠一个稳定窗口。
+    """
+
+    names = ['同名.jpg', '同名.jpg', '详情.jpg']
+    stuck = queue(names)
+    stuck['uploading'] = True
+    assert module.queue_complete(stuck, names) is False
+    assert module.queue_evidence_complete(stuck, names) is True
+    # 有一行不是 success 时，两条判据都不许放行
+    stuck['items'][0]['state'] = 'loading'
+    assert module.queue_complete(stuck, names) is False
+    assert module.queue_evidence_complete(stuck, names) is False
+
+
+def test_stuck_uploading_banner_does_not_block_queue_completion(
+        browser, prepared_case, monkeypatch):
+    """真机 2026-10-10：33 张全部 success、队列 39 行全绿，面板仍挂着「N 个文件上传中...」。
+
+    旧判据要求 `uploading` 不为 True，于是队列永远「没传完」——用户看到的就是
+    「整目录上传：已完成 33 / 33 张图片」之后**一直卡住**，最后 300 秒超时。
+    新判据按行证据收口：每张图都成功 + 行集合与状态连续稳定若干秒。
+    """
+
+    client = browser
+    _, prepared, _ = prepared_case
+    manifest = prepared.manifest
+    names = [Path(source.relative_path).name for source in manifest.images]
+    rows = ''.join(
+        '<div class="UploadPanel_fileItem"><span class="UploadPanel_fileName">{}</span>'
+        '<span class="UploadPanel_fileState"><i class="next-icon-success"></i></span></div>'.format(name)
+        for name in names)
+    # 初始：**空面板** + 一直挂着的横幅（真机就是这样：横幅从上传开始到 39 行全绿都没消失）。
+    client.evaluate('''(() => {
+      document.body.innerHTML =
+        '<div class="UploadPanel_uploadPanel" style="height:200px">' +
+        '<div class="UploadPanel_actions"><span>个文件上传中...</span></div>' +
+        '<button class="finish" type="button">完成</button></div>';
+      window.finishCount = 0;
+      document.querySelector('.UploadPanel_uploadPanel button.finish').onclick =
+        () => { window.finishCount++; };
+    })()''')
+    # ⚠️ 目录树要在上面那次 innerHTML 之后加（那段会把 body 清空）。
+    client.evaluate('''(() => {{
+      const tree=document.createElement('div'); tree.setAttribute('role','tree');
+      tree.style.cssText='display:block;width:250px';
+      const node=document.createElement('div'); node.setAttribute('role','treeitem');
+      node.setAttribute('aria-label', PRODUCT); node.style.cssText='min-height:28px;width:200px';
+      const label=document.createElement('span'); label.className='next-tree-node-label';
+      label.textContent=PRODUCT; node.append(label);
+      tree.append(node); document.body.prepend(tree);
+    }})()'''.replace('PRODUCT', json.dumps(manifest.folder_name)))
+
+    def fake_send(_client, _folder):
+        # 发送目录后平台把文件排进队列：**全部成功**，而横幅一直挂着。
+        client.evaluate('''(() => {{
+          document.querySelector('.UploadPanel_actions').innerHTML =
+            '<span>{} 个文件上传中...</span>';
+          const rows = document.createElement('div');
+          rows.innerHTML = ROWS;
+          document.querySelector('.UploadPanel_uploadPanel').prepend(rows);
+        }})()'''.replace('ROWS', json.dumps(rows)).replace('{}', str(len(names))))
+        return 'directory_input'
+
+    monkeypatch.setattr(module, 'send_directory', fake_send)
+    # 上传入口与「上传至 全部图片」这两步不在本条用例范围内（考的是队列收口），打桩跳过。
+    monkeypatch.setattr(module, '_open_panel', lambda *args, **kwargs: None)
+    monkeypatch.setattr('taobao_publish.upload_panel.ensure_all_images',
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, '_QUEUE_SETTLE_SECONDS', 0.4)
+    monkeypatch.setattr(media_library, 'product_root_path', lambda *args, **kwargs:
+        [manifest.folder_name] if client.evaluate('window.finishCount') == 1 else None)
+
+    def cloud_files(_client, directory, **_kwargs):
+        prefix = tuple(directory[1:])
+        return {'files': [{'name': Path(source.relative_path).name,
+                           'url': 'https://img.example.invalid/{}.jpg'.format(source.sha256),
+                           'picture_id': str(index + 100)}
+                          for index, source in enumerate(manifest.images)
+                          if tuple(Path(source.relative_path).parts[:-1]) == prefix]}
+    monkeypatch.setattr(media_library, 'read_directory_files', cloud_files)
+
+    result = module.import_directory(client, manifest, 'account-A', authorization=AUTH)
+    result.validate('account-A')
+    assert client.evaluate('window.finishCount') == 1, '横幅挂着也必须点「完成」让文件落库'
+    assert len(result.receipts) == len(manifest.images)
+
+
 def test_directory_input_is_used_once_without_flattening(browser, prepared_case, monkeypatch):
     root, _, _ = prepared_case
     browser.evaluate('''document.body.innerHTML='<div class="UploadPanel_uploadPanel" style="height:100px"><input type=file webkitdirectory multiple></div>';

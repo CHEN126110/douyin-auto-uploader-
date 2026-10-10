@@ -100,14 +100,14 @@ def test_invalid_queue_response_fails_immediately(payload):
         page.read_media_queue_state(Mock(evaluate=Mock(return_value=payload)),context_id=1)
 
 
-@pytest.mark.parametrize('change',['overall_busy','file_loading','file_missing','file_duplicate'])
+@pytest.mark.parametrize('change',['file_loading','file_missing','file_duplicate'])
 def test_final_queue_readback_cannot_reuse_an_earlier_success(change,tmp_path,monkeypatch):
     from test_stale_queue_rejection import FakeMediaClient,ok_item
     client=FakeMediaClient([ok_item('one.jpg')])
     source=tmp_path/'one.jpg'
     source.write_bytes(b'isolated queue test')
     initial={'count':1,'items':[ok_item('one.jpg')],'uploading':False}
-    final={'count':1,'items':[ok_item('one.jpg')],'uploading':change=='overall_busy'}
+    final={'count':1,'items':[ok_item('one.jpg')],'uploading':False}
     if change=='file_loading':
         final['items'][0]['state']='loading'
     elif change=='file_missing':
@@ -123,6 +123,35 @@ def test_final_queue_readback_cannot_reuse_an_earlier_success(change,tmp_path,mo
     else:
         result=page.upload_files_to_media(client,[str(source)],context_id=1,wait=0)
         assert result['ok'] is False
-        if change=='overall_busy':
-            assert '上传中' in result['reason']
     finish.assert_not_called()
+
+
+def test_stuck_uploading_banner_still_clicks_finish(tmp_path,monkeypatch):
+    """队列整体仍显示「上传中」时**不再拒绝点「完成」**（真机 2026-10-10 改判）。
+
+    那句横幅在 33 张全部 success、39 行全绿之后仍然挂着；旧判据据此不点「完成」，
+    后果是**文件永远停在上传面板里**（面板全绿、图片空间里什么都没有）。
+    现在的完成条件只看**本次目标**：全部 success 且本次无失败项。
+    """
+
+    from test_stale_queue_rejection import FakeMediaClient,ok_item
+    client=FakeMediaClient([ok_item('one.jpg')])
+    source=tmp_path/'one.jpg'
+    source.write_bytes(b'isolated queue test')
+    initial={'count':1,'items':[ok_item('one.jpg')],'uploading':False}
+    final={'count':1,'items':[ok_item('one.jpg')],'uploading':True}
+    monkeypatch.setattr(page,'read_media_queue_state',Mock(side_effect=[initial,final]))
+    finish=Mock(return_value={'ok':True})
+    monkeypatch.setattr(page,'click_media_finish',finish)
+    result=page.upload_files_to_media(client,[str(source)],context_id=1,wait=0)
+    finish.assert_called_once()
+    assert result['ok'] is True and result['reason']==''
+    # 队列里**别的尝试留下的失败行**照样不影响本次结论（既有语义不许回退）
+    stale={'count':1,'items':[ok_item('one.jpg'),
+                              {'name':'旧图.jpg','state':'error','desc':'操作过于频繁'}],
+           'uploading':True}
+    monkeypatch.setattr(page,'read_media_queue_state',Mock(side_effect=[initial,stale]))
+    finish2=Mock(return_value={'ok':True})
+    monkeypatch.setattr(page,'click_media_finish',finish2)
+    assert page.upload_files_to_media(client,[str(source)],context_id=1,wait=0)['ok'] is True
+    finish2.assert_called_once()

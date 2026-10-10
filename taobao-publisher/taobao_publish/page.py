@@ -3267,8 +3267,15 @@ def _upload_staged_files_to_media(client, files, targets, *, source_names,
 
     # **点「完成」让上传落库**（E-123）：不点它，文件只停在上传面板里，
     # 图片空间里什么都看不到，而面板上全是成功图标。
+    #
+    # ⚠️ **不再要求 ``uploading`` 横幅消失**（真机 2026-10-10 实证）：33 张全部 success、
+    # 队列 39 行全绿，面板仍挂着「39 个文件上传中...」，据此不点「完成」的后果是
+    # **文件永远停在面板里**。完成条件只看**本次目标**：全部 success（``confirmed``）
+    # 且本次没有失败项（``failed`` 为空）。
+    # 队列里**别的尝试留下的行**（含陈旧失败项）按既有语义一律不影响本次结论——
+    # 它们既可能还在 loading，也可能就是上一次的 error，拿它们当完成条件会重演上面那条。
     finish: Dict[str, Any] = {}
-    if confirmed and not failed and queue.get('uploading') is not True:
+    if confirmed and not failed:
         try:
             finish = click_media_finish(client, context_id=context_id, wait=wait)
         except Exception as exc:  # noqa: BLE001
@@ -3292,7 +3299,7 @@ def _upload_staged_files_to_media(client, files, targets, *, source_names,
         "attempts": attempts,
         "queue": queue,
         "destination": destination['value'],
-        "reason": "上传队列仍显示文件上传中，未点击完成" if queue.get('uploading') is True else "",
+        "reason": "" if (confirmed and not failed) else "本次上传的文件未全部确认成功，未点击完成",
         "staleQueueErrors": stale_rejected,
         "finish": finish,
         # 成功 = **平台接受**（队列 success）**且**点了「完成」。
