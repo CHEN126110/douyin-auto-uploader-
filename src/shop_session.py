@@ -42,7 +42,14 @@ FXG_DOMAIN = "jinritemai.com"
 # 发布浏览器的默认 profile。历史上只有这一个，保持它作为默认值，
 # 老用户升级后原来的登录态继续可用。
 DEFAULT_PROFILE_NAME = "upload-browser-profile"
-ACCOUNT_PLATFORMS = ("douyin", "taobao")
+ACCOUNT_PLATFORMS = ("douyin", "taobao", "xiaohongshu")
+
+#: 平台的中文名（前端与提示文案共用；加平台时**必须**同时补这里 ✓）
+PLATFORM_LABELS = {
+    "douyin": "抖音 / 抖店",
+    "taobao": "淘宝",
+    "xiaohongshu": "小红书千帆",
+}
 
 _REGISTRY_FILENAME = "shop_profiles.json"
 
@@ -59,7 +66,7 @@ _registry_lock = threading.RLock()
 def normalize_platform(value: str) -> str:
     """规范账户平台；非法显式值不能被当作旧账户回落到抖店。"""
     if not isinstance(value, str) or value.strip().lower() not in ACCOUNT_PLATFORMS:
-        raise ValueError("账户平台必须是 douyin 或 taobao")
+        raise ValueError("账户平台必须是 " + "、".join(ACCOUNT_PLATFORMS))
     return value.strip().lower()
 
 
