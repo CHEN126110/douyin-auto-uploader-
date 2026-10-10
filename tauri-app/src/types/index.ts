@@ -648,7 +648,7 @@ export type ShopSessionStatus =
   | "logged_in"
   | "logged_out"
   | "no_fxg_tab"
-  | "no_taobao_tab"
+  | "no_taobao_tab" | "no_xhs_tab"
   | "no_browser"
   | "unreachable"
   | "conflict";

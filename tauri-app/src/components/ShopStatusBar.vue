@@ -110,10 +110,10 @@ const statusText = computed(() => {
   if (!state) return checked.value ? "读不到账户状态" : "检查账户…";
   switch (state.status) {
     case "logged_in":
-      return state.shop_name || (state.platform === "taobao" ? `淘宝账户 ${state.shop_id}` : `店铺 ${state.shop_id}`);
+      return state.shop_name || (state.platform === "taobao" ? `淘宝账户 ${state.shop_id}` : state.platform === "xiaohongshu" ? "小红书千帆账户（未读到店铺名）" : `店铺 ${state.shop_id}`);
     case "logged_out":
     case "no_fxg_tab":
-    case "no_taobao_tab":
+    case "no_taobao_tab": case "no_xhs_tab":
     case "no_browser":
       return `${state.active_profile_label} · 未登录`;
     case "conflict":
@@ -148,8 +148,8 @@ const hintText = computed(() => {
   if (state.status === "logged_in") {
     return state.platform === "taobao" ? taobaoIdentityNote(state) : state.shop_id ? `店铺 ID ${state.shop_id}` : "";
   }
-  if (["no_browser", "logged_out", "no_fxg_tab", "no_taobao_tab"].includes(state.status)) {
-    return `打开账户菜单并选择${state.platform === "taobao" ? "淘宝" : "抖音"}账户，即可打开登录页；登录成功后自动确认，不用再点一次。`;
+  if (["no_browser", "logged_out", "no_fxg_tab", "no_taobao_tab", "no_xhs_tab"].includes(state.status)) {
+    return `打开账户菜单并选择${state.platform === "taobao" ? "淘宝" : state.platform === "xiaohongshu" ? "小红书千帆" : "抖音"}账户，即可打开登录页；登录成功后自动确认，不用再点一次。`;
   }
   return state.error || "";
 });
