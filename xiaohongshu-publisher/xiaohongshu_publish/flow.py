@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from dataclasses import dataclass, field
@@ -36,6 +37,23 @@ class FillPlan:
     service_values: dict = field(default_factory=dict)  # 服务信息组取值；缺的字段不猜
 
 
+def _platform_required_total(judges: dict) -> int | None:
+    """从发布助手的「N 项必填」里取**平台自己报的**必填缺口数；读不到返回 None。
+
+    为什么要这个数（2026-10-14 真机实测的矛盾 ✗）：同一页上，`REQUIRED_FIELDS`
+    报 `unfilled: []`（按 `required-icon` 标记扫出 13 项、全部已填），
+    而发布助手仍显示 **「1 项必填」**（价格库存/SKU 那一块没被标记扫到）。
+    两个数**必须能对上**；对不上就是我的判据不完整，**不能沉默地报"无缺口"** ✗。
+    """
+    texts = list((judges or {}).get("required") or [])
+    counts = []
+    for text in texts:
+        match = re.search(r"(\d+)\s*项必填", str(text))
+        if match:
+            counts.append(int(match.group(1)))
+    return max(counts) if counts else None
+
+
 def required_gaps(page: XhsPage) -> dict:
     """读**平台自己的**必填判据，回答"还差什么"。
 
@@ -45,17 +63,32 @@ def required_gaps(page: XhsPage) -> dict:
     - `JUDGES`：三套完成度计数（关键属性 N/7、其他属性 N/8、N 项必填）+ 发布助手占位语义。
 
     **不要**用"看起来重要"来猜必填项——这是本项目反复强调的纪律。
+
+    **自相矛盾要上报**（2026-10-14 新增）：发布助手报「N 项必填」而本函数扫出的
+    `unfilled` 为空时，返回 `incomplete: True` 与 `note` —— 这是"我的判据漏了"的
+    明确信号，不是"已填满" ✗。**不猜**那 N 项是什么（需要时按区块逐段读，见
+    `docs/07-字段测绘表.md` 关于发布助手按区块统计的说明）。
     """
     from . import page_scripts
 
     required = page.client.evaluate(page_scripts.REQUIRED_FIELDS) or {}
     judges = page.client.evaluate(page_scripts.JUDGES) or {}
-    return {
+    unfilled = list(required.get("unfilled") or [])
+    platform_total = _platform_required_total(judges)
+    result = {
         "required_count": required.get("required_count", 0),
-        "unfilled": list(required.get("unfilled") or []),
+        "unfilled": unfilled,
         "filled": list(required.get("filled") or []),
         "judges": judges,
+        "platform_required_total": platform_total,
     }
+    if platform_total and not unfilled:
+        result["incomplete"] = True
+        result["note"] = (
+            "发布助手报「{} 项必填」，但按 required-icon 扫出的缺口为空 → "
+            "判据不完整（该区块很可能未被标记覆盖，如价格库存/SKU 表格）。"
+            "不得据此认为已填满 ✗".format(platform_total))
+    return result
 
 
 #: 服务信息组的字段（真机实测的必填项；详见 `docs/07-字段测绘表.md` §8.9）
