@@ -72,6 +72,13 @@ class FakeBrowser:
             if ENV.new_tab_visible:
                 ENV.visible_ids.add(NEW_ID)
             return {"targetId": NEW_ID}
+        elif method in ("Emulation.setFocusEmulationEnabled",
+                        "Page.setWebLifecycleState",
+                        "Page.bringToFront"):
+            # 真机实测有效的一组聚焦手段（2026-10-14）：作用于**目标标签自己**（走 session）✓
+            ENV.focus_levers.append(method)
+            if ENV.focus_levers_work and session_id:
+                ENV.visible_ids.add(str(session_id).replace("session-", "", 1))
         return {}
 
     def attach(self, target_id: str):
@@ -82,17 +89,24 @@ class FakeBrowser:
 
 
 class FakePageClient:
-    """只实现 `connect()` 用到的三件事：可见性、`location.href`、`close()`。
+    """只实现 `connect()` 用到的几件事：可见性、`location.href`、表单状态、`close()`。
 
     真机上 `location.href` 可能因为**导航销毁执行上下文**而暂时读成空 ✗，
     这里如真机加载完的状态回答（URL 就是那条 target 的 URL）。
+    表单状态由 `ENV.form_states[target_id]` 提供（缺省＝空表单）。
     """
 
     @staticmethod
     def connect(web_socket_url: str, target_url: str = ""):
+        target_id = web_socket_url.rsplit("/", 1)[-1]
+
         class Probe:
             def evaluate(self, script: str):
-                if "visibilityState" in script:
+                # ⚠️ 顺序与**精确度**都重要：`FORM_STATE_PROBE` 里也有 `visibilityState`
+                # 字样（它读图片可见性）→ 若用宽匹配会被可见性分支先命中 ✗（本轮踩过）。
+                if "title_len" in script:            # FORM_STATE_PROBE 的唯一标记
+                    return dict(ENV.form_states.get(target_id, {}))
+                if "document.visibilityState" in script:
                     return "visible" if target_id in ENV.visible_ids else "hidden"
                 if "location.href" in script:
                     return target_url
@@ -101,21 +115,24 @@ class FakePageClient:
             def close(self) -> None:
                 pass
 
-        target_id = web_socket_url.rsplit("/", 1)[-1]
         return Probe()
 
 
 class Env:
-    """一次用例的浏览器环境（谁可见、激活是否有效、新开标签是否可见）。"""
+    """一次用例的浏览器环境（谁可见、激活是否有效、新开标签是否可见、聚焦手段是否有效）。"""
 
     def __init__(self, targets: list, visible_ids: set, activation_works: bool = True,
-                 new_tab_visible: bool = True) -> None:
+                 new_tab_visible: bool = True, focus_levers_work: bool = True,
+                 form_states: dict | None = None) -> None:
         self.targets = list(targets)
         self.visible_ids = set(visible_ids)
         self.activation_works = activation_works
         self.new_tab_visible = new_tab_visible
+        self.focus_levers_work = focus_levers_work
+        self.form_states = dict(form_states or {})
         self.activated: list = []
         self.created: list = []
+        self.focus_levers: list = []
 
 
 ENV: Env = None  # type: ignore[assignment]
@@ -140,8 +157,12 @@ def _patch(monkeypatch):
 
 
 def test_connect_activates_background_create_tab_not_visible_home():
-    """核心回归：创建页在后台 → 激活**创建页**并用它，绝不退化成可见的首页。"""
-    env = _setup(_both_tabs(), visible_ids={HOME_ID})
+    """核心回归：创建页在后台 → 选中**创建页**并用它，绝不退化成可见的首页。
+
+    本用例只走"激活标签"这条路（关掉聚焦手段），这样它验证的是
+    `Target.activateTarget` 分支本身 ✓。
+    """
+    env = _setup(_both_tabs(), visible_ids={HOME_ID}, focus_levers_work=False)
 
     _browser, page, _client, _session = xhs_browser.connect(9500)
 
@@ -161,9 +182,12 @@ def test_connect_prefers_already_visible_create_tab():
 
 
 def test_connect_never_returns_visible_home_when_create_tab_stays_hidden():
-    """激活无效（窗口在后台）→ 新开创建页；**任何情况下都不许把首页交出去**。"""
+    """**空**创建页标签救不活 → 新开一个可操作的前台标签；绝不许把首页交出去。
+
+    空表单没有内容可丢，新开是划算的 ✓（与下一条"已有内容"的情形相对）。
+    """
     env = _setup(_both_tabs(), visible_ids={HOME_ID}, activation_works=False,
-                 new_tab_visible=True)
+                 focus_levers_work=False, new_tab_visible=True)
 
     _browser, page, _client, _session = xhs_browser.connect(9500)
 
@@ -171,15 +195,32 @@ def test_connect_never_returns_visible_home_when_create_tab_stays_hidden():
     assert page.target_id == NEW_ID, "选中的不是新开的创建页：%r" % (page.target_id,)
 
 
-def test_connect_raises_when_no_visible_create_page_can_be_established():
-    """创建页始终不可见且新开也拿不到 → **明确报错**，不降级、不静默。"""
-    _setup(_both_tabs(), visible_ids={HOME_ID}, activation_works=False,
-           new_tab_visible=False)
+def test_connect_refuses_to_open_a_new_tab_when_the_filled_form_cannot_be_shown():
+    """**已有内容**的创建页救不活 → **拒绝新开**并明确报错（新开会丢掉已传的图与已填字段 ✗）。
+
+    真机对照：带表单的标签（22 图 + 已推进）在后台救不活时，宁可报错让用户把窗口切到前台，
+    也不能悄悄换一个空标签重来 —— 那正是"表单看起来丢了"的成因 ✗。
+    """
+    _setup([FakeTarget(CREATE_ID, CREATE_URL)], visible_ids=set(),
+           activation_works=False, focus_levers_work=False, new_tab_visible=True,
+           form_states={CREATE_ID: {"at_4groups": True, "required_marks": 13,
+                                    "uploaded_imgs": 21, "title_len": 22}})
 
     with pytest.raises(RuntimeError) as error:
         xhs_browser.connect(9500)
 
-    assert "good/create" in str(error.value) or "创建页" in str(error.value)
+    assert "拒绝新开" in str(error.value), str(error.value)
+
+
+def test_connect_raises_when_no_visible_create_page_can_be_established():
+    """激活、聚焦手段、新开标签**全都拿不到可见创建页** → 明确报错，不降级。"""
+    _setup(_both_tabs(), visible_ids={HOME_ID}, activation_works=False,
+           focus_levers_work=False, new_tab_visible=False)
+
+    with pytest.raises(RuntimeError) as error:
+        xhs_browser.connect(9500)
+
+    assert "good/create" in str(error.value) or "创建页" in str(error.value) or "不可见" in str(error.value)
 
 
 def test_connect_opens_create_tab_when_none_exists():
@@ -190,3 +231,44 @@ def test_connect_opens_create_tab_when_none_exists():
 
     assert env.created == [CREATE_URL], "没有新开创建页标签（实际=%r）" % (env.created,)
     assert page.target_id == NEW_ID, "选中的不是新开的创建页：%r" % (page.target_id,)
+
+
+def test_connect_picks_the_tab_that_holds_the_filled_form_not_a_visible_blank_one():
+    """真机实测（2026-10-14 晚）：浏览器里**同时有两个创建页标签**，
+    表单（22 张图 + 已推进到四组页）只在其中一个里，而**两个都是 hidden** ✗。
+
+    旧实现只按"可见"挑 → 反复挑到空标签 → 每次都要重传图片，
+    用户看到的现象像"表单自己丢了" ✗。⇒ 必须**按表单完成度**挑。
+    """
+    blank, filled = "ID-CREATE-BLANK", "ID-CREATE-FILLED"
+    env = _setup(
+        [FakeTarget(blank, CREATE_URL), FakeTarget(filled, CREATE_URL)],
+        visible_ids=set(),                      # 两个都不可见（真机实测情形）
+        focus_levers_work=True,
+        form_states={
+            blank: {"at_4groups": False, "required_marks": 1, "uploaded_imgs": 0, "title_len": 0},
+            filled: {"at_4groups": True, "required_marks": 13, "uploaded_imgs": 21, "title_len": 22},
+        },
+    )
+
+    _browser, page, _client, _session = xhs_browser.connect(9500)
+
+    assert page.target_id == filled, "挑到了空标签而不是带表单的那个：%r" % (page.target_id,)
+    assert env.created == [], "已有带表单的标签，却去新开了：%r" % (env.created,)
+
+
+def test_connect_uses_focus_levers_when_activation_alone_fails():
+    """真机实测（2026-10-14 晚）：`Target.activateTarget` 单独用**无效** ✗
+    （浏览器窗口不在前台时它只切"窗口内的当前标签"，创建页一直 hidden）
+    → 必须再走聚焦手段把标签救成 visible ✓，否则整条流程根本起不来。
+    """
+    env = _setup(_both_tabs(), visible_ids={HOME_ID},
+                 activation_works=False, focus_levers_work=True)
+
+    _browser, page, _client, _session = xhs_browser.connect(9500)
+
+    assert env.focus_levers, "激活无效后没有尝试任何聚焦手段"
+    assert "Emulation.setFocusEmulationEnabled" in env.focus_levers, (
+        "没用实测有效的那一手：%r" % (env.focus_levers,))
+    assert page.target_id == CREATE_ID, "救活后没有选中创建页：%r" % (page.target_id,)
+    assert env.created == [], "创建页标签明明可用，却去新开了：%r" % (env.created,)

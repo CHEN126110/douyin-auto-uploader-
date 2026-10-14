@@ -98,6 +98,34 @@ SERVICE_FIELDS = ("物流模板", "物流类型", "运费模板", "发货模式"
 #: 「信息已确认，下一步」——组间推进按钮（**不是**提交；真机文案）
 NEXT_STEP_TEXT = "信息已确认，下一步"
 
+#: 等平台"自动选中类目"的上限秒数（真机实测：标题写入 + 失焦后**异步**识别，不是瞬时 ✓）
+CATEGORY_AUTOSELECT_TIMEOUT = 12.0
+
+
+def wait_for_selected_category(page: Any, timeout: float = CATEGORY_AUTOSELECT_TIMEOUT,
+                               interval: float = 1.0) -> str:
+    """轮询等待平台**自动选中类目**，返回选中的类目路径（等不到则空串）。
+
+    为什么需要它（2026-10-14 真机实测 ✗）：写完标题后平台会异步做类目识别并**自动选中**
+    推荐类目，但**不是瞬时**。旧实现只在写标题后**读一次** `category_lines`，
+    那一瞬间还没有「已选类目：…」→ `allow_advance` 的守卫直接判"未选类目"并**拒绝推进** ✗，
+    整条链卡在第一步（同一现象本轮出现两次）。浏览器侧变更都是"最终一致"，
+    所以这里必须**轮询 + 设上限**（与 AGENTS.md 的既有纪律一致 ✓），
+    等不到才算真的没选，绝不"读一次就下结论"✗。
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + max(0.0, timeout)
+    last = ""
+    while True:
+        state = page.state() or {}
+        for line in state.get("category_lines") or []:
+            if line.startswith("已选类目：") and line.split("：", 1)[1].strip():
+                return line.split("：", 1)[1].strip()
+        if _time.monotonic() >= deadline:
+            return last
+        _time.sleep(interval)
+
 
 def select_category(page: XhsPage, category: str) -> dict:
     """选中类目（真机已验证的交互：按文本找**被绘制**的最小匹配元素再点）。
@@ -359,9 +387,17 @@ def run_fill_only(page: XhsPage, plan: FillPlan,
 
     # 5) 组间推进（不是提交）：展开 基础/图文/价格库存/服务 四组信息
     if plan.allow_advance:
-        if not plan.category and not any("已选" in line for line in report.get("category_lines") or []):
+        # 类目可能是平台**异步自动选中**的（见 `wait_for_selected_category`），
+        # 所以这里先轮询等一会儿，而不是读一次就拒绝 ✗。
+        selected = wait_for_selected_category(page)
+        if selected:
+            report["selected_category"] = selected
+            report["category_lines"] = (page.state() or {}).get("category_lines", [])
+        if not plan.category and not selected:
             report["ok"] = False
-            report["blocked"].append("未选类目，拒绝点下一步（平台会拦：请选择商品类目）")
+            report["blocked"].append(
+                "未选类目，拒绝点下一步（平台会拦：请选择商品类目；"
+                "已轮询 {} 秒仍未等到平台自动选中）".format(CATEGORY_AUTOSELECT_TIMEOUT))
             report["evidence"] = page.evidence()
             return report
         advance_result = page.run("advance_next", lambda: advance_next(page))

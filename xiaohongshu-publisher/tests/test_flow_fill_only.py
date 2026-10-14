@@ -405,3 +405,42 @@ def test_service_values_without_advance_are_ignored():
         service_values={"物流模板": "x"}))
     assert "service_fill" not in report
     assert "run:advance_next" not in page.actions
+
+
+# --- 类目自动选中是**异步**的：守卫必须轮询，不能读一次就拒绝 -------------------
+
+class AutoselectPage:
+    """前 N 次 `state()` 还没有「已选类目」，之后才有 —— 模拟平台的异步自动选中。"""
+
+    def __init__(self, appear_after: int) -> None:
+        self.calls = 0
+        self.appear_after = appear_after
+
+    def state(self):
+        self.calls += 1
+        if self.calls > self.appear_after:
+            return {"category_lines": ["商品类目",
+                                       "已选类目：女士内衣/男士内衣/家居服 > 短袜/打底袜/丝袜/美腿袜 > 中筒袜"]}
+        return {"category_lines": ["商品类目", "上传图片并完成标题后为您智能识别类目"]}
+
+
+def test_wait_for_selected_category_polls_until_it_appears():
+    """真机实测（2026-10-14）：写完标题后类目是**异步**自动选中的 ✗
+
+    读一次就判"未选类目"会让整条链卡在第一步（本轮出现两次）→ 必须轮询 ✓。
+    """
+    from xiaohongshu_publish.flow import wait_for_selected_category
+
+    page = AutoselectPage(appear_after=2)
+    selected = wait_for_selected_category(page, timeout=3.0, interval=0.01)
+
+    assert selected.endswith("中筒袜"), "没等到平台自动选中的类目：%r" % (selected,)
+    assert page.calls >= 3, "没有轮询（只读了 %d 次）" % (page.calls,)
+
+
+def test_wait_for_selected_category_returns_empty_when_never_selected():
+    """一直没选中就如实返回空串（**不编造类目** ✗），由调用方决定怎么报错。"""
+    from xiaohongshu_publish.flow import wait_for_selected_category
+
+    page = AutoselectPage(appear_after=10_000)
+    assert wait_for_selected_category(page, timeout=0.05, interval=0.01) == ""

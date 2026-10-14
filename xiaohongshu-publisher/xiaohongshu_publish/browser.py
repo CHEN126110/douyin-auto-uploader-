@@ -77,6 +77,112 @@ def _xhs_page_targets(browser: Any) -> list:
             if t.kind == "page" and "ark.xiaohongshu.com" in (t.url or "")]
 
 
+#: 把标签救成 `visible` 的候选手段（真机实测排序，2026-10-14 晚）。
+#:
+#: 为什么需要：`Target.activateTarget` **在当前环境 12 秒内完全无效** ✗
+#: （浏览器窗口不在前台时，它只切"窗口内的当前标签"，不改窗口的前台状态），
+#: 于是创建页标签始终 `hidden` → 按纪律 1 拒绝点击 → 整条流程无法开始。
+#:
+#: 逐个实测（都轮询确认，浏览器侧"最终一致"✓）：
+#:   1. `Emulation.setFocusEmulationEnabled` → **立即 visible** ✓（本轮实际生效的手段）
+#:   2. `Page.setWebLifecycleState {state:'active'}` → 之后也是 visible ✓
+#:   3. `Page.bringToFront` → 之后也是 visible ✓
+#: 三者都用 session 作用在**目标标签自己**身上；任何一个都不能省掉轮询 ✓。
+_FOCUS_LEVERS = (
+    ("Emulation.setFocusEmulationEnabled", {"enabled": True}),
+    ("Page.setWebLifecycleState", {"state": "active"}),
+    ("Page.bringToFront", {}),
+)
+
+
+def _try_focus_levers(browser: Any, target: Any) -> list:
+    """让目标标签进入"可操作"状态；返回**每个手段是否报错**的证据列表。
+
+    只改标签的聚焦 / 生命周期状态（浏览器侧，不是平台写入）✓；不点击、不填写。
+    """
+    applied: list = []
+    try:
+        session = browser.attach(target.target_id)
+    except Exception as error:  # noqa: BLE001 - attach 失败也要如实带出
+        return [{"lever": "attach", "error": str(error)[:160]}]
+    for method, params in _FOCUS_LEVERS:
+        try:
+            browser.call(method, dict(params), session_id=session)
+            applied.append({"lever": method, "ok": True})
+        except Exception as error:  # noqa: BLE001 - 某个手段不支持不该中断其余手段
+            applied.append({"lever": method, "ok": False, "error": str(error)[:160]})
+    return applied
+
+
+def _visible_probe(client: Any) -> bool:
+    return client.evaluate("document.visibilityState") == "visible"
+
+
+#: 评估"这个创建页标签里有多少已填内容"的表达式：只读，不点击不填写 ✓
+#:
+#: 为什么要它（2026-10-14 真机实测 ✗）：浏览器里**同时存在两个创建页标签**，
+#: 表单状态（已传 22 图 + 已推进到四组页 + 标题）只在其中一个里，
+#: 而**_两个都可能是 hidden**。旧实现只按"可见"挑 → 反复挑到空标签 →
+#: 每次都要重传图片，用户看到的现象却像"表单自己丢了" ✗。
+#: **可见性不是"哪个标签对"的判据** ✓；表单完成度才是。
+FORM_STATE_PROBE = """(() => {
+  const visible=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);
+    return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
+  const lines=(document.body.innerText||'').split('\\n').map(t=>t.trim()).filter(Boolean);
+  const titleInput=Array.from(document.querySelectorAll('input[type=text]')).filter(visible)
+    .find(e=>/品牌/.test(e.placeholder||''));
+  return {
+    href: location.href.split('?')[0],
+    at_4groups: lines.includes('价格库存') || lines.includes('服务信息'),
+    required_marks: document.querySelectorAll('[class*="required-icon"]').length,
+    // 只数平台预览域上的图（其余是页面自身图标）
+    uploaded_imgs: Array.from(document.querySelectorAll('img')).filter(visible)
+      .filter(i => (i.getAttribute('src') || i.src || '').includes('ros-preview')).length,
+    title_len: titleInput ? (titleInput.value || '').length : 0,
+  };
+})()"""
+
+
+def _form_score(state: dict) -> tuple:
+    """把一张表单的"已填程度"变成可比大小的元组（越大越该被选中）。
+
+    排序依据（真机实测的可靠信号）：**已推进到四组页** > 平台图更多 > 必填标记更多 > 标题更长。
+    刻意**不**把"可见"放进来：实测带表单的标签可能正是 hidden 的那个 ✗。
+    """
+    return (1 if state.get("at_4groups") else 0,
+            int(state.get("uploaded_imgs") or 0),
+            int(state.get("required_marks") or 0),
+            int(state.get("title_len") or 0))
+
+
+def _pick_richest_create_tab(targets: list) -> tuple:
+    """从候选创建页标签里挑**表单最完整**的一个；返回 `(target, state, probe)`。
+
+    读状态是只读的 ✓；读不到状态的候选会被跳过（不猜、不把它当首选）。
+    调用方负责关掉未选中的 probe。
+    """
+    best = None
+    for target in targets:
+        probe = None
+        try:
+            probe = PageClient.connect(target.web_socket_url, target_url=target.url)
+            state = probe.evaluate(FORM_STATE_PROBE) or {}
+        except Exception:  # noqa: BLE001 - 读不到的候选跳过，不中断其余候选
+            if probe is not None:
+                probe.close()
+            continue
+        score = _form_score(state)
+        if best is None or score > best[0]:
+            if best is not None:
+                best[3].close()
+            best = (score, target, state, probe)
+        else:
+            probe.close()
+    if best is None:
+        raise RuntimeError("读到创建页标签，但都读不出表单状态（不做猜测）")
+    return best[1], best[2], best[3]
+
+
 def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
     """连接真机并返回 `(browser, page, client, session_id)`。
 
@@ -109,30 +215,38 @@ def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
         probe = None
         chosen = None
 
-        # ① 创建页已在前台：直接用
-        for target in create_targets:
-            probe = PageClient.connect(target.web_socket_url, target_url=target.url)
-            if probe.evaluate("document.visibilityState") == "visible":
-                chosen = target
-                break
-            probe.close()
-            probe = None
+        # ① 有创建页标签 → **按表单完成度挑**（不是按可见性 ✗）
+        #    真机实测：可能同时开着多个创建页，表单只在其中一个里，而两个都可能是 hidden；
+        #    只按"可见"挑会反复挑到空标签 → 看起来像"表单自己丢了" ✗。
+        if create_targets:
+            chosen, chosen_state, probe = _pick_richest_create_tab(create_targets)
 
-        # ② 创建页在后台：激活它，再确认可见（纪律 1：隐藏标签不能点）
-        if chosen is None and create_targets:
-            target = create_targets[0]
-            browser.call("Target.activateTarget", {"targetId": target.target_id})
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                time.sleep(0.5)
-                probe = PageClient.connect(target.web_socket_url, target_url=target.url)
-                if probe.evaluate("document.visibilityState") == "visible":
-                    chosen = target
-                    break
+            # ② 挑中的标签不可见 → 先 activateTarget，再走聚焦手段 + 轮询（纪律 1）
+            if not _visible_probe(probe):
+                browser.call("Target.activateTarget", {"targetId": chosen.target_id})
+                _try_focus_levers(browser, chosen)
+                deadline = time.monotonic() + 12
+                while time.monotonic() < deadline:
+                    time.sleep(0.5)
+                    if _visible_probe(probe):
+                        break
+
+            if not _visible_probe(probe):
+                # ③ 救不活时分两种情况（**按表单内容区分**，这比一刀切更贴合真实需求）：
+                if _form_score(chosen_state) != (0, 0, 0, 0):
+                    # 有已填内容 → **绝不新开**（新开等于把已传的图/已填的字段丢掉 ✗），
+                    # 如实报错让调用方处理（例如提示用户把窗口切到前台）✓
+                    raise RuntimeError(
+                        "创建页标签不可见但**已有已填内容**（图 {} 张 / 必填标记 {} 项）："
+                        "拒绝新开标签以免丢失表单，按纪律 1 不做任何点击。"
+                        "请把浏览器窗口切到前台后重试".format(
+                            chosen_state.get("uploaded_imgs"), chosen_state.get("required_marks")))
+                # 空表单：新开一个可操作的前台标签页划算（没有内容可丢）✓
                 probe.close()
                 probe = None
+                chosen = None
 
-        # ③ 没有创建页标签 / 激活无效 → 新开前台标签页并等它加载出创建页
+        # ④ 没有创建页标签 / 挑中的空标签救不活 → 新开并等它加载出创建页
         if chosen is None:
             created = browser.call("Target.createTarget", {"url": CREATE_URL})
             new_id = (created or {}).get("targetId")
@@ -149,9 +263,19 @@ def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
                     "打不开商品创建页标签（%s）：Target.createTarget 未返回可用的创建页" % CREATE_URL)
             time.sleep(5.0)  # 新标签页要等它自己加载出首屏（导航会销毁执行上下文）
             probe = PageClient.connect(fresh.web_socket_url, target_url=fresh.url)
-            if probe.evaluate("document.visibilityState") != "visible":
+            # 新开标签**未必可见**（2026-10-14 实测：浏览器窗口不在前台时它是 hidden ✗）
+            # → 同样先用聚焦手段救，再轮询；救不活就明确报错，**不硬点** ✓
+            if not _visible_probe(probe):
+                _try_focus_levers(browser, fresh)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    time.sleep(0.5)
+                    if _visible_probe(probe):
+                        break
+            if not _visible_probe(probe):
                 raise RuntimeError(
-                    "新开的创建页标签不可见，按纪律 1 拒绝操作（不做任何点击）")
+                    "新开的创建页标签不可见（已尝试 setFocusEmulationEnabled / "
+                    "setWebLifecycleState / bringToFront 并轮询），按纪律 1 拒绝操作")
             chosen = fresh
 
         # ④ 落点必须真的是创建页，否则明确报错（防止再次跑错页面）
