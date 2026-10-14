@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -199,6 +201,41 @@ def fill_gaps(page: XhsPage, filler, max_rounds: int = 3) -> dict:
     return {"rounds": history, "final": required_gaps(page)}
 
 
+def describe_images(paths: list) -> list:
+    """上传前对图片做**只读自检**，结果写进报告（计划 1.2）。
+
+    为什么需要它：上传失败时界面上只看到「图片上传未成功」✗，而真正的原因
+    （路径不存在 / 超过 5M / 格式不对）都在**本地预检**里 —— 把这三项如实带出来，
+    下一次失败就能一眼定位，不用再猜 ✓。
+
+    只读、无副作用；不做任何平台写入 ✓。返回每条一项：
+    ``{path, exists, size_mb, ok, problem}``。
+    """
+    described: list = []
+    for raw in paths or []:
+        text = str(raw)
+        entry = {"path": text, "exists": False, "size_mb": None, "ok": False,
+                 "problem": ""}
+        try:
+            candidate = Path(text)
+            if not candidate.is_file():
+                entry["problem"] = "本地图片不存在"
+            else:
+                size = candidate.stat().st_size
+                entry["exists"] = True
+                entry["size_mb"] = round(size / 1048576.0, 3)
+                if size > 5 * 1024 * 1024:
+                    entry["problem"] = "超过 5M（平台会拒绝）"
+                elif candidate.suffix.lower() not in (".jpg", ".jpeg", ".png"):
+                    entry["problem"] = "格式平台不收（只收 .jpg/.jpeg/.png）"
+                else:
+                    entry["ok"] = True
+        except OSError as error:  # noqa: BLE001 - 读不到就如实记，不吞错
+            entry["problem"] = "无法读取：{}".format(error)
+        described.append(entry)
+    return described
+
+
 def run_fill_only(page: XhsPage, plan: FillPlan,
                   upload_fn: Callable[[list], dict] | None = None) -> dict:
     """执行 fill_only。返回结构化结果（含逐步证据），不抛业务异常。
@@ -225,6 +262,9 @@ def run_fill_only(page: XhsPage, plan: FillPlan,
 
     # 2) 图片：写入操作 → 必须授权
     if plan.images:
+        # 只读自检放在**授权判断之前**（计划 1.2）：未授权时也能看到"本来会传哪些图、是否存在"✓
+        # —— 这一步不做任何平台写入 ✓，因此不需要授权。
+        report["resolved_images"] = describe_images(plan.images)
         if not plan.allow_upload:
             report["ok"] = False
             report["blocked"].append(
