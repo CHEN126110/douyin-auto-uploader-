@@ -1094,7 +1094,26 @@ async function handleXhsFill() {
       );
     } else {
       const blocked = Array.isArray(report?.blocked) ? report.blocked.join("；") : "未知原因";
-      await ElMessageBox.alert(`未完成填表：${blocked}`, "填表结果", { type: "warning" });
+      // 失败时把**具体原因**一并带出来（计划 1.1）：否则只看到「图片上传未成功」这类笼统话 ✗，
+      // 无法判断是路径不存在、超 5M、格式不对，还是点完没出现文件框。
+      const details: string[] = [];
+      for (const step of Array.isArray(report?.steps) ? report.steps : []) {
+        if (step && step.ok === false && step.reason) details.push(`${step.name}：${step.reason}`);
+      }
+      for (const item of Array.isArray(report?.resolved_images) ? report.resolved_images : []) {
+        if (item && item.ok === false) {
+          const name = String(item.path || "").split(/[\\/]/).pop() || "(未命名)";
+          details.push(`图片 ${name}：${item.problem || "不可用"}`);
+        }
+      }
+      const gaps = report?.gaps;
+      if (gaps && Array.isArray(gaps.unfilled) && gaps.unfilled.length) {
+        details.push(`仍缺必填：${gaps.unfilled.join("、")}`);
+      }
+      const text = details.length
+        ? `未完成填表：${blocked}；具体原因 —— ${details.join("；")}`
+        : `未完成填表：${blocked}`;
+      await ElMessageBox.alert(text, "填表结果", { type: "warning" });
     }
   } catch (error) {
     closeUploadLoading();
