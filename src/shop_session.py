@@ -585,9 +585,23 @@ def list_profiles() -> List[Dict[str, Any]]:
         # 只是没有店铺身份——展示时据实说明，不拿账户 ID 冒充店铺 ID。
         has_verified_identity = bool(item.get("shop_id") or item.get("account_id"))
         if not has_verified_identity:
+            # 默认名按**平台**取，不能用"是淘宝吗？否则抖音"这种二选一 ✗ ——
+            # 那会把小红书静默落成「抖音账户」（2026-10-14 真机截图实测：
+            # 小红书账户 `xhs-c25c5a77` 显示成「抖音账户 c25c5a77」）✗。
+            #
+            # 这里的三个短名是**账户默认名专用**，与 `PLATFORM_LABELS`（界面里的
+            # "抖音 / 抖店"）刻意不同：抖店那句是给选择器用的长名，
+            # 直接套过来会把抖音账户名从「抖音账户 xxx」改成「抖音 / 抖店账户 xxx」✗
+            # （实测被 `test_every_account_platform_gets_its_own_default_label` 抓到）。
+            # 未知平台退回它自己的标识（**不冒充别的平台** ✓）。
+            account_name = {
+                "douyin": "抖音",
+                "taobao": "淘宝",
+                "xiaohongshu": "小红书千帆",
+            }.get(item["platform"], item["platform"])
             default_label = (
                 "默认抖音账户" if slug == DEFAULT_PROFILE_NAME
-                else "{}账户 {}".format("淘宝" if item["platform"] == "taobao" else "抖音", slug[-8:])
+                else "{}账户 {}".format(account_name, slug[-8:])
             )
             item["label"] = _profile_label(item.get("label")) or default_label
             item["shop_id"] = None

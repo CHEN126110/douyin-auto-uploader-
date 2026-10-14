@@ -81,8 +81,21 @@ const accountActionsDisabled = computed(() => actionBusy.value || !checked.value
 
 watch(busy, (value) => emit("busy-change", value), { flush: "sync" });
 
-function platformName(platform: TargetPublishPlatform) {
-  return platform === "douyin" ? "抖音" : "淘宝";
+/** 平台中文名（账户菜单、移除确认、状态提示共用）。
+ *
+ * ⚠️ 这里原来是 `platform === "douyin" ? "抖音" : "淘宝"` —— **把小红书静默落成"淘宝"** ✗
+ * （2026-10-14 真机截图实测：小红书账户在菜单里显示成「淘宝 抖音账户 c25c5a77」）。
+ * 这与后端 `shop_session.PLATFORM_LABELS` 是同一类"新平台没有分支就套用旧平台"的缺陷，
+ * 本仓库已多次踩过 ⇒ 改成显式映射，**未知平台返回它自己的标识**而不是冒充别的平台 ✓。
+ */
+const PLATFORM_NAMES: Record<string, string> = {
+  douyin: "抖音",
+  taobao: "淘宝",
+  xiaohongshu: "小红书千帆",
+};
+
+function platformName(platform: TargetPublishPlatform | string) {
+  return PLATFORM_NAMES[platform] || String(platform || "未知平台");
 }
 
 function isValidProfileName(value: unknown): value is string {

@@ -279,6 +279,39 @@ class PlatformAccountTest(unittest.TestCase):
         self.assertIsNone(entry["shop_name"])
         self.assertTrue(entry["is_active"])
 
+    def test_every_account_platform_gets_its_own_default_label(self) -> None:
+        """每个平台的默认账户名必须是**它自己的**，不许套用别的平台 ✗。
+
+        真机实测（2026-10-14 截图）：小红书账户 `xhs-c25c5a77` 在应用里显示成
+        「抖音账户 c25c5a77」✗ —— 因为旧写法是
+        `"淘宝" if platform == "taobao" else "抖音"`，小红书静默落进了 else 分支。
+        这与 `AGENTS.md` 早已记录的"新平台不加分支就会被误用旧平台读法"是同一类缺陷，
+        所以在**展示层**也要有回归守着 ✓。
+        """
+        expected = {
+            "douyin": "抖音账户 ",
+            "taobao": "淘宝账户 ",
+            "xiaohongshu": "小红书千帆账户 ",
+        }
+        self.assertEqual(set(expected), set(shop_session.ACCOUNT_PLATFORMS),
+                         "有平台没被这条回归覆盖：加平台时请同步 expected ✓")
+        for platform, prefix in expected.items():
+            with self.subTest(platform=platform):
+                slug = shop_session.create_profile(platform=platform)
+                shop_session.set_active_profile(slug)
+                entry = next(item for item in shop_session.list_profiles()
+                             if item["profile_name"] == slug)
+                self.assertEqual(entry["platform"], platform)
+                self.assertTrue(entry["label"].startswith(prefix),
+                                "平台 %s 的默认名是 %r，应以 %r 开头"
+                                % (platform, entry["label"], prefix))
+                # 关键断言：**不许**出现别的平台名（尤其小红书不许落成"抖音账户"）✗
+                for other_platform, other_prefix in expected.items():
+                    if other_platform == platform:
+                        continue
+                    self.assertNotIn(other_prefix.strip(), entry["label"],
+                                     "平台 %s 的默认名混入了 %s" % (platform, other_platform))
+
     def test_platform_is_immutable_and_failure_does_not_modify_registry(self) -> None:
         slug = shop_session.create_profile(platform="taobao", label="淘宝备注")
         path = Path(shop_session.registry_path())
