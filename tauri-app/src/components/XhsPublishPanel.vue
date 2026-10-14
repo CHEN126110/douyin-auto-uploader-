@@ -42,60 +42,22 @@
 
     <el-divider />
 
-    <el-form label-width="96px" size="small" @submit.prevent>
-      <el-form-item label="商品标题">
-        <el-input v-model="title" maxlength="60" show-word-limit
-                  placeholder="16-60 个字符（8-30 个字，汉字按 2 计）" />
-      </el-form-item>
-      <el-form-item label="类目短名">
-        <el-input v-model="category" placeholder="如：长筒袜（与智能推荐/类目选项一致）" />
-        <div class="xhs-hint">留空则不代替人选类目；填了会尝试点选并推进到四组信息。</div>
-      </el-form-item>
-      <el-form-item label="图片">
-        <el-checkbox v-model="allowUpload">授权上传（写入平台素材空间）</el-checkbox>
-        <div class="xhs-hint">未勾选时只会填标题，不会上传任何图片。</div>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" :loading="running" @click="runFillOnly">填满（不提交）</el-button>
-        <span class="xhs-hint">永远不点提交上架；下一步只是组间推进</span>
-      </el-form-item>
-    </el-form>
-
-    <template v-if="report">
-      <el-alert :type="report.ok ? 'success' : 'error'" :closable="false" show-icon
-                :title="report.ok ? '填写完成（已停在提交前）' : '未能完成'" />
-      <ul v-if="report.blocked && report.blocked.length" class="xhs-lines xhs-blocked">
-        <li v-for="(item, index) in report.blocked" :key="index">{{ item }}</li>
-      </ul>
-      <el-descriptions v-if="report.title_check" :column="2" size="small" border>
-        <el-descriptions-item label="标题字数">{{ report.title_check.words }} 个字</el-descriptions-item>
-        <el-descriptions-item label="平台计数">{{ report.title_check.units }}/60</el-descriptions-item>
-      </el-descriptions>
-    </template>
+    <p class="xhs-hint">
+      本卡片只做**只读体检**（计划 3.1）。填表入口统一在「商品管理」页的「小红书填表」，
+      这里不再放第二个填表按钮 —— 两套入口会各传一份参数，参数一旦不一致就难查 ✗。
+    </p>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 
 type XhsStatus = Awaited<ReturnType<typeof api.getXhsStatus>>['data']
 
-type XhsReport = {
-  ok: boolean
-  blocked?: string[]
-  title_check?: { words: number; units: number }
-}
-
 const status = ref<XhsStatus | null>(null)
 const statusError = ref('')
 const checking = ref(false)
-const running = ref(false)
-const title = ref('')
-const category = ref('')
-const allowUpload = ref(false)
-const report = ref<XhsReport | null>(null)
 
 /** 把三套完成度判据拼成一行（各取第一条，缺失则跳过）。 */
 const judgeSummary = computed(() => {
@@ -112,38 +74,11 @@ async function checkStatus() {
     status.value = (response?.data ?? null) as XhsStatus | null
   } catch (error) {
     status.value = null
-    statusError.value = `小红书调试浏览器不可达（9336）：${String(error)}`
+    // 端口不写死 ✗：来源是接口返回的 status.port（唯一来源，见计划 3.2）。
+    // 接口不可达时拿不到端口，就如实说"不可达"，不编一个数字。
+    statusError.value = `小红书调试浏览器不可达：${String(error)}`
   } finally {
     checking.value = false
-  }
-}
-
-async function runFillOnly() {
-  if (!title.value.trim()) {
-    ElMessage.warning('请先填商品标题')
-    return
-  }
-  running.value = true
-  report.value = null
-  try {
-    // allow_upload 默认 false：不勾选就绝不会触发上传（服务端也会再兜一次默认值）
-    const response = await api.xhsFillOnly({
-      title: title.value.trim(),
-      allow_upload: allowUpload.value,
-      allow_advance: true,
-      category: category.value.trim(),
-      service_values: {
-        物流模板: "【系统创建】物流模板默认—联系人",
-        运费模板: "系统默认-全国包邮模版",
-        物流类型: "普通内贸",
-      },
-    })
-    report.value = (response?.data ?? null) as XhsReport | null
-    if (report.value?.ok === false) ElMessage.warning('未完成，请看下方原因')
-  } catch (error) {
-    ElMessage.error(`执行失败：${String(error)}`)
-  } finally {
-    running.value = false
   }
 }
 </script>
