@@ -9,9 +9,10 @@
 
 | 项 | 值 |
 |---|---|
-| 调试端口 | **9336**（抖店 9333、淘宝 9334 不复用） |
-| 独立 profile | `.runtime/chrome-xhs-cdp` |
-| 启动方式 | 复用 `protocol-research-taobao-20260908/scripts/start-taobao-cdp-chrome.mjs`（它本来就参数化：`TAOBAO_CDP_PORT` / `TAOBAO_CDP_PROFILE_DIR` / `TAOBAO_PUBLISH_URL`） |
+| 调试端口 | **9500**（应用内实际使用；早期研究阶段用过 9336 ✗ 已作废；抖店 9333、淘宝 9334 同样不复用） |
+| 唯一来源 | 后端常量 `src/shop_session.py:XHS_CDP_PORT` ✓ + 接口 `payload.port` ✓ —— **前端不写端口字面量** ✗ |
+| 独立 profile | 由应用管理，落在数据目录下 `xhs-<hash>`（实测 `xhs-c25c5a77` ✓）；早期研究用的 `.runtime/chrome-xhs-cdp` 仅探针使用 ✓ |
+| 启动方式 | 应用内由「添加发布账户 → 小红书千帆」打开（`XHS_HOME_URL` ✓）；研究探针可复用 `protocol-research-taobao-20260908/scripts/start-taobao-cdp-chrome.mjs`（参数 `TAOBAO_CDP_PORT` / `TAOBAO_CDP_PROFILE_DIR` / `TAOBAO_PUBLISH_URL`） |
 | 登录 | 人工完成（跳 `customer.xiaohongshu.com/login`），登录态随 profile 持久化 |
 | 创建页 | `https://ark.xiaohongshu.com/app-item/good/create`（多步向导） |
 | 探针目录 | `tmp/`（gitignore），脱敏产物才进 `captures/` |
@@ -38,7 +39,7 @@
    标 `identity_evidence = "candidate"` ✓，不冒充接口级 ✓；读不到一律 `None`，
    上层如实显示「未读到」，**不得拿本地账户备注冒充店铺身份** ✓。
 
-## 四条实现纪律（全部由真机失败逼出来，违反就会踩坑）
+## 五条实现纪律（全部由真机失败逼出来，违反就会踩坑）
 
 1. **必须在可见标签页里操作。** `document.visibilityState !== 'visible'` 时**不执行点击**
    （隐藏标签页会被浏览器节流，点击静默失效 → 会被误判成"控件不存在"）。
@@ -61,6 +62,14 @@
 4. **素材空间抽屉是覆盖式的（drawer + mask + footer），开着就点不到页面控件。**
    任何针对创建页表单的操作前，先确认 `[class*="material-space-drawer"]` 可见数量为 0。
    关抽屉的正确办法是点**它自己的「取消」按钮**（点遮罩、按 Esc 实测都关不掉）。
+5. **「标签页可见」不等于「在对的页面上」** —— 连接时必须**同时**满足两件事 ✓✓
+   （2026-10-14 真机踩过 ✗）：`connect()` 原来只挑"可见"的千帆标签 ✗，
+   而应用里可见的常常是**后台首页**（`app-system/home`）✗ → 整条填表跑在首页上 →
+   上传第一步找不到 `upload-trigger__label` ✗ → 界面只报「图片上传未成功」✗（原因被完全掩盖 ✗）。
+
+   → 规则：**创建页标签优先**（`good/create`）✓，没有就 `Target.createTarget(CREATE_URL)`
+   **开一个并等它加载出首屏** ✓；都拿不到就**明确报错**，**绝不退化成"拿可见的那页凑合"** ✗。
+   验证方式：连接后先读 `location.href` 断言在创建页 ✓（`required_count` 首页为 0、创建页为 1 ✓）。
 
 ### 补充：浏览器侧的变更都是「最终一致」，别查一次就下结论
 
