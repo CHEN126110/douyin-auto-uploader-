@@ -4390,6 +4390,43 @@ def _resolve_taobao_shop_browser():
     return '', {}, 'none'
 
 
+def _resolve_xiaohongshu_shop_browser():
+    """小红书分支：在账户浏览器端口段里找带着千帆页面的调试实例。
+
+    刻意**不走** ``_find_reusable_logged_in_fxg_browser``：那条链会按抖店
+    登录态筛选，千帆浏览器会被滤掉（真机实测 shop/current 报 no_browser，
+    而 9500 上千帆首页明明白白开着）。这里直接扫
+    ``_SHOP_BROWSER_PORT_START..END``，用页面域名判定，不做登录验证
+    （登录态由 ``shop_session.read_xiaohongshu_identity`` 实测）。
+    """
+    from urllib.error import URLError
+    from urllib.request import urlopen
+
+    fallback = None
+    for port in range(_SHOP_BROWSER_PORT_START, _SHOP_BROWSER_PORT_END + 1):
+        address = '{}:{}'.format(_DEBUG_BROWSER_HOST, port)
+        try:
+            with urlopen('http://{}/json/list'.format(address), timeout=0.4) as resp:
+                targets = json.loads(resp.read().decode('utf-8', errors='replace'))
+        except (URLError, OSError, ValueError):
+            continue
+        for target in targets:
+            if target.get('type') != 'page':
+                continue
+            url = str(target.get('url') or '')
+            if url.startswith('devtools://'):
+                continue
+            if not any(domain in url for domain in shop_session.XHS_DOMAINS):
+                continue
+            info = _find_debug_browser_process(address) or {'debug_address': address}
+            if 'ark.xiaohongshu.com' in url:
+                return address, info, 'xhs_ark_page'
+            if fallback is None:
+                fallback = (address, info, 'xhs_page')
+    if fallback is not None:
+        return fallback
+    return '', {}, 'none'
+
 def _resolve_active_shop_browser(platform='douyin'):
     """找出「发布流程这一刻会用到的浏览器」的调试地址。
 
@@ -4409,6 +4446,9 @@ def _resolve_active_shop_browser(platform='douyin'):
 
     if shop_session.normalize_platform(platform) == 'taobao':
         return _resolve_taobao_shop_browser()
+
+    if shop_session.normalize_platform(platform) == 'xiaohongshu':
+        return _resolve_xiaohongshu_shop_browser()
 
     try:
         reusable = _find_reusable_logged_in_fxg_browser(verify=True)
@@ -4976,6 +5016,7 @@ def get_products():
             record_list.append({
                 'id': record.id,
                 'name': record.name if len(arr) < 4 else arr[3],
+                'status': record.status,
                 'update_time': record.update_time.strftime('%Y-%m-%d %H:%M')
             })
         
@@ -8965,12 +9006,14 @@ def _run_taobao_publish_task(task_id, row, request_payload, options):
             task['started_at'] = datetime.now().isoformat()
 
         # 主页面填写动作只授权本次上传/表单阶段，不读取全局提交开关。
-        # legacy 研究入口继续使用其显式环境授权，二者不会互相扩权。
-        authorization = (
-            WriteAuthorization.for_form_filling()
-            if options.get('fill_only') is True
-            else WriteAuthorization.from_environment()
-        )
+        # 主页面「直接发布」在界面确认后一次性放行到提交，同样不读环境变量。
+        # legacy 研究入口继续使用其显式环境授权，三者不会互相扩权。
+        if options.get('fill_only') is True:
+            authorization = WriteAuthorization.for_form_filling()
+        elif options.get('dry_run') is False and options.get('stop_before_submit') is False:
+            authorization = WriteAuthorization.for_confirmed_publish()
+        else:
+            authorization = WriteAuthorization.from_environment()
         # 桌面填写先走整目录素材准备，发布页仅消费完整回执。
         # 未启用该准备阶段的研究入口仍沿用原协议路线；显式环境配置优先。
         os.environ.setdefault('TAOBAO_MEDIA_ROUTE', 'protocol')
@@ -9301,6 +9344,240 @@ def taobao_publish_start():
     mode = '校对（dry-run，不写平台）' if options['dry_run'] else '写入'
     return api_ok(msg='淘宝{}任务已启动'.format(mode), data={
         'task_id': task_id,
+        'dry_run': options['dry_run'],
+        'stop_before_submit': options['stop_before_submit'],
+    })
+
+
+_CATEGORY_LABELS = {0: '船袜', 1: '短袜', 2: '中筒袜', 3: '长筒袜', 4: '袜套'}
+
+
+def _taobao_product_from_record(record):
+    """从 Record 构建淘宝商品请求载荷。纯函数，供批量发布使用。"""
+    try:
+        sku_list = _json.loads(record.content) if record.content else []
+    except (ValueError, TypeError):
+        sku_list = []
+
+    clazz_raw = record.clazz
+    if isinstance(clazz_raw, int):
+        keyword = _CATEGORY_LABELS.get(clazz_raw, '')
+    else:
+        keyword = str(clazz_raw or '').strip()
+
+    stock = int(record.repo or 0)
+    skus = []
+    for s in sku_list:
+        if not isinstance(s, dict):
+            continue
+        name = str(s.get('name') or '').strip()
+        try:
+            price = float(s.get('price', 0))
+        except (ValueError, TypeError):
+            price = 0
+        if not name or price <= 0:
+            continue
+        entry = {'spec_values': {'颜色分类': name}, 'price': price, 'stock': stock}
+        img = str(s.get('path') or '').strip()
+        if img:
+            entry['image_path'] = img
+        skus.append(entry)
+
+    return {
+        'title': (record.title or '').strip() or (record.name or '').strip(),
+        'category_keyword': keyword,
+        'sku_mode': 'custom',
+        'outer_id': (record.name or '').strip(),
+        'skus': skus,
+    }
+
+
+def _run_taobao_publish_batch_task(task_id, options):
+    """批量淘宝发布 worker：依次处理全部 status=0 商品。"""
+    records = list(Record.select().where(Record.status == 0).order_by(Record.id))
+    total = len(records)
+    if total == 0:
+        with _taobao_tasks_lock:
+            task = _taobao_tasks.get(task_id)
+            if task:
+                task['status'] = 'failed'
+                task['message'] = '没有待上传的商品'
+                task['finished_at'] = datetime.now().isoformat()
+        return
+
+    def _report_progress(pct, msg, step_name, steps):
+        with _taobao_tasks_lock:
+            task = _taobao_tasks.get(task_id)
+            if not task:
+                return
+            task['progress'] = int(pct)
+            task['message'] = msg
+            task['current_step'] = step_name
+            task['steps'] = list(steps)
+
+    def _should_cancel():
+        with _taobao_tasks_lock:
+            task = _taobao_tasks.get(task_id)
+            return bool(task and task.get('cancelled'))
+
+    os.environ.setdefault('TAOBAO_MEDIA_ROUTE', 'protocol')
+    from taobao_publish.folder_import import make_preparer
+    from taobao_publish.authorization import WriteAuthorization
+
+    if options.get('fill_only') is True:
+        auth = WriteAuthorization.for_form_filling()
+    elif options.get('dry_run') is False and options.get('stop_before_submit') is False:
+        auth = WriteAuthorization.for_confirmed_publish()
+    else:
+        auth = WriteAuthorization.from_environment()
+
+    cdp_list_url = options.get('cdp_list_url', '')
+    account_profile = str(options.get('account_profile') or '')
+
+    results = []
+    succeeded = 0
+    failed = 0
+    for idx, record in enumerate(records):
+        if _should_cancel():
+            with _taobao_tasks_lock:
+                task = _taobao_tasks.get(task_id)
+                if task:
+                    task['status'] = 'cancelled'
+                    task['message'] = '批量发布已取消（{}/{}）'.format(idx, total)
+                    task['finished_at'] = datetime.now().isoformat()
+            return
+        base_pct = int((idx / total) * 100)
+        _report_progress(base_pct,
+                         '批量发布 {}/{}：{}'.format(idx + 1, total, record.name or record.id),
+                         'batch', [])
+
+        product = _taobao_product_from_record(record)
+        row = dict(record.__data__)
+        request_payload = {
+            'record_id': record.id,
+            'record_name': row.get('name') or '商品{}'.format(record.id),
+        }
+        translated = _taobao_product_request_payload(product, record=row)
+        if translated is not None:
+            translated['record_id'] = record.id
+            translated['record_name'] = request_payload['record_name']
+            request_payload = translated
+
+        try:
+            pipeline = _load_taobao_pipeline()
+            result = pipeline.run_from_record(
+                row,
+                request_payload,
+                dry_run=options.get('dry_run', True),
+                stop_before_submit=options.get('stop_before_submit', True),
+                authorization=auth,
+                progress_callback=_report_progress,
+                cdp_list_url=cdp_list_url,
+                account_profile=account_profile,
+                media_preparer=make_preparer(account_profile, cdp_list_url) if options.get('fill_only') else None,
+                write_artifact=False,
+                should_cancel=_should_cancel,
+                listing_mode=options.get('listing_mode', ''),
+                save_draft=options.get('save_draft', False),
+            )
+            payload = result.to_dict()
+            ok = bool(payload.get('success'))
+            if ok:
+                succeeded += 1
+            else:
+                failed += 1
+            results.append({'record_id': record.id, 'name': record.name, 'success': ok,
+                            'error': (payload.get('error') or {}).get('message') or ''})
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            results.append({'record_id': record.id, 'name': record.name, 'success': False,
+                            'error': '{}: {}'.format(type(exc).__name__, exc)})
+
+    with _taobao_tasks_lock:
+        task = _taobao_tasks.get(task_id)
+        if not task:
+            return
+        task['progress'] = 100
+        task['result'] = {'success': failed == 0, 'results': results,
+                          'succeeded': succeeded, 'failed': failed, 'total': total}
+        if failed == 0:
+            task['status'] = 'succeeded'
+            task['message'] = '批量发布完成：{}/{} 成功'.format(succeeded, total)
+        else:
+            task['status'] = 'succeeded' if succeeded > 0 else 'failed'
+            task['message'] = '批量发布结束：{} 成功 / {} 失败 / 共 {}'.format(succeeded, failed, total)
+        task['publish_confirmed'] = False
+        task['finished_at'] = datetime.now().isoformat()
+
+
+@app.post('/api/taobao/publish/start-all')
+@_with_shop_account_lock
+def taobao_publish_start_all():
+    """一键批量淘宝发布全部待上传商品（status=0）。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, msg='请求必须是 JSON 对象'), 400
+    if data.get('platform', 'taobao') != 'taobao':
+        return jsonify(success=False, msg='淘宝接口只能处理淘宝商品'), 400
+
+    parsed, options_error = _parse_taobao_publish_options(data)
+    if options_error is not None:
+        return jsonify(success=False, msg=options_error), 400
+
+    error = _require_publish_platform('taobao', data.get('account_profile'))
+    if error is not None:
+        return error
+
+    records = list(Record.select().where(Record.status == 0).order_by(Record.id))
+    if not records:
+        return api_error(msg='没有待上传的商品（status=0）')
+
+    import uuid
+    task_id = str(uuid.uuid4())[:8]
+    account_profile = data.get('account_profile') or ''
+    options = {
+        'dry_run': parsed['dry_run'],
+        'stop_before_submit': parsed['stop_before_submit'],
+        'fill_only': parsed['fill_only'],
+        'save_draft': parsed['save_draft'],
+        'listing_mode': parsed['listing_mode'],
+        'account_profile': account_profile,
+    }
+    try:
+        options['cdp_list_url'] = _ensure_taobao_fill_browser()
+    except (OSError, ValueError, RuntimeError) as exc:
+        return jsonify(success=False, msg='启动淘宝浏览器失败：{}'.format(exc)), 503
+
+    with _taobao_tasks_lock:
+        _taobao_tasks[task_id] = {
+            'task_id': task_id,
+            'platform': 'taobao',
+            'account_profile': account_profile,
+            'record_id': None,
+            'record_name': '批量({}个)'.format(len(records)),
+            'status': 'pending',
+            'progress': 0,
+            'message': '批量上传 {} 个商品'.format(len(records)),
+            'current_step': None,
+            'steps': [],
+            'error': None,
+            'blockers': [],
+            'result': None,
+            'created_at': datetime.now().isoformat(),
+            'started_at': None,
+            'finished_at': None,
+            'dry_run': options['dry_run'],
+            'stop_before_submit': options['stop_before_submit'],
+            'fill_only': options['fill_only'],
+            'publish_confirmed': False,
+            'cancelled': False,
+        }
+
+    worker = threading.Thread(target=_run_taobao_publish_batch_task, args=(task_id, options), daemon=True)
+    worker.start()
+    return api_ok(msg='已启动淘宝批量发布（{}个商品）'.format(len(records)), data={
+        'task_id': task_id,
+        'count': len(records),
         'dry_run': options['dry_run'],
         'stop_before_submit': options['stop_before_submit'],
     })
@@ -14162,7 +14439,297 @@ def _active_update_tasks():
 
 
 app.register_blueprint(create_update_blueprint(_active_update_tasks))
-app.register_blueprint(create_xhs_blueprint())
+
+# ---------------------------------------------------------------------------
+# 小红书千帆批量填表（status=0 商品依次 fill-only）
+# ---------------------------------------------------------------------------
+_xhs_tasks: dict = {}
+_xhs_tasks_lock = threading.Lock()
+
+
+def _xhs_images_from_record(record):
+    """从 Record 收集本地图片绝对路径列表。"""
+    images = []
+    for key in ('800', '750'):
+        try:
+            for p in get_pic_list(record, key):
+                if os.path.isfile(p):
+                    images.append(p)
+        except Exception:
+            pass
+    try:
+        sku_list = _json.loads(record.content) if record.content else []
+    except (ValueError, TypeError):
+        sku_list = []
+    for s in sku_list:
+        if not isinstance(s, dict):
+            continue
+        p = str(s.get('path') or '').strip()
+        if p and os.path.isfile(p):
+            images.append(p)
+    return images
+
+
+#: 与前端 `CATEGORY_OPTIONS`（tauri-app/src/types/index.ts）对齐。
+#: clazz 存的是 CharField，可能是 "3" 也可能是 "长筒袜"，两种都认。
+_XHS_CATEGORY_LABELS = {
+    '0': '船袜', '1': '短袜', '2': '中筒袜', '3': '长筒袜', '4': '袜套',
+    '船袜': '船袜', '短袜': '短袜', '中筒袜': '中筒袜', '长筒袜': '长筒袜', '袜套': '袜套',
+}
+
+
+def _xhs_category_from_record(record):
+    """从 Record.clazz 映射到小红书类目短名；认不出返回空串（不猜）。"""
+    raw = (record.clazz or '').strip() if record.clazz is not None else ''
+    return _XHS_CATEGORY_LABELS.get(raw, '')
+
+
+#: 服务信息组**已实测存在**的默认取值（`verified`，见 xiaohongshu-publisher/docs/07-字段测绘表.md §8.9）。
+#: 只放已核实文案；`unknown` 字段（发货模式/现货发货时间/开售时间/售后服务）一律不预设。
+_XHS_DEFAULT_SERVICE_VALUES = {
+    '物流模板': '【系统创建】物流模板默认—联系人',
+    '运费模板': '系统默认-全国包邮模版',
+    '物流类型': '普通内贸',
+}
+
+
+def _run_xhs_fill_batch_task(task_id, payload):
+    """小红书批量填表 worker：依次对 status=0 商品执行 fill-only。"""
+    from src.sidecar.xhs_routes import default_runner as _xhs_runner
+
+    records = list(Record.select().where(Record.status == 0).order_by(Record.id))
+    total = len(records)
+    if total == 0:
+        with _xhs_tasks_lock:
+            task = _xhs_tasks.get(task_id)
+            if task:
+                task['status'] = 'failed'
+                task['message'] = '没有待上传的商品'
+                task['finished_at'] = datetime.now().isoformat()
+        return
+
+    allow_upload = bool(payload.get('allow_upload'))
+    port = _xhs_debug_port(payload.get('port'))
+    results, succeeded, failed = [], 0, 0
+
+    for idx, record in enumerate(records):
+        with _xhs_tasks_lock:
+            task = _xhs_tasks.get(task_id)
+            if task and task.get('cancelled'):
+                task['status'] = 'cancelled'
+                task['message'] = '批量填表已取消（{}/{}）'.format(idx, total)
+                task['finished_at'] = datetime.now().isoformat()
+                return
+            if task:
+                task['message'] = '批量填表 {}/{}：{}'.format(idx + 1, total, record.name or record.id)
+                task['progress'] = int((idx / total) * 100)
+
+        title = (record.title or '').strip() or (record.name or '').strip()
+        images = _xhs_images_from_record(record)
+        if not title:
+            failed += 1
+            results.append({'record_id': record.id, 'name': record.name,
+                            'success': False, 'error': '标题为空'})
+            continue
+
+        category = _xhs_category_from_record(record)
+        service_values = dict(payload.get('service_values') or _XHS_DEFAULT_SERVICE_VALUES)
+        try:
+            report = _xhs_runner({
+                'title': title,
+                'images': images,
+                'allow_upload': allow_upload,
+                'allow_advance': bool(payload.get('allow_advance', True)),
+                'category': category,
+                'service_values': service_values,
+                'port': port,
+            })
+            ok = bool(report.get('ok', False))
+            if ok:
+                succeeded += 1
+            else:
+                failed += 1
+            results.append({'record_id': record.id, 'name': record.name, 'success': ok,
+                            'error': '; '.join(report.get('blocked') or []) or ''})
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            results.append({'record_id': record.id, 'name': record.name, 'success': False,
+                            'error': '{}: {}'.format(type(exc).__name__, exc)})
+
+    with _xhs_tasks_lock:
+        task = _xhs_tasks.get(task_id)
+        if not task:
+            return
+        task['progress'] = 100
+        task['result'] = {'success': failed == 0, 'results': results,
+                          'succeeded': succeeded, 'failed': failed, 'total': total}
+        task['status'] = 'succeeded' if failed == 0 else ('succeeded' if succeeded > 0 else 'failed')
+        task['message'] = '批量填表结束：{} 成功 / {} 失败 / 共 {}'.format(succeeded, failed, total)
+        task['finished_at'] = datetime.now().isoformat()
+
+
+#: 已完成的小红书任务在内存里保留的上限与时长（计划 3.3）。
+#: `_xhs_tasks` 是**进程内字典**，不清理就会随每次批量填表一直积累 ✗。
+#: 只清理**已结束**的任务；`running` / `pending` 一律不动（前端可能还在轮询它们 ✓）。
+XHS_TASK_KEEP_FINISHED = 20
+XHS_TASK_FINISHED_TTL_HOURS = 24
+
+
+def _prune_xhs_tasks_locked() -> int:
+    """清理已结束的小红书任务（**必须持锁调用** ✓）。返回删除条数。
+
+    规则：先丢弃结束时间超过 TTL 的，再按"保留最近 N 条"丢弃多余的。
+    时间戳解析失败（异常路径）时**保留不动**，不猜 ✗。
+    """
+    terminal = ('succeeded', 'failed', 'cancelled')
+
+    def _stamp(task):
+        text = task.get('finished_at') or task.get('created_at') or ''
+        try:
+            return datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            return None
+
+    finished = [t for t in _xhs_tasks.values() if t.get('status') in terminal]
+    if not finished:
+        return 0
+
+    removed = 0
+    now = datetime.now()
+    for task in finished:
+        stamp = _stamp(task)
+        if stamp is not None and (now - stamp).total_seconds() > XHS_TASK_FINISHED_TTL_HOURS * 3600:
+            if _xhs_tasks.pop(task['task_id'], None) is not None:
+                removed += 1
+
+    remaining = sorted((t for t in _xhs_tasks.values() if t.get('status') in terminal),
+                       key=lambda t: t.get('finished_at') or t.get('created_at') or '')
+    if len(remaining) > XHS_TASK_KEEP_FINISHED:
+        for task in remaining[:len(remaining) - XHS_TASK_KEEP_FINISHED]:
+            if _xhs_tasks.pop(task['task_id'], None) is not None:
+                removed += 1
+    return removed
+
+
+@app.post('/api/xhs/fill-batch')
+def xhs_fill_batch():
+    """一键批量小红书填表：依次处理全部 status=0 商品（只填不提交）。"""
+    # 按账户区分发布路线：当前账户不是小红书千帆就进不了这条路线
+    error = _require_publish_platform('xiaohongshu')
+    if error is not None:
+        return error
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, msg='请求必须是 JSON 对象'), 400
+
+    records = list(Record.select().where(Record.status == 0).order_by(Record.id))
+    if not records:
+        return api_error(msg='没有待上传的商品（status=0）')
+
+    import uuid
+    task_id = str(uuid.uuid4())[:8]
+    payload = {
+        'allow_upload': bool(data.get('allow_upload')),
+        'allow_advance': bool(data.get('allow_advance', True)),
+        'service_values': dict(data.get('service_values') or _XHS_DEFAULT_SERVICE_VALUES),
+        'port': data.get('port'),
+    }
+    with _xhs_tasks_lock:
+        _prune_xhs_tasks_locked()  # 计划 3.3：先清理已结束的旧任务，避免无限积累 ✗
+        _xhs_tasks[task_id] = {
+            'task_id': task_id,
+            'platform': 'xiaohongshu',
+            'record_id': None,
+            'record_name': '批量({}个)'.format(len(records)),
+            'status': 'pending',
+            'progress': 0,
+            'message': '批量填表 {} 个商品'.format(len(records)),
+            'result': None,
+            'created_at': datetime.now().isoformat(),
+            'started_at': None,
+            'finished_at': None,
+            'cancelled': False,
+        }
+    worker = threading.Thread(target=_run_xhs_fill_batch_task, args=(task_id, payload), daemon=True)
+    worker.start()
+    return api_ok(msg='已启动小红书批量填表（{}个商品）'.format(len(records)),
+                  data={'task_id': task_id, 'count': len(records)})
+
+
+@app.get('/api/xhs/fill-status/<task_id>')
+def xhs_fill_status(task_id):
+    with _xhs_tasks_lock:
+        task = _xhs_tasks.get(task_id)
+        if not task:
+            return jsonify(success=False, msg='任务不存在'), 404
+        return api_ok('已获取小红书填表进度', data=dict(task))
+
+
+@app.post('/api/xhs/fill-cancel/<task_id>')
+def xhs_fill_cancel(task_id):
+    with _xhs_tasks_lock:
+        task = _xhs_tasks.get(task_id)
+        if not task:
+            return jsonify(success=False, msg='任务不存在'), 404
+        if task.get('status') in ('succeeded', 'failed', 'cancelled'):
+            return api_ok('任务已结束，无需取消', data={'task_id': task_id, 'status': task['status']})
+        task['cancelled'] = True
+    return api_ok('已请求取消', data={'task_id': task_id})
+
+
+def _xhs_account_guard():
+    """小红书路线的账户门：当前账户不是 xiaohongshu 就拒绝进入。"""
+    return _require_publish_platform('xiaohongshu')
+
+
+def _xhs_debug_port(payload_port=None):
+    """小红书填表端口：显式传入优先，否则在账户浏览器端口段直扫千帆页面。
+
+    刻意不依赖 ``_resolve_active_shop_browser``：那条链在 sidecar 里
+    实测扫不到 9500 上的千帆页（shop/current 报 no_browser），
+    而同机 ``urlopen('http://127.0.0.1:9500/json/list')`` 是通的。
+    """
+    if payload_port:
+        try:
+            return int(payload_port)
+        except (TypeError, ValueError):
+            pass
+    try:
+        from urllib.error import URLError
+        from urllib.request import urlopen
+
+        for port in range(_SHOP_BROWSER_PORT_START, _SHOP_BROWSER_PORT_END + 1):
+            address = '{}:{}'.format(_DEBUG_BROWSER_HOST, port)
+            try:
+                with urlopen('http://{}/json/list'.format(address), timeout=0.4) as resp:
+                    targets = json.loads(resp.read().decode('utf-8', errors='replace'))
+            except (URLError, OSError, ValueError):
+                continue
+            for target in targets:
+                url = str(target.get('url') or '')
+                if target.get('type') == 'page' and any(d in url for d in shop_session.XHS_DOMAINS):
+                    return port
+    except Exception:
+        pass
+    return None
+
+def _xhs_runner_with_account_port(payload):
+    from src.sidecar.xhs_routes import default_runner as _runner
+    payload = dict(payload or {})
+    payload['port'] = _xhs_debug_port(payload.get('port'))
+    return _runner(payload)
+
+
+def _xhs_status_probe_with_account_port():
+    from src.sidecar.xhs_routes import default_status_probe as _probe
+    return _probe(port=_xhs_debug_port())
+
+
+app.register_blueprint(create_xhs_blueprint(
+    account_guard=_xhs_account_guard,
+    runner=_xhs_runner_with_account_port,
+    status_probe=_xhs_status_probe_with_account_port,
+))
 app.register_blueprint(create_media_blueprint(
     record_model=Record, active_account=_active_shop_account, resolve_data_file=resolve_data_file,
     edit_blocked=_record_edit_blocked, product_revision=_product_edit_revision,
