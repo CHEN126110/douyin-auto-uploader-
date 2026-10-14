@@ -54,7 +54,7 @@ function visibleRequirementsHaveNoFailures(value: unknown, coverage: unknown): b
   return true;
 }
 
-/** 淘宝本次入口只验收真实填写后停在提交前，任务终态本身不是填写证据。 */
+/** 淘宝「只填写不发布」入口只验收真实填写后停在提交前，任务终态本身不是填写证据。 */
 export function isVerifiedTaobaoFillResult(task: unknown): boolean {
   if (!isRecord(task) || task.platform !== "taobao" || task.status !== "succeeded" || task.dry_run !== false ||
       task.stop_before_submit !== true || task.publish_confirmed !== false ||
@@ -66,4 +66,17 @@ export function isVerifiedTaobaoFillResult(task: unknown): boolean {
   return verification.status === "complete" && verification.complete === true &&
     isConfirmedWholeFormCoverage(verification.required_field_coverage) &&
     visibleRequirementsHaveNoFailures(verification.visible_form_requirements, verification.required_field_coverage);
+}
+
+/**
+ * 淘宝「直接发布」入口：流水线跑完且未被截停即可信。
+ *
+ * 提交是否真上架后端不做判定（`publish_confirmed` 固定 false），
+ * 所以这里只验收「提交阶段确实执行过」，不冒充上架成功。
+ */
+export function isVerifiedTaobaoPublishResult(task: unknown): boolean {
+  if (!isRecord(task) || task.platform !== "taobao" || task.status !== "succeeded" || task.dry_run !== false ||
+      task.stop_before_submit !== false || !isRecord(task.result)) return false;
+  const result = task.result;
+  return result.success === true && result.stopped_before_submit !== true;
 }

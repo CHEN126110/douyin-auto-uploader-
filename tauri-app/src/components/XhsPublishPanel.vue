@@ -47,13 +47,17 @@
         <el-input v-model="title" maxlength="60" show-word-limit
                   placeholder="16-60 个字符（8-30 个字，汉字按 2 计）" />
       </el-form-item>
+      <el-form-item label="类目短名">
+        <el-input v-model="category" placeholder="如：长筒袜（与智能推荐/类目选项一致）" />
+        <div class="xhs-hint">留空则不代替人选类目；填了会尝试点选并推进到四组信息。</div>
+      </el-form-item>
       <el-form-item label="图片">
         <el-checkbox v-model="allowUpload">授权上传（写入平台素材空间）</el-checkbox>
         <div class="xhs-hint">未勾选时只会填标题，不会上传任何图片。</div>
       </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="running" @click="runFillOnly">填满（不提交）</el-button>
-        <span class="xhs-hint">永远不点提交、不点下一步以外的东西</span>
+        <span class="xhs-hint">永远不点提交上架；下一步只是组间推进</span>
       </el-form-item>
     </el-form>
 
@@ -89,6 +93,7 @@ const statusError = ref('')
 const checking = ref(false)
 const running = ref(false)
 const title = ref('')
+const category = ref('')
 const allowUpload = ref(false)
 const report = ref<XhsReport | null>(null)
 
@@ -125,6 +130,13 @@ async function runFillOnly() {
     const response = await api.xhsFillOnly({
       title: title.value.trim(),
       allow_upload: allowUpload.value,
+      allow_advance: true,
+      category: category.value.trim(),
+      service_values: {
+        物流模板: "【系统创建】物流模板默认—联系人",
+        运费模板: "系统默认-全国包邮模版",
+        物流类型: "普通内贸",
+      },
     })
     report.value = (response?.data ?? null) as XhsReport | null
     if (report.value?.ok === false) ElMessage.warning('未完成，请看下方原因')

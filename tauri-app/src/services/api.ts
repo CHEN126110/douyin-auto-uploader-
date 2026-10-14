@@ -312,6 +312,26 @@ export const api = {
     return http.get("/api/taobao/publish/tasks");
   },
 
+  /** 一键批量淘宝发布全部待上传商品（status=0）。返回 task_id，轮询方式与单个一致。 */
+  startTaobaoPublishAll(options?: {
+    realPublish?: boolean;
+    fillOnly?: boolean;
+    accountProfile?: string;
+    listingMode?: TaobaoListingMode;
+    saveDraft?: boolean;
+  }): Promise<ApiResponse<{ task_id: string; count: number; dry_run: boolean; stop_before_submit: boolean }>> {
+    const realPublish = options?.realPublish === true;
+    return http.post("/api/taobao/publish/start-all", {
+      platform: "taobao",
+      ...(options?.accountProfile ? { account_profile: options.accountProfile } : {}),
+      dry_run: realPublish ? false : true,
+      stop_before_submit: realPublish ? false : (options?.fillOnly === true ? true : true),
+      ...(options?.fillOnly === true ? { fill_only: true } : {}),
+      ...(options?.listingMode ? { listing_mode: options.listingMode } : {}),
+      ...(options?.saveDraft === true ? { save_draft: true } : {}),
+    });
+  },
+
   // ========== 小红书千帆（fill_only：只填满，不含提交） ==========
   //
   // 对应 sidecar 的 src/sidecar/xhs_routes.py。红线：这两条接口**没有提交能力**，
@@ -343,6 +363,9 @@ export const api = {
     title: string;
     images?: string[];
     allow_upload?: boolean;
+    allow_advance?: boolean;
+    category?: string;
+    service_values?: Record<string, string>;
     port?: number;
   }): Promise<ApiResponse<{
     ok: boolean;
@@ -351,8 +374,39 @@ export const api = {
     title_check?: { ok: boolean; units: number; words: number; reasons: string[] };
     category_unopened?: string[];
     steps?: Array<Record<string, unknown>>;
+    gaps?: Record<string, unknown>;
+    service_fill?: Record<string, unknown>;
   }>> {
     return http.post("/api/xhs/fill-only", payload);
+  },
+
+  /** 一键批量小红书填表（status=0 商品依次 fill-only，不提交）。 */
+  startXhsFillBatch(options?: {
+    allowUpload?: boolean;
+    allowAdvance?: boolean;
+    serviceValues?: Record<string, string>;
+  }): Promise<ApiResponse<{ task_id: string; count: number }>> {
+    return http.post("/api/xhs/fill-batch", {
+      ...(options?.allowUpload ? { allow_upload: true } : {}),
+      ...(options?.allowAdvance === false ? { allow_advance: false } : {}),
+      ...(options?.serviceValues ? { service_values: options.serviceValues } : {}),
+    });
+  },
+
+  getXhsFillStatus(taskId: string): Promise<ApiResponse<{
+    task_id: string;
+    platform: string;
+    status: string;
+    progress: number;
+    message: string;
+    result?: { success?: boolean; succeeded?: number; failed?: number; total?: number; results?: Array<Record<string, unknown>> } | null;
+    cancelled?: boolean;
+  }>> {
+    return http.get(`/api/xhs/fill-status/${taskId}`);
+  },
+
+  cancelXhsFill(taskId: string): Promise<ApiResponse<{ task_id: string }>> {
+    return http.post(`/api/xhs/fill-cancel/${taskId}`);
   },
 
   // ========== 上传功能 ==========
@@ -380,6 +434,21 @@ export const api = {
       payload.stop_before_submit = true;
     }
     return http.post("/api/upload/start", payload);
+  },
+
+  /** 一键批量上传全部待发布商品（status=0）。返回 task_id，轮询方式与单个上传一致。 */
+  startUploadAll(options?: UploadStartOptions): Promise<ApiResponse> {
+    const payload: Record<string, unknown> = { platform: "douyin" };
+    if (options?.accountProfile) {
+      payload.account_profile = options.accountProfile;
+    }
+    if (options?.confirmFinalPublish) {
+      payload.stop_before_submit = false;
+      payload.confirm_final_publish = true;
+    } else if (options?.stopBeforeSubmit !== false) {
+      payload.stop_before_submit = true;
+    }
+    return http.post("/api/upload/start-all", payload);
   },
 
   /** 获取上传任务状态 */

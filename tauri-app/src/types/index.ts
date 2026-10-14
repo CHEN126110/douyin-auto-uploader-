@@ -5,6 +5,7 @@
 export interface Product {
   id: number;
   name: string;
+  status: number;
   update_time: string;
 }
 

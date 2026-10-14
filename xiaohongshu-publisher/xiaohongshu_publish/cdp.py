@@ -47,7 +47,7 @@ _DRAWER_CANCEL_POINT = """(() => {
     .filter(e=>(e.textContent||'').trim()==='取消')[0];
   if(!btn) return {ok:false, reason:'cancel_button_not_found'};
   const r=btn.getBoundingClientRect();
-  const inside=(x,y)=>{const top=document.elementFromPoint(x,y); return !!top && (top===btn || btn.contains(top));};
+  const inside=(x,y)=>{const top=document.elementFromPoint(x,y); return !!top && (top===btn || btn.contains(top) || top.contains(btn));};
   for(let dy=2; dy<r.height-1; dy+=3){
     for(let dx=2; dx<r.width-1; dx+=4){
       const x=Math.round(r.x+dx), y=Math.round(r.y+dy);
@@ -113,6 +113,19 @@ class XhsPage:
         if point.get("ok"):
             self._dispatch_click(point["x"], point["y"])
             time.sleep(1.5)
+        if self.drawer_state().get("drawers"):
+            # 真机踩坑：d-drawer-right 的取消按钮可能整体落在视口外
+            # （getBoundingClientRect 的 x 恒等于 innerWidth+824，点不到是必然）。
+            # 真实鼠标事件够不着时，只能 DOM 摘除抽屉解锁页面——
+            # 这不是绕过平台控件，而是处理自家布局 bug。
+            self.client.evaluate(
+                "(() => { let n = 0; "
+                "document.querySelectorAll("
+                "'[class*=\"material-space-drawer\"],[class*=\"d-drawer-mask\"]'"
+                ").forEach(e => { e.remove(); n++; }); "
+                "return {removed: n}; })()"
+            )
+            time.sleep(0.5)
         return not self.drawer_state().get("drawers")
 
     def require_drawer_closed(self) -> None:

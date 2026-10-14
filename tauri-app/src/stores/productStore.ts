@@ -524,24 +524,47 @@ export const useProductStore = defineStore("product", () => {
     });
   }
 
+  async function startUploadAll(options?: UploadStartOptions) {
+    const account = currentShopSession.value;
+    if (account?.platform !== "douyin" || !account.active_profile) {
+      throw new Error("当前抖音账户未确认，请刷新账户状态后重试");
+    }
+    return await api.startUploadAll({
+      ...options,
+      accountProfile: options?.accountProfile ?? account.active_profile,
+    });
+  }
+
   // 拿不到状态 ≠ 上传失败：后端上传跑在后台线程里，轮询失败不影响它。
   // 这里让传输层异常如实上抛，由调用方决定重试还是终止监控。
   async function getUploadStatus(taskId: string) {
     return await api.getUploadStatus(taskId);
   }
 
-  async function startTaobaoFill(recordId: number, product: TaobaoProductRequest, accountProfile: string, expectedRecordRevision?: string) {
+  async function startTaobaoFill(
+    recordId: number,
+    product: TaobaoProductRequest,
+    accountProfile: string,
+    expectedRecordRevision?: string,
+    options?: {
+      /** 真实发布：不截停、不传 fill_only，让流水线走到提交阶段。 */
+      realPublish?: boolean;
+      /** 上架方式；仅真实发布时有意义。 */
+      listingMode?: "立刻上架" | "定时上架" | "放入仓库";
+    },
+  ) {
     const account = currentShopSession.value;
     if (account?.platform !== "taobao" || account.active_profile !== accountProfile) {
       throw new Error("当前淘宝账户已经变化，未启动填写任务");
     }
+    const realPublish = options?.realPublish === true;
     return await api.startTaobaoPublish(recordId, {
       accountProfile,
       product,
-      dryRun: false,
-      stopBeforeSubmit: true,
-      fillOnly: true,
       expectedRecordRevision,
+      ...(realPublish
+        ? { realPublish: true, listingMode: options?.listingMode ?? "立刻上架" }
+        : { dryRun: false, stopBeforeSubmit: true, fillOnly: true }),
     });
   }
 
@@ -599,6 +622,7 @@ export const useProductStore = defineStore("product", () => {
     importFiles,
     importFromPicker,
     startUpload,
+    startUploadAll,
     getUploadStatus,
     startTaobaoFill,
     checkTaobaoPreparation,

@@ -25,14 +25,49 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 XHS_PACKAGE_ROOT = REPO_ROOT / "xiaohongshu-publisher"
 
 
+def _xhs_package_candidates() -> list:
+    """列出 `xiaohongshu-publisher` 可能所在的目录（冻结包与源码仓都覆盖）。
+
+    PyInstaller onefile 下 ``__file__`` 落在 ``_MEIPASS/src/sidecar/``，
+    ``parents[2]`` 才是解压根；但 ``resolve()`` 在个别环境下会指到别处。
+    所以按「最可能 → 兜底」列出候选，找到含 ``xiaohongshu_publish`` 的那个就用。
+    """
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", "")
+    if meipass:
+        candidates.append(Path(meipass) / "xiaohongshu-publisher")
+        candidates.append(Path(meipass))
+    candidates.append(XHS_PACKAGE_ROOT)
+    candidates.append(REPO_ROOT / "xiaohongshu-publisher")
+    # 源码仓里本文件在 src/sidecar/，再上两级就是仓库根
+    candidates.append(Path(__file__).resolve().parents[2] / "xiaohongshu-publisher")
+    return candidates
+
+
 def _load_xhs_modules():
     """延迟导入小红书实现包；返回 `(flow, browser)`。"""
-    if str(XHS_PACKAGE_ROOT) not in sys.path:
-        sys.path.insert(0, str(XHS_PACKAGE_ROOT))
-    from xiaohongshu_publish import browser as xhs_browser  # noqa: PLC0415
-    from xiaohongshu_publish import flow as xhs_flow  # noqa: PLC0415
-
-    return xhs_flow, xhs_browser
+    try:
+        from xiaohongshu_publish import browser as xhs_browser  # noqa: PLC0415
+        from xiaohongshu_publish import flow as xhs_flow  # noqa: PLC0415
+        return xhs_flow, xhs_browser
+    except ImportError:
+        pass
+    tried = []
+    for root in _xhs_package_candidates():
+        if not root or not (root / "xiaohongshu_publish").is_dir():
+            continue
+        path_text = str(root)
+        if path_text not in sys.path:
+            sys.path.insert(0, path_text)
+        tried.append(path_text)
+        try:
+            from xiaohongshu_publish import browser as xhs_browser  # noqa: PLC0415
+            from xiaohongshu_publish import flow as xhs_flow  # noqa: PLC0415
+            return xhs_flow, xhs_browser
+        except ImportError:
+            continue
+    raise ImportError(
+        "XHSLOADER-V2 找不到 xiaohongshu_publish（已试路径：{}）".format(tried or "无可用候选"))
 
 
 def _default_port() -> int:
@@ -84,7 +119,10 @@ def default_runner(payload: dict) -> dict:
     try:
         plan = flow.FillPlan(title=payload.get("title") or "",
                              images=list(payload.get("images") or []),
-                             allow_upload=bool(payload.get("allow_upload")))
+                             allow_upload=bool(payload.get("allow_upload")),
+                             allow_advance=bool(payload.get("allow_advance")),
+                             category=(payload.get("category") or "").strip(),
+                             service_values=dict(payload.get("service_values") or {}))
         return flow.run_fill_only(page, plan,
                                   upload_fn=xhs_browser.make_upload_fn(browser, client,
                                                                        session_id, page))
@@ -94,14 +132,24 @@ def default_runner(payload: dict) -> dict:
 
 
 def create_xhs_blueprint(*, runner: Callable[[dict], dict] | None = None,
-                         status_probe: Callable[[], dict] | None = None) -> Blueprint:
-    """构造蓝图。`runner` / `status_probe` 可注入，便于离线回归。"""
+                         status_probe: Callable[[], dict] | None = None,
+                         account_guard: Callable[[], Any] | None = None) -> Blueprint:
+    """构造蓝图。`runner` / `status_probe` / `account_guard` 可注入，便于离线回归。
+
+    `account_guard()` 返回 `None` 表示放行；返回 `(response, status)` 则原样拒绝。
+    生产环境由 `app.py` 注入 `_require_publish_platform('xiaohongshu')`，
+    保证**按账户区分发布路线**——当前账户不是小红书千帆就进不了本路线。
+    """
     blueprint = Blueprint("xhs_routes", __name__)
     run_fill = runner or default_runner
     probe = status_probe or default_status_probe
 
     @blueprint.get("/api/xhs/status")
     def xhs_status():
+        if account_guard is not None:
+            denied = account_guard()
+            if denied is not None:
+                return denied
         try:
             return jsonify(api_ok("ok", probe()))
         except Exception as error:  # noqa: BLE001 - 浏览器不可达属可预期失败
@@ -109,6 +157,10 @@ def create_xhs_blueprint(*, runner: Callable[[dict], dict] | None = None,
 
     @blueprint.post("/api/xhs/fill-only")
     def xhs_fill_only():
+        if account_guard is not None:
+            denied = account_guard()
+            if denied is not None:
+                return denied
         payload: dict[str, Any] = request.get_json(silent=True) or {}
         title = (payload.get("title") or "").strip()
         if not title:
@@ -119,6 +171,8 @@ def create_xhs_blueprint(*, runner: Callable[[dict], dict] | None = None,
         # 安全默认值在 HTTP 边界就定死：不传 allow_upload 一律视为未授权
         payload.setdefault("allow_upload", False)
         payload["images"] = list(payload.get("images") or [])
+        payload["category"] = (payload.get("category") or "").strip()
+        payload["service_values"] = dict(payload.get("service_values") or {})
         try:
             report = run_fill(payload)
         except Exception as error:  # noqa: BLE001 - 执行失败按可预期错误返回

@@ -90,16 +90,26 @@ REQUIRED_FIELDS = """(() => {
   const marks = Array.from(document.querySelectorAll('[class*="required-icon"]'));
   const out = [];
   for (const m of marks) {
+    // 先爬到「含控件的行」（input/textarea/d-select），再取短文本做标签。
+    // 旧逻辑 depth=1 就 break，拿到的是标签自身，行内容（值/请选择）读不到，
+    // 于是全部字段被误判成未填（真机实测 12/12 误报）。
     let row = m, depth = 0, label = '';
-    while (row && depth < 6) {
+    while (row && depth < 8) {
+      const hasControl = row.querySelector && row.querySelector('input,textarea,[class*="d-select"]');
       const t = (row.textContent || '').trim().replace(/\\s+/g, '');
-      if (t && t.length <= 14) { label = t; break; }
+      if (!label && t && t.length <= 14) { label = t; }
+      if (hasControl && label) break;
       row = row.parentElement; depth++;
     }
     const text = row ? (row.textContent || '') : '';
     const input = row ? row.querySelector('input,textarea') : null;
     const value = input ? (input.value || '').trim() : '';
-    const unfilled = /请选择/.test(text) || (input ? value.length === 0 : true);
+    const selectEl = row ? row.querySelector('[class*="d-select"]') : null;
+    const selectText = selectEl ? (selectEl.textContent || '').trim() : '';
+    // 有 select 且已显示具体值（非占位）→ 已填
+    const selectFilled = !!selectEl && selectText.length > 0 && !/请选择/.test(selectText);
+    const unfilled = /请选择/.test(text) && !selectFilled
+      || (input ? value.length === 0 : (!selectEl && true));
     out.push({label: label, unfilled: unfilled});
   }
   const uniq = []; const seen = new Set();

@@ -135,3 +135,57 @@ def test_probe_failure_returns_503():
     response = app.test_client().get("/api/xhs/status")
     assert response.status_code == 503
     assert "不可达" in response.get_json()["msg"]
+
+
+def test_account_guard_blocks_when_platform_mismatch():
+    """按账户区分发布路线：当前账户不是小红书千帆时，status 与 fill-only 都要拒。"""
+    def deny():
+        from flask import jsonify
+        return jsonify(success=False, code="ACCOUNT_PLATFORM_MISMATCH",
+                       msg="当前账户不属于小红书千帆，请先切换到小红书千帆账户"), 409
+
+    app = Flask(__name__)
+    app.register_blueprint(create_xhs_blueprint(
+        runner=lambda payload: {"ok": True}, status_probe=lambda: {}, account_guard=deny))
+    client = app.test_client()
+    assert client.get("/api/xhs/status").status_code == 409
+    response = client.post("/api/xhs/fill-only",
+                           json={"title": "桑蚕丝羊毛小腿袜女秋冬款日系撞色罗口美腿袜"})
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "ACCOUNT_PLATFORM_MISMATCH"
+
+
+def test_account_guard_passes_when_platform_matches():
+    def allow():
+        return None
+
+    captured: list = []
+
+    app = Flask(__name__)
+    app.register_blueprint(create_xhs_blueprint(
+        runner=lambda payload: (captured.append(payload) or {"ok": True}),
+        status_probe=lambda: {"port": 9336}, account_guard=allow))
+    client = app.test_client()
+    assert client.get("/api/xhs/status").status_code == 200
+    response = client.post("/api/xhs/fill-only",
+                           json={"title": "桑蚕丝羊毛小腿袜女秋冬款日系撞色罗口美腿袜",
+                                 "category": "长筒袜", "allow_advance": True,
+                                 "service_values": {"物流模板": "默认"}})
+    assert response.status_code == 200
+    assert captured[-1]["category"] == "长筒袜"
+    assert captured[-1]["allow_advance"] is True
+    assert captured[-1]["service_values"] == {"物流模板": "默认"}
+
+
+def test_fill_only_normalizes_category_and_service_values():
+    """category / service_values 在 HTTP 边界归一化，None 不会漏进 FillPlan。"""
+    captured: list = []
+    app = Flask(__name__)
+    app.register_blueprint(create_xhs_blueprint(
+        runner=lambda payload: (captured.append(payload) or {"ok": True}),
+        status_probe=lambda: {}))
+    app.test_client().post("/api/xhs/fill-only", json={
+        "title": "桑蚕丝羊毛小腿袜女秋冬款日系撞色罗口美腿袜",
+        "category": "  长筒袜  ", "service_values": None})
+    assert captured[-1]["category"] == "长筒袜"
+    assert captured[-1]["service_values"] == {}

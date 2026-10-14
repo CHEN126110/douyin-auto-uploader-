@@ -3,11 +3,14 @@
 
 边界（沿用 taobao-publisher 的红线）：
 - **默认零写入**：上传图片属于平台写入，必须有 `allow_upload=True` 才执行，否则**拒绝并返回原因**；
-- **永不提交**：本模块不点「提交商品」，也不点「信息已确认，下一步」——
-  推进到下一组表单由调用方显式用 `allow_advance=True` 打开（当前默认关闭，
-  且实测在类目未选时推进也会被平台拦下：`错误：请选择商品类目`）。
+- **永不提交**：本模块不点「提交商品」/「上架」/「保存草稿」——连入口都没有。
+  「信息已确认，下一步」只是**组间推进**（不是提交），由 `allow_advance=True` 显式打开；
+  未选类目时推进会被平台拦下：`错误：请选择商品类目`（真机实证）。
 
-顺序是硬的（真机实证）：**图片 → 标题 → 失焦 → 类目控件才出现**。
+顺序是硬的（真机实证，表单不跨导航保留）：
+
+    图片 → 标题（失焦）→ 选类目（先关抽屉！）→ 下一步
+    → 读 required-icon 全集 → 按缺口填服务信息 → **停在提交前**
 """
 
 from __future__ import annotations
@@ -26,7 +29,9 @@ class FillPlan:
     title: str
     images: list = field(default_factory=list)      # 本地图片路径
     allow_upload: bool = False                      # 上传＝平台写入，必须显式授权
-    allow_advance: bool = False                     # 是否允许点「下一步」（默认停在当前步）
+    allow_advance: bool = False                     # 是否允许点「信息已确认，下一步」（组间推进，非提交）
+    category: str = ""                              # 要选中的类目短名，如「长筒袜」；空＝不代替人选
+    service_values: dict = field(default_factory=dict)  # 服务信息组取值；缺的字段不猜
 
 
 def required_gaps(page: XhsPage) -> dict:
@@ -54,6 +59,63 @@ def required_gaps(page: XhsPage) -> dict:
 #: 服务信息组的字段（真机实测的必填项；详见 `docs/07-字段测绘表.md` §8.9）
 SERVICE_FIELDS = ("物流模板", "物流类型", "运费模板", "发货模式", "现货发货时间",
                   "开售时间", "售后服务")
+
+#: 「信息已确认，下一步」——组间推进按钮（**不是**提交；真机文案）
+NEXT_STEP_TEXT = "信息已确认，下一步"
+
+
+def select_category(page: XhsPage, category: str) -> dict:
+    """选中类目（真机已验证的交互：按文本找**被绘制**的最小匹配元素再点）。
+
+    边界：
+    - 先关抽屉（纪律 4）——上传后抽屉常还开着，不关就点不到类目；
+    - 目标文本带「(未开通)」时**拒绝点选**（那是资质问题，只能人工办）；
+    - 点完回读「已选类目」，没选上就如实报告，不假装成功。
+    """
+    from . import page_scripts
+
+    category = (category or "").strip()
+    if not category:
+        return {"ok": False, "reason": "未提供类目名"}
+    if "未开通" in category:
+        return {"ok": False, "reason": "类目未开通，需人工在千帆后台办理资质", "category": category}
+    if not page.close_drawer():
+        return {"ok": False, "reason": "抽屉关不掉，按纪律 4 不操作类目控件"}
+    found = page.client.evaluate(page_scripts.find_painted_script(
+        category, selector="div,span,label,li,button"))
+    if not found.get("ok"):
+        return {"ok": False, "reason": "类目未找到或不可点：{}".format(found.get("reason")),
+                "category": category}
+    if "未开通" in (found.get("text") or ""):
+        return {"ok": False, "reason": "命中的是未开通类目，拒绝点选",
+                "category": category, "hit_text": found.get("text")}
+    clicked = page.click(found["x"], found["y"], expect_text=category)
+    if not clicked.get("clicked"):
+        return {"ok": False, "reason": "类目点击被拒：{}".format(clicked.get("reason")),
+                "category": category, "hit": clicked.get("hit")}
+    state = page.state()
+    selected = [line for line in (state.get("category_lines") or [])
+                if "已选" in line and "未开通" not in line]
+    return {"ok": True, "category": category, "selected_lines": selected,
+            "errors": state.get("errors") or []}
+
+
+def advance_next(page: XhsPage) -> dict:
+    """点「信息已确认，下一步」推进到四组信息（组间推进，**不是**提交）。"""
+    from . import page_scripts
+
+    if not page.close_drawer():
+        return {"ok": False, "reason": "抽屉关不掉，按纪律 4 不点下一步"}
+    found = page.client.evaluate(page_scripts.find_painted_script(
+        NEXT_STEP_TEXT, selector="button,[class*='d-button']", exact=False))
+    if not found.get("ok"):
+        return {"ok": False, "reason": "下一步按钮未找到：{}".format(found.get("reason"))}
+    # 真机教训：点按钮要取**最小**匹配元素，取大的会点到动作栏容器
+    clicked = page.click(found["x"], found["y"], expect_text="信息已确认")
+    if not clicked.get("clicked"):
+        return {"ok": False, "reason": "下一步点击被拒：{}".format(clicked.get("reason")),
+                "hit": clicked.get("hit")}
+    return {"ok": True, "text": found.get("text")}
 
 
 def make_service_filler(page: XhsPage, values: dict | None = None):
@@ -195,7 +257,7 @@ def run_fill_only(page: XhsPage, plan: FillPlan,
         report["blocked"].append("标题回读不一致，停止（可能被平台截断或改写）")
         return report
 
-    # 4) 类目：未选时平台会拦「请选择商品类目」；本模块只报告，不代替人做选择
+    # 4) 类目：未选时平台会拦「请选择商品类目」
     report["category_lines"] = state.get("category_lines", [])
     unopened = [line for line in state.get("category_lines", []) if "未开通" in line]
     if unopened:
@@ -203,7 +265,50 @@ def run_fill_only(page: XhsPage, plan: FillPlan,
             "类目未开通（{} 项）：需人工在千帆后台办理类目资质".format(len(unopened)))
         report["category_unopened"] = unopened
 
-    # 5) 读平台自己的判据：还差哪些必填项（实现里不猜必填）
+    if plan.category:
+        if unopened and any(plan.category in line for line in unopened):
+            report["ok"] = False
+            report["blocked"].append(
+                "目标类目「{}」未开通，停止（不绕过平台资质）".format(plan.category))
+            report["evidence"] = page.evidence()
+            return report
+        select_result = page.run(
+            "select_category", lambda: select_category(page, plan.category))
+        report["steps"].append({"name": "select_category", **select_result})
+        if not select_result.get("ok"):
+            report["ok"] = False
+            report["blocked"].append(
+                "类目「{}」选入失败：{}".format(plan.category, select_result.get("reason")))
+            report["evidence"] = page.evidence()
+            return report
+        state = page.state()
+        report["category_lines"] = state.get("category_lines", [])
+
+    # 5) 组间推进（不是提交）：展开 基础/图文/价格库存/服务 四组信息
+    if plan.allow_advance:
+        if not plan.category and not any("已选" in line for line in report.get("category_lines") or []):
+            report["ok"] = False
+            report["blocked"].append("未选类目，拒绝点下一步（平台会拦：请选择商品类目）")
+            report["evidence"] = page.evidence()
+            return report
+        advance_result = page.run("advance_next", lambda: advance_next(page))
+        report["steps"].append({"name": "advance_next", **advance_result})
+        if not advance_result.get("ok"):
+            report["ok"] = False
+            report["blocked"].append(
+                "下一步推进失败：{}".format(advance_result.get("reason")))
+            report["evidence"] = page.evidence()
+            return report
+        # 浏览器侧变更最终一致：给表单展开一点时间，再读缺口
+        import time as _time
+        _time.sleep(2.0)
+
+        # 服务信息组：只填 values 里给了取值的字段，缺的一律「未提供取值（不猜）」
+        if plan.service_values:
+            filler = make_service_filler(page, plan.service_values)
+            report["service_fill"] = fill_gaps(page, filler)
+
+    # 6) 读平台自己的判据：还差哪些必填项（实现里不猜必填）
     try:
         report["gaps"] = required_gaps(page)
     except Exception as error:  # noqa: BLE001 - 判据读不到不该让整个填写失败

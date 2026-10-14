@@ -6,7 +6,7 @@ import { ElMessage, ElMessageBox, ElLoading, ElButton } from "element-plus";
 import { useProductStore } from "@/stores/productStore";
 import { CATEGORY_OPTIONS } from "@/types";
 import { countTaobaoTitleUnits } from "@/utils/taobaoTextLength";
-import { isVerifiedTaobaoFillResult } from "@/utils/taobaoFormVerification";
+import { isVerifiedTaobaoFillResult, isVerifiedTaobaoPublishResult } from "@/utils/taobaoFormVerification";
 import type {
   SKU,
   PricingResult,
@@ -575,6 +575,22 @@ async function handleUploadTerminal(data: any) {
   await refreshAfterUpload();
 
   if (platform === "taobao" && ["succeeded", "success"].includes(data?.status)) {
+    const realPublish = data?.stop_before_submit === false;
+    if (realPublish) {
+      if (isVerifiedTaobaoPublishResult(data)) {
+        await ElMessageBox.alert(
+          "流水线已完成并执行了提交。是否已上架请在卖家中心核对",
+          origin === "external" ? "外部上传完成" : "发布完成",
+          { type: "success" }
+        );
+      } else {
+        await ElMessageBox.alert(
+          "任务已结束，但提交结果未能确认。请到卖家中心核对商品状态",
+          "发布结果", { type: "warning" }
+        );
+      }
+      return;
+    }
     if (isVerifiedTaobaoFillResult(data)) {
       await ElMessageBox.alert(
         "本次填写与回读已完成，已停在提交前",
@@ -656,7 +672,9 @@ async function cancelUploadTask() {
   try {
     const response = platform === "taobao"
       ? await api.cancelTaobaoPublish(taskId)
-      : await api.cancelUpload(taskId);
+      : platform === "xiaohongshu"
+        ? await api.cancelXhsFill(taskId)
+        : await api.cancelUpload(taskId);
     if (!response.success) throw new Error(response.message || response.msg || "后端未接受取消请求");
     ElMessage.info("已请求取消，将在当前阶段结束后停止");
     void retryUploadProgress();
@@ -682,7 +700,9 @@ async function pollUploadTaskOnce() {
   try {
     statusResp = platform === "taobao"
       ? await api.getTaobaoPublishStatus(taskId)
-      : await productStore.getUploadStatus(taskId);
+      : platform === "xiaohongshu"
+        ? await api.getXhsFillStatus(taskId)
+        : await productStore.getUploadStatus(taskId);
     if (activeUploadTaskId.value !== taskId || activeUploadTaskPlatform.value !== platform) return;
     if (!statusResp.success || !statusResp.data || statusResp.data.task_id !== taskId) {
       throw new Error(statusResp.message || statusResp.msg || "后端未返回当前任务状态");
@@ -940,10 +960,161 @@ async function handleStartUploadUnified() {
   }
 }
 
+/** 一键批量发布全部待上传商品（抖音/淘宝，status=0）。 */
+async function handleBatchUploadAll() {
+  if (publishButtonDisabled.value) return;
+  const platform = productStore.targetPublishPlatform;
+  if (!platform) {
+    ElMessage.warning("请先在左上角连接店铺账户，再使用批量发布");
+    return;
+  }
+  if (platform !== "douyin" && platform !== "taobao" && platform !== "xiaohongshu") {
+    ElMessage.warning("批量发布支持抖音、淘宝和小红书，请先切换到对应账户");
+    return;
+  }
+  if (shopAccountBusy.value) {
+    ElMessage.warning("正在处理账户，请等账户状态确认后再发布");
+    return;
+  }
+  if (isUploadMonitoring.value || isUploadStarting.value) {
+    ElMessage.warning("已有上传任务在进行中，请等完成后再开始");
+    return;
+  }
+
+  const pendingCount = productStore.products.filter((p: any) => p.status === 0).length;
+  if (pendingCount === 0) {
+    ElMessage.warning("没有待上传的商品（status=0）");
+    return;
+  }
+
+  const confirmed = await confirmAction(
+    `将依次发布 <b>${pendingCount}</b> 个待上传商品到${publishPlatformLabel.value}。是否继续？`,
+    "批量发布确认",
+    {
+      type: "warning",
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: "开始批量发布",
+      cancelButtonText: "取消",
+    }
+  );
+  if (!confirmed) return;
+
+  isUploadStarting.value = true;
+  try {
+    await loadPublishSubmitMode();
+    const realPublish = publishSubmitMode.value === "publish";
+    if (realPublish && !(await confirmRealPublish())) {
+      return;
+    }
+
+    ensureUploadLoading(realPublish ? "正在批量提交发布…" : "正在启动批量上传…");
+    let response: any;
+    if (platform === "douyin") {
+      response = await productStore.startUploadAll(
+        realPublish ? { confirmFinalPublish: true } : { stopBeforeSubmit: true }
+      );
+    } else if (platform === "xiaohongshu") {
+      response = await api.startXhsFillBatch({
+        allowUpload: true,
+        allowAdvance: true,
+        serviceValues: {
+          物流模板: "【系统创建】物流模板默认—联系人",
+          运费模板: "系统默认-全国包邮模版",
+          物流类型: "普通内贸",
+        },
+      });
+    } else {
+      response = await api.startTaobaoPublishAll({
+        realPublish,
+        fillOnly: !realPublish,
+        accountProfile: productStore.currentShopSession?.active_profile,
+      });
+    }
+    if (!response.success) {
+      closeUploadLoading();
+      ElMessage.error(response.message || response.msg || "批量上传启动失败");
+      return;
+    }
+    const taskId = (response as any)?.data?.task_id as string | undefined;
+    if (!taskId) {
+      closeUploadLoading();
+      ElMessage.error("批量上传启动失败：未获取到任务编号");
+      return;
+    }
+    startUploadMonitoring(taskId, "local", null, platform as any);
+  } catch (error) {
+    closeUploadLoading();
+    const reason = axios.isAxiosError<ApiResponse>(error)
+      ? error.response?.data?.message || error.response?.data?.msg || error.message
+      : error instanceof Error ? error.message : String(error);
+    ElMessage.error(`批量发布启动失败：${reason}`);
+  } finally {
+    isUploadStarting.value = false;
+  }
+}
+
+/** 小红书千帆单个商品填表（只填不提交）。 */
+async function handleXhsFill() {
+  const recordId = productStore.currentProductId;
+  const record = productStore.currentProduct;
+  if (!recordId || record?.id !== recordId) {
+    ElMessage.warning("请先选择并加载一个商品，再开始小红书填表");
+    return;
+  }
+  const title = formData.value.title.trim() || (record?.title || "").trim();
+  if (!title) {
+    ElMessage.warning("请填写商品标题");
+    return;
+  }
+  const skus = productStore.currentSkus;
+  const images = skus.map((sku: any) => sku.path).filter(Boolean);
+  const categoryLabel = CATEGORY_OPTIONS.find((entry) => entry.value === formData.value.clazz)?.label || "";
+  isUploadStarting.value = true;
+  try {
+    ensureUploadLoading("正在小红书填表…");
+    const response = await api.xhsFillOnly({
+      title,
+      images,
+      allow_upload: true,
+      allow_advance: true,
+      category: categoryLabel,
+      service_values: {
+        物流模板: "【系统创建】物流模板默认—联系人",
+        运费模板: "系统默认-全国包邮模版",
+        物流类型: "普通内贸",
+      },
+    });
+    closeUploadLoading();
+    const report = response?.data as any;
+    if (report?.ok) {
+      await ElMessageBox.alert(
+        "小红书填表完成。该平台只填不提交，请到千帆后台核对后手动发布",
+        "填表完成",
+        { type: "success" }
+      );
+    } else {
+      const blocked = Array.isArray(report?.blocked) ? report.blocked.join("；") : "未知原因";
+      await ElMessageBox.alert(`未完成填表：${blocked}`, "填表结果", { type: "warning" });
+    }
+  } catch (error) {
+    closeUploadLoading();
+    const reason = axios.isAxiosError<ApiResponse>(error)
+      ? error.response?.data?.message || error.response?.data?.msg || error.message
+      : error instanceof Error ? error.message : String(error);
+    ElMessage.error(`小红书填表失败：${reason}`);
+  } finally {
+    isUploadStarting.value = false;
+  }
+}
+
 async function handlePublishByAccount() {
   if (publishButtonDisabled.value) return;
   if (productStore.targetPublishPlatform === "douyin") {
     await handleStartUploadUnified();
+    return;
+  }
+  if (productStore.targetPublishPlatform === "xiaohongshu") {
+    await handleXhsFill();
     return;
   }
   if (productStore.targetPublishPlatform !== "taobao") return;
@@ -997,15 +1168,23 @@ async function handlePublishByAccount() {
   };
   isUploadStarting.value = true;
   try {
+    // 提交模式可能在设置里被改过，每次上传前重新读，别用启动时的旧值发布。
+    await loadPublishSubmitMode();
+    const realPublish = publishSubmitMode.value === "publish";
+    if (realPublish && !(await confirmRealPublish())) {
+      return;
+    }
     ensureUploadLoading("正在保存当前商品资料…");
     const savedRevision = await savePublishSnapshot(snapshot);
     if (!savedRevision) {
       closeUploadLoading();
       return;
     }
-    ensureUploadLoading("正在启动上传…");
+    ensureUploadLoading(realPublish ? "正在提交发布…" : "正在启动上传…");
     requestedAt = Date.now();
-    const response = await productStore.startTaobaoFill(recordId, product, accountProfile, savedRevision);
+    const response = await productStore.startTaobaoFill(recordId, product, accountProfile, savedRevision, {
+      ...(realPublish ? { realPublish: true } : {}),
+    });
     const data = response.data;
     if (!response.success) {
       closeUploadLoading();
@@ -1017,7 +1196,11 @@ async function handlePublishByAccount() {
     }
     // POST 已启动的真实任务必须继续跟进，不能因当前表单或账户变动而丢弃。
     startUploadMonitoring(data.task_id, "local", null, "taobao", { recordId, accountProfile });
-    if (data.dry_run !== false || data.stop_before_submit !== true) {
+    if (realPublish) {
+      if (data.dry_run !== false || data.stop_before_submit !== false) {
+        ElMessage.warning("后端返回的任务模式与直接发布要求不一致，已接上进度，请核对任务状态");
+      }
+    } else if (data.dry_run !== false || data.stop_before_submit !== true) {
       ElMessage.warning("后端返回的任务模式与提交前填写要求不一致，已接上进度，请核对任务状态");
     }
   } catch (error) {
@@ -1269,6 +1452,14 @@ onUnmounted(() => {
         <div class="action-buttons">
           <el-button type="primary" :loading="uploadBusy" :disabled="publishButtonDisabled" @click="handlePublishByAccount">
             {{ publishActionText }}
+          </el-button>
+          <el-button
+            type="success"
+            :loading="uploadBusy"
+            :disabled="publishButtonDisabled"
+            @click="handleBatchUploadAll"
+          >
+            批量发布全部
           </el-button>
           <el-button type="warning" @click="handleCancelSelect">
             取消勾选

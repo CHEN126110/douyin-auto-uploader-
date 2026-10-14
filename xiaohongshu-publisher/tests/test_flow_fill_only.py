@@ -265,3 +265,143 @@ def test_service_filler_picks_option_and_records_evidence():
     assert out["物流模板"] == {"ok": True, "value": "默认模板"}
     assert page.clicks == [(1, 2), (3, 4)]       # 先开字段，再点选项
     assert out["未知字段"]["skipped"].startswith("非服务信息组字段")
+
+
+# --- 发布路线：类目选择 → 下一步 → 服务信息（2026-10 新增） -----------------
+
+class RoutePage:
+    """假页面：记录 select_category / advance_next 用到的点击与求值。"""
+
+    def __init__(self, *, find_ok: bool = True, click_ok: bool = True,
+                 find_text: str = "长筒袜", hit_text: str = "长筒袜",
+                 category_lines: list | None = None,
+                 drawer_closable: bool = True) -> None:
+        self.find_ok = find_ok
+        self.click_ok = click_ok
+        self.find_text = find_text
+        self.hit_text = hit_text
+        self.category_lines = category_lines if category_lines is not None else [
+            "商品类目", "已选类目", "已选类目: 女士内衣/男士内衣/家居服 > 短袜/打底袜/丝袜/美腿袜 > 长筒袜"]
+        self.drawer_closable = drawer_closable
+        self.actions: list = []
+        self.evaluated: list = []
+
+        outer = self
+
+        class _Client:
+            def evaluate(self, script: str):
+                outer.evaluated.append(script)
+                if "option_not_painted" in script or "请选择" in script:
+                    return {"ok": True, "x": 10, "y": 20}
+                return {"ok": outer.find_ok, "reason": "not_found" if not outer.find_ok else "",
+                        "x": 5, "y": 6, "text": outer.find_text}
+
+        self.client = _Client()
+
+    def close_drawer(self) -> bool:
+        self.actions.append("close_drawer")
+        return self.drawer_closable
+
+    def set_title(self, title: str) -> dict:
+        self.actions.append("set_title")
+        return {"ok": True, "value": title, "length": len(title)}
+
+    def click(self, x: int, y: int, expect_text: str = "") -> dict:
+        self.actions.append("click:{}".format(expect_text))
+        if not self.click_ok:
+            return {"clicked": False, "reason": "命中元素不是目标",
+                    "hit": {"text": self.hit_text}}
+        return {"clicked": True, "hit": {"text": self.hit_text}}
+
+    def _dispatch_click(self, x: int, y: int) -> None:
+        self.actions.append("dispatch:({},{})".format(x, y))
+
+    def state(self) -> dict:
+        self.actions.append("state")
+        return {"title_counter": "56/60", "category_lines": self.category_lines,
+                "errors": []}
+
+    def run(self, name: str, action):
+        self.actions.append("run:" + name)
+        return action()
+
+    def evidence(self) -> list:
+        return [{"name": a, "ok": True} for a in self.actions]
+
+
+def test_select_category_refuses_unopened_target():
+    """目标类目带「(未开通)」时必须拒绝点选（不绕过平台资质）。"""
+    from xiaohongshu_publish.flow import select_category
+
+    page = RoutePage()
+    out = select_category(page, "长筒袜(未开通)")
+    assert out["ok"] is False
+    assert "未开通" in out["reason"]
+    assert page.actions == []                     # 一次都没碰页面
+
+
+def test_select_category_closes_drawer_first_then_clicks():
+    """纪律 4：先关抽屉再点类目；点完回读「已选类目」。"""
+    from xiaohongshu_publish.flow import select_category
+
+    page = RoutePage()
+    out = select_category(page, "长筒袜")
+    assert out["ok"] is True
+    assert page.actions[0] == "close_drawer"
+    assert "click:长筒袜" in page.actions
+    assert any("已选类目" in line for line in out["selected_lines"])
+
+
+def test_select_category_reports_when_not_found():
+    from xiaohongshu_publish.flow import select_category
+
+    page = RoutePage(find_ok=False)
+    out = select_category(page, "运动袜")
+    assert out["ok"] is False
+    assert "未找到" in out["reason"]
+    assert not any(a.startswith("click:") for a in page.actions)
+
+
+def test_advance_next_refuses_without_selected_category():
+    """没选类目就点下一步必须停（平台会拦：请选择商品类目）。"""
+    page = FakePage(category_lines=["商品类目", "智能推荐"])
+    report = run_fill_only(page, FillPlan(title=GOOD_TITLE, allow_advance=True))
+    assert report["ok"] is False
+    assert any("未选类目" in item for item in report["blocked"])
+    assert "run:advance_next" not in page.actions
+
+
+def test_advance_next_refuses_when_target_category_unopened():
+    """目标类目未开通时停止，不点下一步。"""
+    page = FakePage(category_lines=["商品类目", "长筒袜(未开通)"])
+    report = run_fill_only(page, FillPlan(title=GOOD_TITLE, category="长筒袜",
+                                          allow_advance=True))
+    assert report["ok"] is False
+    assert any("未开通" in item for item in report["blocked"])
+    assert "run:select_category" not in page.actions
+    assert "run:advance_next" not in page.actions
+
+
+def test_full_route_selects_category_then_advances():
+    """完整发布路线：选类目 → 下一步 → 服务信息（只填给了取值的）。"""
+    page = RoutePage()
+    report = run_fill_only(page, FillPlan(
+        title=GOOD_TITLE, category="长筒袜", allow_advance=True,
+        service_values={"物流模板": "【系统创建】物流模板默认—联系人"}))
+    assert report["ok"] is True
+    assert "run:select_category" in page.actions
+    assert "run:advance_next" in page.actions
+    names = [s["name"] for s in report["steps"]]
+    assert "select_category" in names
+    assert "advance_next" in names
+    assert "service_fill" in report
+
+
+def test_service_values_without_advance_are_ignored():
+    """没推进到四组信息就不该去填服务信息（表单还没展开）。"""
+    page = RoutePage()
+    report = run_fill_only(page, FillPlan(
+        title=GOOD_TITLE, category="长筒袜", allow_advance=False,
+        service_values={"物流模板": "x"}))
+    assert "service_fill" not in report
+    assert "run:advance_next" not in page.actions
