@@ -66,23 +66,54 @@ UPLOAD_RESULT = """(() => {
 def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
     """连接真机并返回 `(browser, page, client, session_id)`。
 
-    优先选**可见**的千帆标签页（纪律 1）；没有可见的则激活第一个。
+    选取规则（2026-10-14 修正）：**创建页标签优先**，且必须是**可见**的（纪律 1）。
+
+    为什么不能只挑"可见"的 ✗：千帆后台的可见标签页常常是首页
+    （`app-system/home`）——那时拿它去跑填表，第一步就找不到上传入口，
+    界面只显示「图片上传未成功」（实测踩过 ✓）。创建页不存在时才退回其它标签，
+    仍不可见则按纪律 1 的兜底新开前台标签页。
     """
     browser = CdpBrowser(port=port, timeout=25.0)
     targets = [t for t in browser.list_targets() if t.kind == "page"
                and "ark.xiaohongshu.com" in (t.url or "")]
     if not targets:
         browser.close()
-        raise RuntimeError("没有千帆标签页：先启动 9336 调试实例并登录")
+        raise RuntimeError("没有千帆标签页：先启动调试实例并登录")
+    # 创建页优先：先试 `good/create` 的标签，再退回其余千帆标签
+    create_targets = [t for t in targets if "good/create" in (t.url or "")]
+    ordered = create_targets + [t for t in targets if t not in create_targets]
+
+    # 没有创建页标签就**开一个** ✗→✓：整条 fill_only 只在创建页上操作
+    # （上传入口、标题、类目、「信息已确认，下一步」都在那一页）。
+    # 实测（2026-10-14）：浏览器只开着后台首页时，上传第一步就找不到上传入口，
+    # 界面只显示「图片上传未成功」——旧代码只在"完全没有可见标签"时才新建 ✗，
+    # 而首页本身就是可见的，所以永远不会新建。
+    if not create_targets:
+        created = browser.call("Target.createTarget", {"url": CREATE_URL})
+        new_id = (created or {}).get("targetId")
+        deadline = time.monotonic() + 25
+        fresh = None
+        while time.monotonic() < deadline:
+            fresh = next((t for t in browser.list_targets()
+                          if t.kind == "page" and t.target_id == new_id), None)
+            if fresh and "good/create" in (fresh.url or ""):
+                break
+            time.sleep(0.5)
+        if fresh is None or "good/create" not in (fresh.url or ""):
+            browser.close()
+            raise RuntimeError("打不开商品创建页标签（Target.createTarget 未返回 good/create）")
+        ordered = [fresh] + ordered
+        time.sleep(5.0)  # 新标签页要等它自己加载出首屏（导航会销毁执行上下文）
+
     chosen = None
-    for target in targets:
+    for target in ordered:
         probe = PageClient.connect(target.web_socket_url, target_url=target.url)
         if probe.evaluate("document.visibilityState") == "visible" and chosen is None:
             chosen = (target, probe)
         else:
             probe.close()
     if chosen is None:
-        target = targets[0]
+        target = ordered[0]
         browser.call("Target.activateTarget", {"targetId": target.target_id})
         time.sleep(1.5)
         probe = PageClient.connect(target.web_socket_url, target_url=target.url)
