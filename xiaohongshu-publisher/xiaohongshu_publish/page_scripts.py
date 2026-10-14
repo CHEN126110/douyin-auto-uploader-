@@ -86,16 +86,29 @@ READ_STATE = """(() => {
 
 #: 必填字段全集：读平台的 `required-icon` 标记（空文本元素 → innerText 里看不到 `*`）。
 #: 真机实测 13 项必填；实现里"还差什么"一律读它，不要按"看起来重要"猜。
+#:
+#: ⚠️ 判定"是否已填"必须覆盖**三种形态**（2026-10-14 真机实测，旧判据漏了后两种 → 4 项误报 ✗）：
+#:  1. 单选框怎么读：`[class*="d-select"]` 显示**具体值**即已填（如 `通用` / `2024年秋冬季` /
+#:     `系统默认-非偏远地区包邮模版`）。**不能按"文本含 `请选择`"判** ✗：多选字段的
+#:     `select_text` 会把占位与已选值拼在一起（`请选择春季秋季秋冬`），一判就误报未填；
+#:  2. 多选字段：已选值渲染成 `[class*="d-select-tags"]` 里的 `[class*="d-tag"]` 元素
+#:     （实测 适用季节 = 春季/秋季/秋冬，3 个 tag + 容器），**tag 数 >0 即已填**；
+#:  3. 图片行（商品主图 / 详情页图片）：已落图的判据是行内 **`img[src]`**（实测 src 指向
+#:     平台预览域 `ros-preview.xhscdn.com/arkgoods/`）。**不能用 `input.value` 判** ✗，
+#:     图片行根本没有 input；也**不能按"上传中"文案判** ✗ —— 那是永不消失的**残留占位**，
+#:     实测图片早已落库、文案仍为「上传中...」（连续 6 轮读数完全一致）。
 REQUIRED_FIELDS = """(() => {
+  const visible=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);
+    return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
   const marks = Array.from(document.querySelectorAll('[class*="required-icon"]'));
   const out = [];
   for (const m of marks) {
-    // 先爬到「含控件的行」（input/textarea/d-select），再取短文本做标签。
+    // 先爬到「含控件的行」（input/textarea/d-select/img），再取短文本做标签。
     // 旧逻辑 depth=1 就 break，拿到的是标签自身，行内容（值/请选择）读不到，
     // 于是全部字段被误判成未填（真机实测 12/12 误报）。
     let row = m, depth = 0, label = '';
     while (row && depth < 8) {
-      const hasControl = row.querySelector && row.querySelector('input,textarea,[class*="d-select"]');
+      const hasControl = row.querySelector && row.querySelector('input,textarea,[class*="d-select"],img');
       const t = (row.textContent || '').trim().replace(/\\s+/g, '');
       if (!label && t && t.length <= 14) { label = t; }
       if (hasControl && label) break;
@@ -104,12 +117,22 @@ REQUIRED_FIELDS = """(() => {
     const text = row ? (row.textContent || '') : '';
     const input = row ? row.querySelector('input,textarea') : null;
     const value = input ? (input.value || '').trim() : '';
+    // ① 单选框：显示具体值即已填
     const selectEl = row ? row.querySelector('[class*="d-select"]') : null;
     const selectText = selectEl ? (selectEl.textContent || '').trim() : '';
-    // 有 select 且已显示具体值（非占位）→ 已填
     const selectFilled = !!selectEl && selectText.length > 0 && !/请选择/.test(selectText);
-    const unfilled = /请选择/.test(text) && !selectFilled
-      || (input ? value.length === 0 : (!selectEl && true));
+    // ② 多选框：已选值渲染成 tag 元素
+    const tagEls = selectEl
+      ? Array.from(selectEl.querySelectorAll('[class*="d-tag"],[class*="d-select-tags"] [class*="tag"]'))
+          .filter(el => (el.textContent || '').trim().length > 0)
+      : [];
+    // ③ 图片行：有带 src 的 img 即已有图（"上传中"是残留占位，不作判据）
+    const imgs = row ? Array.from(row.querySelectorAll('img')).filter(visible) : [];
+    const imgWithSrc = imgs.filter(i => ((i.getAttribute('src') || '') + (i.src || '')).length > 0);
+    const textOnlyPlaceholder = /请选择/.test(text) && !selectFilled && tagEls.length === 0;
+    const unfilled = selectFilled || tagEls.length > 0 || imgWithSrc.length > 0
+      ? false
+      : (textOnlyPlaceholder || (input ? value.length === 0 : (!selectEl && true)));
     out.push({label: label, unfilled: unfilled});
   }
   const uniq = []; const seen = new Set();

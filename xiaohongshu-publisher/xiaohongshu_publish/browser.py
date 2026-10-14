@@ -63,85 +63,109 @@ UPLOAD_RESULT = """(() => {
 })()"""
 
 
+def _xhs_page_targets(browser: Any) -> list:
+    """列出所有千帆标签页（每次现读，不缓存——`createTarget` 后列表有延迟）。
+
+    导航/新开标签后 `list_targets()` **不会立刻反映**（见 AGENTS.md「最终一致」一节），
+    因此调用方一律轮询 + 设上限，而不是查一次就下结论 ✓。
+    """
+    try:
+        targets = browser.list_targets()
+    except Exception as error:  # noqa: BLE001 - 如实带上原因，不吞错
+        raise RuntimeError("读不到标签页列表：%s" % error) from error
+    return [t for t in targets
+            if t.kind == "page" and "ark.xiaohongshu.com" in (t.url or "")]
+
+
 def connect(port: int = DEFAULT_PORT) -> tuple[Any, XhsPage, Any, str]:
     """连接真机并返回 `(browser, page, client, session_id)`。
 
-    选取规则（2026-10-14 修正）：**创建页标签优先**，且必须是**可见**的（纪律 1）。
+    选取规则（2026-10-14 第二次修正）：**创建页是硬前提，可见性只是它的一个属性**。
+    顺序固定为：
+      ① 有创建页标签且**可见** → 直接用（不做无谓的浏览器状态变更）；
+      ② 有创建页标签但**在后台** → `Target.activateTarget` 把它带到前台再连（纪律 1）；
+      ③ 激活无效（窗口本身在后台）或**根本没有创建页标签** → `Target.createTarget`
+         新开一个，等它加载出创建页再连（新开标签实测可见）；
+      ④ 以上都拿不到 → **明确报错**，绝不退化成"拿可见的那页凑合" ✗。
 
-    为什么不能只挑"可见"的 ✗：千帆后台的可见标签页常常是首页
-    （`app-system/home`）——那时拿它去跑填表，第一步就找不到上传入口，
-    界面只显示「图片上传未成功」（实测踩过 ✓）。创建页不存在时才退回其它标签，
-    仍不可见则按纪律 1 的兜底新开前台标签页。
+    为什么这样改（2026-10-14 真机踩过 ✗）：上一版虽然"创建页标签优先"，
+    但选择循环写成"**第一个 `visible` 的标签就赢**"——创建页藏在后台时先被跳过，
+    紧接着的可见首页（`app-system/home`）立刻占住 `chosen`，
+    于是 ②③ 那段兜底（前置条件 `chosen is None`）**永远不执行** ✗，
+    整条填表又跑在首页上：上传第一步找不到 `upload-trigger__label`，
+    界面只报「图片上传未成功」，真实原因被完全掩盖 ✗。
+    （上一版验收时创建页恰好在前台，所以显示了"通过"——环境依赖型绿灯。）
+
+    因此**不再回退到"任意可见的千帆标签"**：那种回退与"创建页优先"互相矛盾，
+    正是这个 bug 的来源。
     """
     browser = CdpBrowser(port=port, timeout=25.0)
-    targets = [t for t in browser.list_targets() if t.kind == "page"
-               and "ark.xiaohongshu.com" in (t.url or "")]
-    if not targets:
-        browser.close()
-        raise RuntimeError("没有千帆标签页：先启动调试实例并登录")
-    # 创建页优先：先试 `good/create` 的标签，再退回其余千帆标签
-    create_targets = [t for t in targets if "good/create" in (t.url or "")]
-    ordered = create_targets + [t for t in targets if t not in create_targets]
+    try:
+        targets = _xhs_page_targets(browser)
+        if not targets:
+            raise RuntimeError("没有千帆标签页：先启动调试实例并登录")
 
-    # 没有创建页标签就**开一个** ✗→✓：整条 fill_only 只在创建页上操作
-    # （上传入口、标题、类目、「信息已确认，下一步」都在那一页）。
-    # 实测（2026-10-14）：浏览器只开着后台首页时，上传第一步就找不到上传入口，
-    # 界面只显示「图片上传未成功」——旧代码只在"完全没有可见标签"时才新建 ✗，
-    # 而首页本身就是可见的，所以永远不会新建。
-    if not create_targets:
-        created = browser.call("Target.createTarget", {"url": CREATE_URL})
-        new_id = (created or {}).get("targetId")
-        deadline = time.monotonic() + 25
-        fresh = None
-        while time.monotonic() < deadline:
-            fresh = next((t for t in browser.list_targets()
-                          if t.kind == "page" and t.target_id == new_id), None)
-            if fresh and "good/create" in (fresh.url or ""):
+        create_targets = [t for t in targets if "good/create" in (t.url or "")]
+        probe = None
+        chosen = None
+
+        # ① 创建页已在前台：直接用
+        for target in create_targets:
+            probe = PageClient.connect(target.web_socket_url, target_url=target.url)
+            if probe.evaluate("document.visibilityState") == "visible":
+                chosen = target
                 break
-            time.sleep(0.5)
-        if fresh is None or "good/create" not in (fresh.url or ""):
-            browser.close()
-            raise RuntimeError("打不开商品创建页标签（Target.createTarget 未返回 good/create）")
-        ordered = [fresh] + ordered
-        time.sleep(5.0)  # 新标签页要等它自己加载出首屏（导航会销毁执行上下文）
+            probe.close()
+            probe = None
 
-    chosen = None
-    for target in ordered:
-        probe = PageClient.connect(target.web_socket_url, target_url=target.url)
-        if probe.evaluate("document.visibilityState") == "visible" and chosen is None:
-            chosen = (target, probe)
-        else:
-            probe.close()
-    if chosen is None:
-        target = ordered[0]
-        browser.call("Target.activateTarget", {"targetId": target.target_id})
-        time.sleep(1.5)
-        probe = PageClient.connect(target.web_socket_url, target_url=target.url)
-        if probe.evaluate("document.visibilityState") != "visible":
-            # 纪律 1 的兜底：激活无效（窗口在后台/该标签非当前标签）→ 新开一个前台标签页。
-            # 新建标签页实测是 visible 的，因此点击才能生效。
-            probe.close()
+        # ② 创建页在后台：激活它，再确认可见（纪律 1：隐藏标签不能点）
+        if chosen is None and create_targets:
+            target = create_targets[0]
+            browser.call("Target.activateTarget", {"targetId": target.target_id})
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+                probe = PageClient.connect(target.web_socket_url, target_url=target.url)
+                if probe.evaluate("document.visibilityState") == "visible":
+                    chosen = target
+                    break
+                probe.close()
+                probe = None
+
+        # ③ 没有创建页标签 / 激活无效 → 新开前台标签页并等它加载出创建页
+        if chosen is None:
             created = browser.call("Target.createTarget", {"url": CREATE_URL})
             new_id = (created or {}).get("targetId")
             fresh = None
-            deadline = time.monotonic() + 20
+            deadline = time.monotonic() + 25
             while time.monotonic() < deadline:
-                fresh = next((t for t in browser.list_targets()
-                              if t.kind == "page" and t.target_id == new_id), None)
-                if fresh and "good/create" in (fresh.url or ""):
+                fresh = next((t for t in _xhs_page_targets(browser)
+                              if t.target_id == new_id and "good/create" in (t.url or "")), None)
+                if fresh is not None:
                     break
                 time.sleep(0.5)
             if fresh is None:
-                browser.close()
-                raise RuntimeError("无法建立可见标签页（新建标签页失败）")
+                raise RuntimeError(
+                    "打不开商品创建页标签（%s）：Target.createTarget 未返回可用的创建页" % CREATE_URL)
+            time.sleep(5.0)  # 新标签页要等它自己加载出首屏（导航会销毁执行上下文）
             probe = PageClient.connect(fresh.web_socket_url, target_url=fresh.url)
-            time.sleep(6.0)
-            target = fresh
-        chosen = (target, probe)
-    target, client = chosen
-    session_id = browser.attach(target.target_id)
-    page = XhsPage(client, browser=browser, target_id=target.target_id)
-    return browser, page, client, session_id
+            if probe.evaluate("document.visibilityState") != "visible":
+                raise RuntimeError(
+                    "新开的创建页标签不可见，按纪律 1 拒绝操作（不做任何点击）")
+            chosen = fresh
+
+        # ④ 落点必须真的是创建页，否则明确报错（防止再次跑错页面）
+        href = probe.evaluate("location.href") or ""
+        if "good/create" not in href:
+            raise RuntimeError(
+                "连接到的标签不是商品创建页（location.href=%r）" % href)
+
+        session_id = browser.attach(chosen.target_id)
+        page = XhsPage(probe, browser=browser, target_id=chosen.target_id)
+        return browser, page, probe, session_id
+    except Exception:
+        browser.close()   # 失败路径不要泄漏连接（调用方拿不到 browser 就关不掉）
+        raise
 
 
 def make_upload_fn(browser: Any, client: Any, session_id: Any, page: XhsPage):
