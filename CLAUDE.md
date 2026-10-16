@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 抖音袜子发布工具 v4.0：从 PySide6 + QtWebEngine 迁移到 **Tauri 2 + Vue 3 + TypeScript + Element Plus + Python Flask Sidecar** 的桌面应用，目标是把"商品采集 → 资料整理 → 抖店发布"流水线封装成本地客户端。原 v3.0 GUI / 自动化模块仍以共享业务库的形式存在于 `src/`。
 
-> ⚠️ 根目录的 `README.md` 是 v1.0「淘宝商品信息采集系统」遗留文档，与当前 v4.0 项目身份不符，**不要据它判断技术栈或入口**。当前以本文件、`tauri-app/README.md` 和 `docs/TAURI_MIGRATION_SPEC.md` 为准。
+> 根目录 `README.md` 已于 2026-10-17 重写为当前身份（对外名「**电商产品发布工具**」；安装包 / 窗口标题 / 更新链路沿用的内部产品名仍是「抖音袜子发布工具」）。它此前是 v1.0「淘宝商品信息采集系统」的遗留文档，里面的 `install.bat`、`capture_service.py`、5000 端口、`templates/` 等均已不存在，**不要再据旧内容判断技术栈或入口**。改动前仍以本文件、`tauri-app/README.md` 和 `docs/TAURI_MIGRATION_SPEC.md` 为准。
 
 ## Git 分支与工作区
 
@@ -37,7 +37,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **Vue 3 前端** (`tauri-app/src/`)
    - 入口 `main.ts` → `App.vue`，路由 `router/index.ts`，状态 `stores/productStore.ts`（Pinia），HTTP 与 Tauri 命令封装在 `services/api.ts`。
    - 视图：`views/ProductManager.vue`（主页面）、`views/Settings.vue`；组件：`components/CaptureSection.vue`、`SkuList.vue`、`SettingsPanel.vue`、`ContextMenu.vue`、`OnboardingGuide.vue`。
-   - 与 Sidecar 通信硬编码 `http://127.0.0.1:5001`；通过 `tauriCommands` 调用 Rust 侧 `start_python_backend / stop_python_backend / check_backend_status / import_dropped_files`。
+   - 与 Sidecar 通信硬编码 `http://127.0.0.1:5001`（`services/api.ts`）。`tauriCommands` 只封装 `open_folder` 与 `get_app_info` 两个命令；后端生命周期由 Rust 壳层独占管理，前端**没有任何**拉起 / 停止封装（唯一例外是更新流程：`services/updater.ts` 会直接 `invoke("stop_python_backend")` / `invoke("start_python_backend")`）。
+   - 文件拖拽由前端 `App.vue` 的 `onDragDropEvent` 处理；Rust 侧只开了 `tauri.conf.json` 的 `dragDropEnabled`。
 
 3. **Python Flask Sidecar** (`tauri-app/python-sidecar/app.py`)
    - Flask 启动与依赖组装入口，保留产品 CRUD、智能标题、智能定价、链接采集、商品发布、CDP 调试浏览器、协议化上传、运营闭环与设置管理；图片相关接口和任务服务已拆至 `src/sidecar/`。
@@ -121,8 +122,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 受保护目录
 
-- `项目备份 禁止改动使用 只参考/`：v3.0 原版（含 `app.py`、`capture_service.py`、`web/`、`1688货品网站源码/`）。**只读参考**，禁止修改或拷贝改写；唯一例外是向 `recycle_bin/` 新增回收子目录。
-- `app3.0版本/`：另一个旧版本快照，同样只读。
+> **2026-10-17 变更**：原有两个只读参考目录已由用户删除 ——
+> `项目备份 禁止改动使用 只参考/`（v3.0 原版，原本还是 `recycle_bin/` 的落点）与 `app3.0版本/`。
+> 本仓库**当前没有受保护目录**。需要其中的历史内容时，从提交 `ff01f9e`（不含）之前的版本取回。
+>
+> 仍然**不要删**的两处：`uploads/`（唯一商品采集资料）、`lab/whitebg/out/`（白底图多场景实测证据）。
 
 ## 常用命令
 
@@ -272,5 +276,5 @@ npm run capture:fxg-submit-preflight    # 拦截匹配的写操作
 - 编辑现有 Python 文件前先确认编码：`app.py` 顶部带 `# -*- coding: utf-8 -*-`，stdout/stderr 被 `_SafeConsoleStream` 包装，禁止替换为裸 `print` 流。
 - 遇到 `python-backend.exe` 残留进程：先调用 Sidecar 的 `POST /internal/terminate`（只允许 127.0.0.1），再用 Tauri 内置的强杀路径，最后才考虑手工 Stop-Process。
 - `docs/` 已经积累了大量历史调研和规划文档（协议化上传、平台错误映射、DOM 对照分析等），写新方案前先翻一遍同名前缀的最新文件，避免重复结论。
-- **禁止直接删除代码文件**（`.cursor/rules/local-file-source-of-truth.mdc` 硬约束）。需要"删除"时移动到 `项目备份 禁止改动使用 只参考/recycle_bin/RECYCLE_<原因>_<YYYY-MM-DD>/`，参考已有的 `RECYCLE_测试文件_2025-11-13/`、`RECYCLE_根目录调试脚本_2026-06-13/` 等子目录命名，并在子目录内附 README 说明原因与恢复方式。
+- **不要直接删除代码文件**。需要「删除」时先移到**项目外的归档目录**（本机现为 `C:\Users\CRB\Desktop\2.1_外置归档_<日期>\`），在归档子目录里附 README 说明原因与恢复方式。原约定的落点 `.cursor/rules/local-file-source-of-truth.mdc` 与 `项目备份 禁止改动使用 只参考/recycle_bin/` 均已于 2026-10-17 删除，不要再引用。
 - 修改代码后如果需要重启 Sidecar / 重编译 Tauri 才能生效，**自行重启，不要问用户**；但务必先彻底关闭旧实例（先 `POST /internal/terminate`，再 `Stop-Process -Name python-backend -Force`，最后再启动新进程），避免端口占用或多实例冲突。
