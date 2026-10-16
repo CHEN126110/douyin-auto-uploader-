@@ -42,10 +42,14 @@ python protocol-research-clean-20260505\scripts\analyze_price_stock_capture.py `
 
 ## Windows 中文文件名注意事项
 
+> 2026-10-17 后记：本节示例原先使用 `项目备份 禁止改动使用 只参考\C-975\主图\` 下的样本图；该目录已于 2026-10-17 被用户删除，
+> 样本图在本机与项目外归档目录中都已不存在。示例路径已改为占位符——真实上传验收只需要一张**本机真实存在**的图片，
+> 与具体是哪个 SKU 无关，请填你自己的路径；文件名仍按本节要求显式指定 ASCII。
+
 真实上传探针支持 `UPLOAD_FILE_NAME`。在 Windows/CDP 链路中，中文源文件路径可以用于读取本地文件，但文件名跨 Node、CDP、浏览器运行时返回时可能出现 mojibake。验收请求应显式设置 ASCII 文件名，例如：
 
 ```powershell
-$env:UPLOAD_IMAGE_PATH = '<project-root>\项目备份 禁止改动使用 只参考\C-975\主图\白底.jpg'
+$env:UPLOAD_IMAGE_PATH = '<本机某张真实图片的绝对路径>'
 $env:UPLOAD_FILE_NAME = 'c975-white-bg.jpg'
 $env:UPLOAD_MODE = 'single'
 npm run probe:fxg-upload
@@ -56,7 +60,7 @@ npm run probe:fxg-upload
 批量上传验收使用分号分隔路径和文件名：
 
 ```powershell
-$env:UPLOAD_IMAGE_PATHS = '<project-root>\项目备份 禁止改动使用 只参考\C-975\主图\TM.png;<project-root>\项目备份 禁止改动使用 只参考\C-975\主图\白底.jpg'
+$env:UPLOAD_IMAGE_PATHS = '<本机第一张真实图片的绝对路径>;<本机第二张真实图片的绝对路径>'
 $env:UPLOAD_FILE_NAMES = 'c975-tm.png;c975-white-bg.jpg'
 $env:UPLOAD_MODE = 'batch'
 npm run probe:fxg-upload
