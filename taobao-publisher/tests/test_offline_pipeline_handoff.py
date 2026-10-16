@@ -182,11 +182,12 @@ def test_real_http_worker_pipeline_handoff_in_local_browser(handoff):
     rows = page.read_sku_row_numbers(handoff.browser)
     assert rows[0]['specs'] == [handoff.contents[1]['name']]
     assert rows[0]['price'] == '29.80' and rows[1]['price'] == '20.80'
-    from taobao_publish.sanitize import assert_clean
+    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
     artifact = {'scope': 'local_synthetic_browser_only', 'live_platform_tested': False,
                 'platform_boundaries_simulated': ['session', 'category_navigation', 'image_upload_server'],
                 'test_source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 'message': task['message'], 'result': result, 'submitted_or_saved_draft': False}
+    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (ROOT / 'taobao-publisher/outputs/phase_offline_pipeline_handoff.json').write_text(
         json.dumps(artifact, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

@@ -53,7 +53,7 @@
         "name": "select_category",
         "label": "选择商品类目",
         "status": "ok",
-        "elapsed_ms": 235,
+        "elapsed_ms": 218,
         "summary": "类目已选中并进入填写页：模型上级>中筒袜（店铺 catId=900000001，品牌=无品牌）",
         "data": {
           "target_path": [
@@ -87,7 +87,7 @@
         "name": "upload_images",
         "label": "上传商品图片",
         "status": "ok",
-        "elapsed_ms": 46,
+        "elapsed_ms": 61,
         "summary": "主图已选入主图位并回读确认：1 张（本次新上传 1 张，空间里原有 0 张）；SKU 素材 2 张、详情素材 2 张已准备",
         "data": {
           "selected": [
@@ -163,7 +163,7 @@
         "name": "fill_skus",
         "label": "填写销售规格(SKU)",
         "status": "ok",
-        "elapsed_ms": 437,
+        "elapsed_ms": 422,
         "summary": "自定义规格、对应图片及逐行售价库存已写入并回读",
         "data": {
           "row_count": 2,
@@ -195,7 +195,7 @@
         "name": "fill_detail",
         "label": "填写商品详情",
         "status": "ok",
-        "elapsed_ms": 16,
+        "elapsed_ms": 0,
         "summary": "详情图片按采集顺序写入并回读",
         "data": {
           "detail_count": 2,
@@ -209,7 +209,7 @@
         "name": "fill_freight",
         "label": "填写物流与发货",
         "status": "ok",
-        "elapsed_ms": 14,
+        "elapsed_ms": 31,
         "summary": "运费模板已选并回读确认：'模型商家默认模板'（写入前为 '模型商家默认模板'；该店铺共 1 个模板）",
         "data": {
           "template": "模型商家默认模板",
@@ -223,7 +223,7 @@
         "name": "fill_price_stock",
         "label": "填写价格与库存",
         "status": "ok",
-        "elapsed_ms": 16,
+        "elapsed_ms": 0,
         "summary": "已填并回读校验：一口价='42.00'、总库存='200'（总库存写入前为 ''）",
         "data": {
           "fields": [
@@ -247,7 +247,7 @@
         "name": "set_listing_time",
         "label": "设置上架时间",
         "status": "ok",
-        "elapsed_ms": 94,
+        "elapsed_ms": 93,
         "summary": "上架时间已设为 '放入仓库' 并回读确认",
         "data": {
           "listing_mode": "放入仓库",
@@ -262,7 +262,7 @@
         "name": "readback",
         "label": "回读页面校验",
         "status": "ok",
-        "elapsed_ms": 14,
+        "elapsed_ms": 15,
         "summary": "回读核对通过：9 项全部一致（宝贝标题、品牌、一口价、总库存、主图内容、SKU 规格值、SKU 价格、SKU 逐行价格库存、运费模板）；当前可见类目必填属性 3 项有值（覆盖 label.required 属性行，尚不代表整页必填项均已验证）；顺带读到的**平台默认值**（本流水线不设，但影响上架结果）：上架时间=放入仓库，发货时间=*发货时间，提取方式=未读到",
         "data": {
           "matched": [
@@ -611,7 +611,7 @@
       "protocol_route_note": "以上 10 条是 mtop 协议路线的字段映射缺口；本次走 DOM 路线，不依赖它们。要用协议路线才需要补齐。",
       "media_observations": [
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\主图\\800\\主图01.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/主图/800/主图01.jpg",
           "name": "主图01.jpg",
           "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
           "role": "main",
@@ -620,7 +620,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\SKU\\规格0.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/SKU/规格0.jpg",
           "name": "规格0.jpg",
           "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
           "role": "sku",
@@ -629,7 +629,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\SKU\\规格1.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/SKU/规格1.jpg",
           "name": "规格1.jpg",
           "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
           "role": "sku",
@@ -638,7 +638,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\详情页\\详情0.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/详情页/详情0.jpg",
           "name": "详情0.jpg",
           "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
           "role": "detail",
@@ -647,7 +647,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\详情页\\详情1.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/详情页/详情1.jpg",
           "name": "详情1.jpg",
           "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
           "role": "detail",
@@ -656,7 +656,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\主图\\800\\主图01.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/主图/800/主图01.jpg",
           "name": "主图01.jpg",
           "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
           "role": "main",
@@ -665,7 +665,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\SKU\\规格0.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/SKU/规格0.jpg",
           "name": "规格0.jpg",
           "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
           "role": "sku",
@@ -674,7 +674,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\SKU\\规格1.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/SKU/规格1.jpg",
           "name": "规格1.jpg",
           "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
           "role": "sku",
@@ -683,7 +683,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\详情页\\详情0.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/详情页/详情0.jpg",
           "name": "详情0.jpg",
           "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
           "role": "detail",
@@ -692,7 +692,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_real_worker_checks_requir1\\模型商品\\详情页\\详情1.jpg",
+          "path": "tmp/pytest-basetemp/test_real_worker_checks_requir1/模型商品/详情页/详情1.jpg",
           "name": "详情1.jpg",
           "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
           "role": "detail",
@@ -873,10 +873,10 @@
         "read_only": false,
         "ignored_tokens": []
       },
-      "generated_at": "2026-10-15T21:09:12+08:00",
+      "generated_at": "2026-10-17T03:21:32+08:00",
       "deferred_adapter_blockers": {}
     }
   },
   "error": null,
-  "test_source_sha256": "7523deb3d7cab7e0eb519bcff1cfe1168654ed4b71cc1117a04e635e2d4e9ec1"
+  "test_source_sha256": "181ea49f2e5bb2622db9c7189175fd68897cd8940c90ffde5796e11b021bcb18"
 }

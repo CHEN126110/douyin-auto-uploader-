@@ -30,6 +30,8 @@
 *.webp  binary
 *.gif   binary
 *.ico   binary
+*.icns  binary
+*.svg   text
 *.bmp   binary
 *.zip   binary
 *.7z    binary

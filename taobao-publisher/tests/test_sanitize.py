@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 
 from taobao_publish.sanitize import (
     REDACTED,
     assert_capture_ready,
     assert_clean,
+    contains_machine_path,
     contains_secret_like,
+    normalize_machine_paths,
     sanitize_cookie_string,
     sanitize_headers,
     sanitize_payload,
@@ -198,6 +201,84 @@ class SecretSelfCheckTest(unittest.TestCase):
         )
         self.assertFalse(contains_secret_like(report), report)
         assert_clean(report, context="self-report")
+
+
+class MachinePathGuardTest(unittest.TestCase):
+    """本机绝对路径守卫（2026-10-17 加）。
+
+    起因：`outputs/*handoff.json` 这类要进仓库的证据是测试自己生成的，路径天然是绝对的，
+    于是 `C:\\Users\\<用户名>\\...` 长期躺在公开仓库里。守卫负责拦，生成端负责先规范化。
+    """
+
+    def test_detects_windows_drive_paths(self) -> None:
+        self.assertTrue(contains_machine_path(r'{"p": "C:\\Users\\CRB\\Desktop\\2.1\\x.json"}'))
+        self.assertTrue(contains_machine_path(r'{"p": "C:\\Users\\CRB"}'))
+        self.assertTrue(contains_machine_path('{"p": "E:\\\\Script Project\\\\repo"}'))
+        self.assertTrue(contains_machine_path('{"p": "C:/Users/CRB/x"}'))
+        self.assertTrue(contains_machine_path('base = "D:\\\\work\\\\repo"'))
+
+    def test_detects_unix_home_paths(self) -> None:
+        self.assertTrue(contains_machine_path('{"p": "/Users/bob/projects/x"}'))
+        self.assertTrue(contains_machine_path('{"p": "/home/bob/x"}'))
+
+    def test_urls_and_relative_paths_are_not_flagged(self) -> None:
+        # 最容易误伤的形态：URL 的 scheme 后面也是「盘符样子」，但必须是 // 才算 URL
+        for text in (
+            '{"url": "http://127.0.0.1:5001/api/products"}',
+            '{"url": "https://github.com/CHEN126110/douyin-auto-uploader-/releases"}',
+            '{"p": "taobao-publisher/outputs/x.json"}',
+            '{"p": "src/utils.py"}',
+            '{"note": "见 docs/AUTO_UPDATE.md:12"}',
+            '{"time": "12:30:45"}',
+        ):
+            self.assertFalse(contains_machine_path(text), text)
+
+    def test_assert_clean_rejects_machine_path(self) -> None:
+        with self.assertRaises(ValueError):
+            assert_clean(r'{"p": "C:\\Users\\CRB\\x.json"}', context="unit-test")
+
+    def test_normalize_turns_repo_paths_relative_and_keeps_trailing_punctuation(self) -> None:
+        repo = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        raw = os.path.join(repo, 'taobao-publisher', 'tmp', 'pytest-basetemp-h3', '模型商品', '详情0.jpg')
+        artifact = {'images': [raw, raw + '。'], 'note': '见 ' + raw + ' 末行'}
+        fixed = normalize_machine_paths(artifact, repo_root=repo)
+        # 仓库内的路径降成相对路径（正斜杠，可复现），标点与周边文本保持不变
+        self.assertEqual(fixed['images'][0], 'taobao-publisher/tmp/pytest-basetemp-h3/模型商品/详情0.jpg')
+        self.assertEqual(fixed['images'][1], 'taobao-publisher/tmp/pytest-basetemp-h3/模型商品/详情0.jpg。')
+        self.assertEqual(fixed['note'], '见 taobao-publisher/tmp/pytest-basetemp-h3/模型商品/详情0.jpg 末行')
+        # 规范化之后必须过得了守卫
+        assert_clean(fixed)
+
+    def test_normalize_replaces_paths_outside_repo_with_placeholder(self) -> None:
+        outside = r'C:\Users\CRB\AppData\Local\hermes\hermes-agent\.hermes-runtime\python\generation-1\Lib\x.py'
+        fixed = normalize_machine_paths({'exe': outside}, repo_root=r'C:\some\other\root')
+        self.assertNotIn('CRB', json.dumps(fixed, ensure_ascii=False))
+        self.assertIn('x.py', fixed['exe'])
+        assert_clean(fixed)
+
+    def test_normalize_does_not_touch_urls(self) -> None:
+        """URL 必须原样保留。
+
+        `http://` 里的 `p:/` 长得像盘符路径，早期版本的正则把它改写成了
+        `http<本机路径>/…`，把产物改坏。这条守着它。
+        """
+
+        payload = {
+            'url': 'http://127.0.0.1:54321/upload/%E4%B8%BB%E5%9B%BE01.jpg',
+            'secure': 'https://fxg.jinritemai.com/ffa/g/create',
+            'ref': 'file:///C:/Users/CRB/x.jpg',
+        }
+        fixed = normalize_machine_paths(payload, repo_root=r'C:\some\other\root')
+        self.assertEqual(fixed['url'], payload['url'])
+        self.assertEqual(fixed['secure'], payload['secure'])
+        # file:// URL 里的盘符路径是真的本机路径，仍然要处理
+        self.assertNotIn('CRB', fixed['ref'])
+
+    def test_normalize_is_pure_and_leaves_other_types_alone(self) -> None:
+        original = {'n': 1, 'b': True, 'z': None, 'p': r'C:\Users\CRB\a.json'}
+        fixed = normalize_machine_paths(original, repo_root=r'C:\some\other\root')
+        self.assertEqual(original['p'], r'C:\Users\CRB\a.json')  # 入参不被修改
+        self.assertEqual((fixed['n'], fixed['b'], fixed['z']), (1, True, None))
 
 
 class AdversarialRegressionTest(unittest.TestCase):

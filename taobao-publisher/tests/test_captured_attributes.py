@@ -173,10 +173,11 @@ def test_http_save_start_and_pipeline_fill_capture_attribute_without_ui_props(ha
     assert handoff.browser.evaluate('window.submitCalls + window.draftCalls')==0
     step=next(step for step in task['steps'] if step['name']=='fill_props')
     assert '适用季节' in step['summary']
-    from taobao_publish.sanitize import assert_clean
+    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
     artifact={'scope':'local_synthetic_browser_only','live_platform_tested':False,
         'source':data(适用季节='四季'), 'result':task['result'], 'submitted_or_saved_draft':False,
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (Path(__file__).resolve().parents[1]/'outputs/captured_attribute_pipeline_handoff.json').write_text(
         json.dumps(artifact,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
