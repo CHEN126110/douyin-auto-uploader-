@@ -9029,7 +9029,13 @@ def _run_taobao_publish_task(task_id, row, request_payload, options):
             progress_callback=_report_progress,
             cdp_list_url=options['cdp_list_url'],
             account_profile=media_profile,
-            media_preparer=make_preparer(media_profile, options['cdp_list_url']) if options.get('fill_only') else None,
+            # ⚠️ **素材准备对所有真实任务都要跑**（2026-10-15）：淘宝的流程是
+            # 「先把商品文件夹拖拽导入图片空间（平台自己会把目录建出来），
+            # 再进发布页选图」。此前 `if fill_only` 的门会让「直接发布」绕过准备、
+            # 改走协议路线里**由程序自己去素材中心建目录**——而那样建出来的目录
+            # 选图器读不到，整条流水线停在 upload_images（真机任务 2026-10-15 20:43）。
+            # 用 `.get(...)` 取地址：worker 是内部函数，对只给部分键的调用方宽容。
+            media_preparer=make_preparer(media_profile, options.get('cdp_list_url')),
             write_artifact=False,
             should_cancel=_should_cancel,
             # ⚠️ 这两个**必须显式转发**：不转发的话界面上的选择到不了流水线——
@@ -9474,7 +9480,9 @@ def _run_taobao_publish_batch_task(task_id, options):
                 progress_callback=_report_progress,
                 cdp_list_url=cdp_list_url,
                 account_profile=account_profile,
-                media_preparer=make_preparer(account_profile, cdp_list_url) if options.get('fill_only') else None,
+                # 与单商品 worker 同一口径：批量任务也先做整目录素材准备
+                # （拖拽导入 → 平台建目录 → 发布页只选图），不再按 fill_only 分流。
+                media_preparer=make_preparer(account_profile, cdp_list_url),
                 write_artifact=False,
                 should_cancel=_should_cancel,
                 listing_mode=options.get('listing_mode', ''),

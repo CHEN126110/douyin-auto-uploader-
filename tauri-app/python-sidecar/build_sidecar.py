@@ -38,6 +38,11 @@ DATA_FILES: list[tuple[Path, str]] = [
     # 之前没加进打包，frozen 模式下导致 "No module named 'fxg_protocol_v4'"
     (PROJECT_ROOT / "protocol-research-clean-20260505" / "scripts" / "fxg_protocol_v4.py",
      "protocol-research-clean-20260505/scripts"),
+    # 小红书千帆发布实现包：xhs_routes.py 运行时 sys.path.insert(<root>/xiaohongshu-publisher)
+    # 后 import xiaohongshu_publish。collect_submodules 在 frozen 下实测打不进 PYZ，
+    # 与 fxg_protocol_v4 同样用数据文件把源码带进去。
+    (PROJECT_ROOT / "xiaohongshu-publisher" / "xiaohongshu_publish",
+     "xiaohongshu-publisher/xiaohongshu_publish"),
 ]
 
 # 仅收集四份事实契约，不将截图、账号数据、测试或研究产物带进安装包。
@@ -89,6 +94,12 @@ HIDDEN_IMPORTS = [
     "src.quantity_extraction_enhanced",
     "src.post_interaction_validator",
     "taobao_publish.desktop",
+    "xiaohongshu_publish",
+    "xiaohongshu_publish.browser",
+    "xiaohongshu_publish.cdp",
+    "xiaohongshu_publish.flow",
+    "xiaohongshu_publish.page_scripts",
+    "xiaohongshu_publish.rules",
     # 白底图语义抠图（src/whitebg）。模型文件不打包，运行时从数据目录解析；
     # 但这几个模块和它们的三方依赖必须显式列出，否则打出来的 exe 一调就 ModuleNotFoundError
     "src.whitebg",
@@ -198,8 +209,12 @@ def build_sidecar() -> bool:
         str(PROJECT_ROOT),
         "--paths",
         str(PROJECT_ROOT / "taobao-publisher"),
+        "--paths",
+        str(PROJECT_ROOT / "xiaohongshu-publisher"),
         "--collect-submodules",
         "taobao_publish",
+        "--collect-submodules",
+        "xiaohongshu_publish",
         "--collect-submodules",
         "DrissionPage",
         "--collect-data",

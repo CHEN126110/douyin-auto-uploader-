@@ -88,7 +88,7 @@
         "name": "fill_base",
         "label": "填写标题与基础信息",
         "status": "ok",
-        "elapsed_ms": 15,
+        "elapsed_ms": 0,
         "summary": "已填并回读校验：宝贝标题='阶段联跑标题'；跳过：商家编码（未提供）",
         "data": {
           "fields": [
@@ -143,7 +143,7 @@
         "name": "fill_skus",
         "label": "填写销售规格(SKU)",
         "status": "ok",
-        "elapsed_ms": 5922,
+        "elapsed_ms": 5921,
         "summary": "自定义规格、对应图片及逐行售价库存已写入并回读",
         "data": {
           "row_count": 2,
@@ -203,7 +203,7 @@
         "name": "fill_price_stock",
         "label": "填写价格与库存",
         "status": "ok",
-        "elapsed_ms": 16,
+        "elapsed_ms": 0,
         "summary": "已填并回读校验：一口价='42.00'、总库存='200'（总库存写入前为 ''）",
         "data": {
           "fields": [
@@ -552,7 +552,7 @@
       "protocol_route_note": "以上 9 条是 mtop 协议路线的字段映射缺口；本次走 DOM 路线，不依赖它们。要用协议路线才需要补齐。",
       "media_observations": [
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\主图\\800\\主图01.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\主图\\800\\主图01.jpg",
           "name": "主图01.jpg",
           "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
           "role": "main",
@@ -561,7 +561,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格0.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格0.jpg",
           "name": "规格0.jpg",
           "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
           "role": "sku",
@@ -570,7 +570,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格1.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格1.jpg",
           "name": "规格1.jpg",
           "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
           "role": "sku",
@@ -579,7 +579,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情0.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情0.jpg",
           "name": "详情0.jpg",
           "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
           "role": "detail",
@@ -588,7 +588,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情1.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情1.jpg",
           "name": "详情1.jpg",
           "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
           "role": "detail",
@@ -597,7 +597,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\主图\\800\\主图01.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\主图\\800\\主图01.jpg",
           "name": "主图01.jpg",
           "sha256": "56cb772f6a32a9a314f8b6ab9597b1d2e9f4112dc452d252355c17503d7a8e54",
           "role": "main",
@@ -606,7 +606,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格0.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格0.jpg",
           "name": "规格0.jpg",
           "sha256": "205af602242c5c7256917c9829e08b8d2cf69a3ec913d08f565a4e7bde07f014",
           "role": "sku",
@@ -615,7 +615,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格1.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\SKU\\规格1.jpg",
           "name": "规格1.jpg",
           "sha256": "cf33e91fb873cd6a7688dd6c56342bb403a8354dcc0f21c18d2ebd663e8bcea0",
           "role": "sku",
@@ -624,7 +624,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情0.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情0.jpg",
           "name": "详情0.jpg",
           "sha256": "8524976da8c300896bc5a78164d136fb78c8a5e8b3b2ad36d68dd0450e64a579",
           "role": "detail",
@@ -633,7 +633,7 @@
           "folder_path": []
         },
         {
-          "path": "C:\\Users\\CRB\\Desktop\\2.1\\.tmp\\architecture-media-20261009\\pytest-taobao\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情1.jpg",
+          "path": "C:\\Users\\CRB\\Desktop\\2.1\\taobao-publisher\\tmp\\pytest-basetemp-h3\\test_http_save_start_and_pipel2\\模型商品\\详情页\\详情1.jpg",
           "name": "详情1.jpg",
           "sha256": "07c7a76360c22f7d44e271bb36a1968785f5cbfc8409f701e3479553347596d3",
           "role": "detail",
@@ -789,7 +789,7 @@
         "read_only": false,
         "ignored_tokens": []
       },
-      "generated_at": "2026-10-09T23:09:23+08:00",
+      "generated_at": "2026-10-15T21:04:08+08:00",
       "deferred_adapter_blockers": {}
     }
   },

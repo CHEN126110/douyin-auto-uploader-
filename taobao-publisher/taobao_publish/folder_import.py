@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """先在独立素材页整目录导入，再进入发布页。
 
-目录输入/原生拖放能力已有隔离浏览器证据；当前淘宝 DOM 路线仍为 candidate。
+**目录只由平台建**（2026-10-15 用户决策）：把本地商品文件夹**拖拽**进上传面板
+（面板原文就是「点击/拖拽，批量导入文件」），平台自己会把目录结构建出来；
+本模块与协议路线都**不再由程序自行建目录**。缺目录时如实失败并把
+"删掉云端商品目录后重跑"交给用户——重跑的那次整目录导入会由平台重建。
 一次发送目录后必须读到本批队列完成、真实目录和文件回执，不自动重传或改成逐层建目录。
 """
 from collections import Counter
@@ -124,26 +127,44 @@ def _open_panel(client):
 
 
 def send_directory(client, directory):
-    """只发送一次真实文件夹。普通 multiple 输入不支持目录，绝不把目录路径塞进去。"""
+    """只发送一次真实文件夹。**优先原生拖拽**（2026-10-15 用户明确要求的方法）。
+
+    平台的面板原文就是「点击/拖拽，批量导入文件」——把本地文件夹拖进去时，
+    **平台自己会把目录结构建出来**（这正是我们要的行为：目录不由程序创建）。
+    面板里的 file 输入在真机上实测是 ``multiple:true, webkitdirectory:false``
+    （E-224；2026-10-15 真机复验，accept 只列图片后缀），根本不承接目录，
+    所以"目录输入"只作为**没有拖拽落点时的兜底**，不是首选。
+    """
+
     target=client.evaluate(r'''(() => {
       const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);
         return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
       const panels=Array.from(document.querySelectorAll('[class*="UploadPanel_uploadPanel"]')).filter(visible);
       if(panels.length!==1)return {ok:false,reason:'upload_panel_not_unique'};
+      const reasons=[];
+      // ① 原生拖拽落点（首选）：先滚到视野中央，再确认落点上没有被别的东西盖住。
+      const zones=Array.from(panels[0].querySelectorAll('[class*="UploadPanel_uploadPart"]')).filter(visible);
+      if(zones.length>1)reasons.push('folder_drop_zone_not_unique');
+      if(zones.length===1){
+        const zone=zones[0];zone.scrollIntoView({block:'center',inline:'center'});
+        const r=zone.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+        const top=document.elementFromPoint(x,y);
+        if(top&&zone.contains(top))return {ok:true,method:'native_directory_drop',x,y};
+        reasons.push('folder_drop_zone_covered');
+      }else if(zones.length===0){
+        reasons.push('folder_drop_zone_missing');
+      }
+      // ② 兜底：受支持目录的真实 webkitdirectory 输入（普通 multiple 输入不承接目录，
+      //    绝不把目录路径塞进去）。
       const inputs=Array.from(panels[0].querySelectorAll('input[type="file"][webkitdirectory]')).filter(el=>!el.disabled);
-      if(inputs.length>1)return {ok:false,reason:'directory_input_not_unique'};
+      if(inputs.length>1)reasons.push('directory_input_not_unique');
       if(inputs.length===1){
         if(document.querySelectorAll('[class*="UploadPanel_uploadPanel"] input[type="file"][webkitdirectory]:not(:disabled)').length!==1)
-          return {ok:false,reason:'directory_input_not_unique'};
-        return {ok:true,method:'directory_input'};
+          reasons.push('directory_input_not_unique');
+        else return {ok:true,method:'directory_input'};
       }
-      const zones=Array.from(panels[0].querySelectorAll('[class*="UploadPanel_uploadPart"]')).filter(visible);
-      if(zones.length!==1)return {ok:false,reason:'folder_drop_zone_not_unique'};
-      const zone=zones[0];zone.scrollIntoView({block:'center',inline:'center'});
-      const r=zone.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
-      const top=document.elementFromPoint(x,y);
-      if(!top||!zone.contains(top))return {ok:false,reason:'folder_drop_zone_covered'};
-      return {ok:true,method:'native_directory_drop',x,y};
+      if(inputs.length===0)reasons.push('directory_input_missing');
+      return {ok:false,reason:reasons.join('｜')||'directory_send_target_missing'};
     })()''')
     if not isinstance(target,dict) or target.get('ok') is not True:
         raise page.PageError('整文件夹导入入口无法确认：'+str(target))
@@ -305,15 +326,45 @@ def _read_receipts(client, manifest, root, *, previous=None, should_cancel=None,
     return tuple(receipts)
 
 
-def _folder_id_for(client, root, parts):
-    """拿到（必要时建出）``root/parts…`` 的 folderId。已存在就返回，不重复建。"""
+def _existing_folder_id(client, manifest, parts, *, listing=None):
+    """**只读**解析 ``商品目录/parts…`` 的 folderId；读不到返回 ``None``，**绝不创建**。
+
+    为什么不再有"建"那半步（2026-10-15 用户决策）：目录只由**整目录导入**负责诞生
+    ——把本地文件夹拖到上传面板（面板原文「点击/拖拽，批量导入文件」），平台会自己
+    把目录结构建出来，这正是我们要的行为。旧实现（``ensure_child_directory``）会在
+    选图**之前**顺手建目录，而那样刚建出来的目录当场读不到（选图器那棵树刷不出来），
+    真机上一个「直接发布」任务就这样停在 ``upload_images``（任务 2026-10-15 20:43）。
+    缺目录时这里如实返回 ``None``，由调用方给出"删掉云端商品目录后重跑"的一步动作。
+
+    优先用平台自己的 ``dir.query``（不受 DOM 虚拟列表影响）；没有清单时退回 DOM 读树
+    ——**先进入父目录**（懒加载的子目录只有进入后才渲染）再按完整路径读 folderId。
+    """
 
     from . import media_library
-    folder_id = ""
-    for index, part in enumerate(parts, start=1):
-        folder_id = media_library.ensure_child_directory(
-            client, [*root, *parts[:index - 1]], str(part), context_id=None)
-    return folder_id
+    if listing is not None:
+        roots = listing.find_directories(manifest.folder_name)
+        if len(roots) == 1:
+            node = roots[0]
+            for part in parts:
+                node = listing.find_child(node['id'], str(part))
+                if node is None:
+                    break
+            if node is not None:
+                return str(node['id'])
+    parent = [manifest.folder_name, *[str(part) for part in parts[:-1]]]
+    wanted = [manifest.folder_name, *[str(part) for part in parts]]
+    try:
+        media_library.open_directory(client, parent, context_id=None,
+                                     page=media_library.PAGE_MATERIAL_CENTER)
+    except Exception:  # noqa: BLE001 - 进不去不改判决：下面那次读树才是判据
+        pass
+    for _ in range(3):
+        folder_id = media_library.directory_folder_id(client, wanted, context_id=None,
+                                                      page=media_library.PAGE_MATERIAL_CENTER)
+        if folder_id:
+            return folder_id
+        time.sleep(0.4)
+    return None
 
 
 def _content_matches(entry, manifest, source):
@@ -354,8 +405,9 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
 
     所以按证据做**最小动作**：
 
-    * 用途目录**不存在** → 先在素材中心建出来（`ensure_child_directory` 幂等，
-      与协议路线 `ensure_cloud_folders` 同一动作、同一道写授权门），再读它的文件；
+    * 用途目录**不存在** → **如实失败，不创建**（2026-10-15 用户决策：目录由
+      **整目录导入**在平台侧建出来，程序不再自行建目录）；文案给的动作是
+      "删掉云端商品目录后重跑"——那一次整目录导入会由平台按本地结构重建；
     * 云端**没有**的同名文件 → 用已验证的 ``upload.api``（E-212/E-216/E-221/E-247）
       直接传进它该去的那个 ``folderId``，传完**回读核对** URL 才算落库，并写进账本；
     * 云端**有**同名文件 → 身份判定两条路：**URL 身份**（账本回执与云端同资源号）
@@ -380,16 +432,19 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
     pending = []
     for folder, sources in grouped.items():
         _cancelled(should_cancel)
-        # ⚠️ **必须先确保目录存在，再读它**（2026-10-10 真机踩到）：
-        # 本地新生成的 `白底图/`、`SKU_1x1/` 在云端还没有目录，先读会直接报
-        # `判据=directory_missing`——而建目录本来就是协议路线的既定动作
-        # （`ensure_cloud_folders` 就是这么做的，E-287），且与上传共用同一道
-        # 写授权门（`import_directory` 开头已 `require(WRITE_UPLOAD_IMAGE)`）。
-        # 已存在时 `ensure_child_directory` 幂等，不会建出重复目录。
+        # ⚠️ **只读解析、绝不创建**（2026-10-15 用户决策）：目录只由整目录导入
+        # （拖拽）在平台侧诞生，程序不自己建目录。缺目录时如实失败并把
+        # "删掉云端商品目录后重跑"交给用户——重跑时平台会按本地结构重建。
         # ⚠️ 商品目录**根层**也会放图（白底图工具的 `白底图.jpg` 就落在这一层）：
         # 它的 folderId 不是空串，而是商品目录自己的 id。
         if folder:
-            folder_id = _folder_id_for(client, root, folder)
+            folder_id = _existing_folder_id(client, manifest, folder, listing=listing)
+            if not folder_id:
+                raise page.PageError(
+                    '云端商品目录缺少子目录 {!r}（本版本不再由程序建目录）：{}/{}。'
+                    '请在素材中心删除云端这个商品目录后，再点一次「开始淘宝发布」——'
+                    '整目录导入会按本地结构把目录和图片一起交给平台建好。'.format(
+                        '/'.join(folder), manifest.folder_name, '/'.join(folder)))
         else:
             folder_id = ""
             if listing is not None:
@@ -502,19 +557,29 @@ def _complete_existing(client, manifest, root, account_profile, *, port, authori
                 # 上传成功不算数：**回读**到同一个 URL 才算落库（与协议路线同一判据）。
                 #
                 # ⚠️ 协议上传是**页面外**发的请求，素材中心页并不知道（真机 2026-10-10：
-                # 5 张全传成功，紧接着读该目录却仍是空的）。必须先进目录、再点一次
-                # 当前目录让页面重拉这一层（`refresh_gallery` 就是为此而写），
-                # 并给云端一点传播时间——有界重试，不无限等。
-                deadline = time.monotonic() + 15.0
+                # 5 张全传成功，紧接着读该目录却仍是空的）。必须先进目录（逼页面重拉
+                # 这一层）、再给云端一点传播时间——有界重试，不无限等。
+                #
+                # 回读的判据来源跟着**读取链的统一口径**走（2026-10-15）：
+                # 有收响应的能力时以平台自己的 `file.query` 为准（`_cloud_files`），
+                # 它的 `fileModule` 才含 `name/fullUrl/pictureId`；DOM 读卡片那套在
+                # 素材中心页上曾被实测读不准（E-MEDIA-*），只留给没有端口的场合。
+                deadline = time.monotonic() + 20.0
                 files = {}
                 while True:
-                    media_library.open_directory(client, [*root, *folder], context_id=None,
-                                                 page=media_library.PAGE_MATERIAL_CENTER)
-                    media_library.refresh_gallery(client, context_id=None)
-                    contents = media_library.read_directory_files(
-                        client, [*root, *folder], context_id=None,
-                        page=media_library.PAGE_MATERIAL_CENTER)
-                    files = {entry['name']: entry for entry in contents['files']}
+                    if listing is not None:
+                        entries_now = _cloud_files(client, listing, [*root, *folder],
+                                                   folder_id=folder_id)
+                        files = ({entry['name']: entry for entry in entries_now}
+                                 if entries_now is not None else {})
+                    else:
+                        media_library.open_directory(client, [*root, *folder], context_id=None,
+                                                     page=media_library.PAGE_MATERIAL_CENTER)
+                        media_library.refresh_gallery(client, context_id=None)
+                        contents = media_library.read_directory_files(
+                            client, [*root, *folder], context_id=None,
+                            page=media_library.PAGE_MATERIAL_CENTER)
+                        files = {entry['name']: entry for entry in contents['files']}
                     if all(PurePosixPath(source.relative_path).name in files
                            for source in sources):
                         break

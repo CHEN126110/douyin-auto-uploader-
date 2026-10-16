@@ -225,8 +225,101 @@ def _all_images_path(state):
     return None
 
 
+def _context_storage(context_holder, context_id):
+    """重取会换掉 iframe 上下文，所以状态放在**调用方给的可变映射**里。
+
+    ``context_holder`` 缺省（既有调用方/测试只给 ``context_id``）时退回本地字典：
+    行为与"只看这一次调用"等价，不新增任何全局状态。
+    """
+
+    if isinstance(context_holder, dict):
+        context_holder.setdefault('context_id', context_id)
+        return context_holder
+    return {'context_id': context_id}
+
+
+def _current_context(storage, fallback):
+    """当前该用的 iframe 上下文 id。**重取过就用新的**，否则逐字沿用传入值。"""
+
+    return storage.get('context_id', fallback)
+
+
+def _remember_context(storage, context_id):
+    """记下重取后的新上下文。``None`` 表示回调拿不到新上下文——保持原值如实失败。"""
+
+    if context_id is not None:
+        storage['context_id'] = context_id
+
+
+#: 把选图器目录树**滚到顶部**的表达式：虚拟列表只渲染滚动窗口里的节点，
+#: 窗口位置一变，节点就"消失"（不是目录不存在）。
+#:
+#: 真机 2026-10-10（`tmp/probe-picker-scroll-map.json`，同一棵树逐档设值）：
+#:
+#: ==================  ==========================================  ==========
+#: scrollTop           渲染出的根层                                  目标在否
+#: ==================  ==========================================  ==========
+#: 310（上次点过的目录） ``ID-986833932804`` + 智淘×3 + 神笔           否
+#: 200                  含 ``ID-1089528753058``                      是
+#: 0                    含 ``ID-1089528753058``（可重复）             是
+#: ==================  ==========================================  ==========
+#:
+#: 容器是 ``div.next-virtual-tree-container``（``scrollHeight=616`` / ``clientHeight=306``），
+#: 是树节点 ``.next-tree`` 的祖先。**只改滚动位置**：不动选中、不点节点、不发写请求。
+#:
+#: ⚠️ 替身/测试要按表达式分派时，用 :data:`SCROLL_EXPRESSION_MARKER` 认它
+#: （整段 JS 抄进测试必然漂移）。
+_SCROLL_TREE_TO_TOP_EXPRESSION = r"""
+(() => {
+  const visible=e=>!!(e.getBoundingClientRect().width&&e.getBoundingClientRect().height);
+  const tree=Array.from(document.querySelectorAll('[role="tree"],.next-tree'))
+    .filter(visible).filter(e=>!e.parentElement.closest('[role="tree"],.next-tree'))[0];
+  if(!tree)return {ok:false,reason:'tree_missing'};
+  let scroller=null;
+  for(let n=tree;n;n=n.parentElement){
+    const s=getComputedStyle(n);
+    if(n.scrollHeight>n.clientHeight+2&&/auto|scroll/.test(s.overflowY)){scroller=n;break;}
+  }
+  if(!scroller)return {ok:true,scrolled:false};
+  if(scroller.scrollTop===0)return {ok:true,scrolled:false};
+  scroller.scrollTop=0;
+  return {ok:true,scrolled:true};
+})()
+"""
+
+#: 认这条表达式的**唯一标记**（替身与测试按它分派，别抄整段 JS）。
+SCROLL_EXPRESSION_MARKER = "scroller.scrollTop=0;"
+
+
+def _scroll_tree_to_top(client, *, context_id):
+    """把选图器目录树滚到顶部，让**这一段**节点进入虚拟列表的渲染窗口。
+
+    这是**助推**，不是判据（与 :func:`_nudge_children_render` 同一纪律）：
+    滚不动、找不到树或容器，都**不抛错**——后面那次读树才是判决，
+    读不到照样如实报 ``directory_missing``。
+
+    ## 为什么必须做（2026-10-10 真机，E-PICKER-STALE-20261010）
+
+    真机任务 ``6afce43f``：整目录上传成功（31 张 ``uploaded_now=true``，云端就是被报
+    "不存在"的那个 ``ID-1089528753058/{主图,SKU,详情页}``），而 `upload_images`
+    报 ``判据=directory_missing``。同一个商品的**平台响应**（选图器自己发的
+    ``mtop.taobao.picturecenter.console.dir.query``）里根层有 8 个目录、目标就在第 4 个，
+    但页面 DOM 只挂了 4 个——因为树是 ``next-virtual-tree``，**只渲染滚动窗口里的节点**，
+    而那个窗口停在上一次选中/点过的目录上（``scrollTop=310``）。
+
+    这也解释了为什么"重开弹层"没用：iframe 确实被重建（``handleId`` 与上下文都换了），
+    但**选中项与滚动位置被保留**，重新挂载后窗口又落回原处。
+    """
+
+    try:
+        client.evaluate(_SCROLL_TREE_TO_TOP_EXPRESSION, context_id=context_id)
+    except Exception:  # noqa: BLE001 - 助推失败不掩盖后面那次读树的判决
+        pass
+
+
 def ensure_product_root(client, product_name, *, context_id, creator=None, role_names=(),
-                        wait_seconds=5.0, page=PAGE_PICKER):
+                        wait_seconds=5.0, page=PAGE_PICKER, on_stale=None,
+                        context_holder=None):
     """返回商品目录在树里的路径；不在树里就用 ``creator`` 建。**唯一建目录入口。**
 
     ## 为什么收敛成一个（2026-10-07 做减法）
@@ -250,6 +343,34 @@ def ensure_product_root(client, product_name, *, context_id, creator=None, role_
         没有它时**如实抛错**，绝不回退到根目录。
     :param page: 这次解析发生在哪个页面（:data:`PAGE_PICKER` / :data:`PAGE_MATERIAL_CENTER`）。
         失败文案要靠它把路径解释清楚——两个页面的树**根表示不同**（见 :func:`root_prefix`）。
+    :param on_stale: 选图器读不到商品目录时的**重取回调**：``on_stale(商品名) -> 新 context_id``。
+        它由调用方提供，因为"重取"是页面动作（关掉弹层重开），本模块不碰页面。
+        ⚠️ 真机实证（E-PICKER-STALE-20261010）：**重开弹层并不能修复"虚拟列表窗口"这种读不到**
+        ——iframe 会重建，但选中/滚动位置保留。真正管用的是 :func:`_scroll_tree_to_top`，
+        本函数每次读之前都会调它；``on_stale`` 只作为"换了上下文"的兜底路径保留。
+    :param context_holder: 可变映射（``{'context_id': …}``）。重取会换掉整个 iframe
+        上下文，**旧 id 在重开之后立刻失效**——所以新 id 必须回写到这里，
+        否则调用方后续每一步都指着一段死上下文。
+
+    ## 读之前先滚到顶：虚拟列表的窗口不是全量（2026-10-10 真机实证）
+
+    真机任务 ``6afce43f``（``record_id=2``，``ID-1089528753058``）：
+
+    * ``prepare_media`` **成功**：整目录 31 张 ``uploaded_now=true``，
+      回执里的云端目录就是 ``ID-1089528753058/{主图,SKU,详情页}``；
+    * 紧接着本函数报 ``判据=directory_missing``，提示"先在素材中心建好该目录"——
+      而那 31 张图**已经在那个目录里**。
+
+    逐档实测（``tmp/probe-picker-scroll-map.json``）钉死了原因：选图器目录树是
+    ``next-virtual-tree``（``scrollHeight=616`` / ``clientHeight=306``），
+    **只渲染滚动窗口里的节点**。窗口停在 ``scrollTop=310``（上一次选中
+    ``ID-986833932804/详情页`` 留下的）时，根层只渲染出 4 个——目标目录排在第 4 个之前，
+    根本不在 DOM 里；滚到 0 后立刻渲染出来，**可重复**。
+
+    同一个商品的**平台响应**（选图器自己发的 ``console.dir.query``）里，
+    根层有 8 个目录、目标就在其中：所以这不是"目录不存在"，也不是"平台没返回"，
+    而是**页面只渲染了一部分**。`_wait_for_child_render` 那套是为"子节点没挂载"写的，
+    对"整棵树只渲染了窗口那一段"无能为力。
 
     ## 两条失败文案（语义保留，只补页面与路径）
 
@@ -261,13 +382,38 @@ def ensure_product_root(client, product_name, *, context_id, creator=None, role_
 
     from .page import PageError
 
-    path = product_root_path(client, product_name, context_id=context_id, page=page)
+    def read():
+        # ⚠️ **每次读之前都滚到顶**：树是虚拟列表，窗口位置决定哪些节点存在。
+        # 这一步只改滚动位置（不点选、不改选中），是助推；读到的结果才是判据。
+        if page == PAGE_PICKER:
+            _scroll_tree_to_top(client, context_id=_current_context(storage, context_id))
+        return product_root_path(client, product_name,
+                                 context_id=_current_context(storage, context_id), page=page)
+
+    storage = _context_storage(context_holder, context_id)
+    path = read()
     if path:
         return path
+    stale_first = page == PAGE_PICKER and on_stale is not None
+    if stale_first:
+        # 兜底路径：调用方给了"重取"能力时再用一次（重开弹层会换 iframe 上下文）。
+        # 真机上这条**修不了虚拟列表窗口**，所以真正的修复是上面那次滚到顶。
+        renewed = on_stale(product_name)
+        if renewed is not None:
+            _remember_context(storage, renewed)
+        path = read()
+        if path:
+            return path
     if creator is None:
+        action = None
+        if stale_first:
+            # 滚到顶 + 重取都做过了仍没有这个目录：它**可能真的不在云端**。
+            # 这时"去素材中心建"已不是唯一解释，动作句给能立刻做的一步。
+            action = ('手动重载淘宝发布页该标签页后重试；仍不行再确认图片空间里'
+                      '是否真的没有该商品目录')
         raise PageError(_media_failure(
             STAGE_UPLOAD_IMAGES, 'resolve_role_folder', page, product_name,
-            'directory_missing'))
+            'directory_missing', action=action))
     if not isinstance(creator(product_name, [str(name) for name in (role_names or ())]), dict):
         # 回调没给目录映射 = 建目录这一步没有回执，**不能当成建好了**。
         raise PageError(_media_failure(
@@ -276,7 +422,8 @@ def ensure_product_root(client, product_name, *, context_id, creator=None, role_
     deadline = time.monotonic() + max(0.0, wait_seconds)
     while True:
         # 目录是在**另一个标签页**里建好的，这棵树要重新拉一次才看得到它。
-        path = product_root_path(client, product_name, context_id=context_id, page=page)
+        # 读法统一走 `read()`：它盯的是**当前**上下文（重取过就是新的那个）。
+        path = read()
         if path or time.monotonic() >= deadline:
             break
         time.sleep(0.25)

@@ -2590,7 +2590,14 @@ def _protocol_upload_hook(ctx):
 def _cloud_folder_creator(ctx):
     """跨页建目录回调：``(商品名, 角色目录名列表) -> {目录名: folderId}``。
 
-    ## 为什么需要它（2026-10-07 接线，复盘见 docs/35）
+    ## ⚠️ 2026-10-15 起：**桌面生产路径不再使用它**
+
+    用户决策：目录只由**整目录导入**（把本地文件夹拖到上传面板，平台自己建目录）
+    负责诞生，程序不再自建目录。桌面 worker（app.py）现在对**所有**任务都先跑
+    素材准备（`folder_import.make_preparer`），`stage_upload_images` 走绑定分支，
+    不会到协议支路来；这条回调只**保留给研究脚本**（如 run-live-publish.py）。
+
+    ## 为什么当初需要它（2026-10-07 接线，复盘见 docs/35）
 
     图片空间里没有 ``全部图片/<商品名>/<主图|SKU|详情页>`` 时，**选图器弹层里
     没有任何建目录入口**（E-286 实测：平铺按钮只有「本地上传」、右键不弹菜单）；
@@ -2717,6 +2724,38 @@ def _trace_timing(ctx: PipelineContext, label: str, started: float) -> None:
         _sys.stderr.flush()
 
 
+def _reopen_media_popup(client, *, progress=None, reason=''):
+    """关掉选图器弹层再打开，并返回**新的** iframe 上下文 id。
+
+    ## 它**不是**「目录读不到」的修复（2026-10-10 真机证伪）
+
+    曾经以为"重开弹层 = 重新拉根列表"，真机逐档实测否掉了这条：
+
+    * 重开后 iframe 确实被重建（``handleId`` 与执行上下文都换了）；
+    * **但选中项与滚动位置被保留**，而选图器目录树是 ``next-virtual-tree``
+      ——只渲染滚动窗口里的节点。所以重开之后窗口又落回原处，目标目录**照样不在 DOM 里**
+      （真机任务 ``6afce43f`` 就是这样：进度里出现了"重开弹层"，随后仍然
+      ``判据=directory_missing``）。
+
+    真正的修复在 ``media_library._scroll_tree_to_top``：读树之前把虚拟列表滚到顶
+    （同一棵树逐档实测：``scrollTop=310`` 时根层只渲染 4 个、目标不在；``0`` 时目标出现，
+    可重复）。
+
+    本函数保留给**确实需要换上下文**的兜底路径（调用方显式传 ``on_stale`` 时才会被调用），
+    它只重复选图链本来就在用的三个动作（``ensure_media_popup_closed`` /
+    ``open_media_popup`` / ``media_iframe_context``）；此刻主图区一定是 **0 张**
+    （``stage_upload_images`` 之前已拒绝"主图区已有图"的运行），所以不丢任何已填内容。
+    """
+
+    from . import page
+
+    if progress:
+        progress('选图器目录树读不到目标目录，重开弹层取一次新上下文' + ('：' + reason if reason else ''))
+    page.ensure_media_popup_closed(client)
+    page.open_media_popup(client)
+    return page.media_iframe_context(client)
+
+
 def stage_upload_images(ctx: PipelineContext) -> StageOutcome:
     """阶段 ``upload_images``：备齐全部素材，再按原顺序选入主图位。**写阶段**。
 
@@ -2803,10 +2842,25 @@ def stage_upload_images(ctx: PipelineContext) -> StageOutcome:
         if ctx.prepared_media is not None:
             # 完整准备回执意味着目录和图片已经入库；不能建空目录掩盖交接失败。
             from .media_library import ensure_product_root
+            # ⚠️ 这里的目录树**只渲染滚动窗口里那一段**（真机 2026-10-10：整目录 31 张上传成功、
+            # 云端目录就是被报"不存在"的那个，页面上却读不到它——树是 `next-virtual-tree`，
+            # 窗口停在上次选中的目录上）。`ensure_product_root` 每次读之前会先把树滚到顶，
+            # 这一步在 media_library 侧完成，这里不需要额外动作。
+            media_context = {'context_id': context_id}
+            # 不等：滚到顶是同步完成的，"等目录渲染出来"那条等待只属于 creator 分支
+            # （那里目录是在别的标签页刚建好的）。这里读不到就是真的读不到，
+            # 交给 on_stale 兜底一次，再读不到就如实失败。
             ensure_product_root(client, ctx.prepared_media.manifest.folder_name,
-                                context_id=context_id, wait_seconds=8.0)
+                                context_id=context_id, wait_seconds=0.0,
+                                context_holder=media_context,
+                                on_stale=lambda name: _reopen_media_popup(
+                                    client,
+                                    progress=lambda message: report_media_activity(ctx, message),
+                                    reason=name))
+            context_id = media_context['context_id']
             prepared = bind_prepared_media(client, ctx.item, ctx.resolved_contracts(), ctx.prepared_media,
                 ctx.account_profile, context_id=context_id,
+                context_holder=media_context,
                 progress=lambda message: report_media_activity(ctx, message),
                 observations=ctx.scratch.setdefault('media_observations', []))
             identities = [{key: entry[key] for key in ('path', 'name', 'sha256')} for entry in prepared['main']]

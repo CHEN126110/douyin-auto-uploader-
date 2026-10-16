@@ -68,14 +68,27 @@ class FakeDirectoryClient:
     ``supported=False`` 表示"当前页面没有可用的目录树"，于是
     `product_root_path` 返回 `None`，`resolve_role_folder` 直接进建目录分支。
     这正是"新商品第一次上架、图片空间里还没有它的目录"的真实形态。
+
+    ⚠️ 2026-10-10：`ensure_product_root` 在**读树之前**会先发一条"把虚拟列表滚到顶"
+    的助推表达式（`media_library._SCROLL_TREE_TO_TOP_EXPRESSION`）。替身必须按
+    **表达式**分派，不能对任何表达式都回同一份树状态——否则那条助推会被当成一次
+    读树，`product_root_path` 永远不被调用（本文件两条用例就是这么红过一次：
+    `creator` 零调用、`ensure_product_root` 直接返回）。
     """
+
+    #: 与 `media_library.SCROLL_EXPRESSION_MARKER` 同一个标记（抄整段 JS 会漂移）。
+    SCROLL_MARKER = media_library.SCROLL_EXPRESSION_MARKER
 
     def __init__(self, state):
         self.state = state
         self.expressions = []
+        self.scrolls = 0
 
     def evaluate(self, expression, context_id=None, timeout=None):  # noqa: ARG002
         self.expressions.append(expression)
+        if self.SCROLL_MARKER in expression:
+            self.scrolls += 1
+            return {"ok": True, "scrolled": False}   # 助推：没有可滚动的虚拟列表
         return self.state
 
 
@@ -360,7 +373,11 @@ class EnsureChildDirectoryRootTest(unittest.TestCase):
 
 
 class SequenceDirectoryClient(FakeDirectoryClient):
-    """按调用次数依次返回不同状态（最后一次重复），用来模拟"先空、后渲染"。"""
+    """按调用次数依次返回不同状态（最后一次重复），用来模拟"先空、后渲染"。
+
+    ⚠️ 滚到顶那条助推表达式**不参与序列推进**（它不是一次读树）——
+    否则第一次真读会拿到序列里的第二个状态，`creator` 就永远不会被调用。
+    """
 
     def __init__(self, states):
         super().__init__(states[0])
@@ -369,9 +386,13 @@ class SequenceDirectoryClient(FakeDirectoryClient):
 
     def evaluate(self, expression, context_id=None, timeout=None):  # noqa: ARG002
         self.expressions.append(expression)
+        if self.SCROLL_MARKER in expression:
+            self.scrolls += 1
+            return {"ok": True, "scrolled": False}
+        state = self._states[self._calls]
         if self._calls < len(self._states) - 1:
             self._calls += 1
-        return self._states[self._calls]
+        return state
 
 
 class RoleFolderWaitTest(unittest.TestCase):
@@ -521,7 +542,10 @@ class PreparedMediaBindingTest(unittest.TestCase):
 
     def test_existing_prepared_directory_binds_receipt_without_uploading_again(self):
         outcome, ensure, bind, prepared, client = self._run_binding()
-        ensure.assert_called_once_with(client, 'ID-1', context_id=17, wait_seconds=8.0)
+        ensure.assert_called_once_with(client, 'ID-1', context_id=17, wait_seconds=0.0,
+                                      context_holder={'context_id': 17},
+                                      on_stale=ensure.call_args.kwargs['on_stale'])
+        self.assertTrue(callable(ensure.call_args.kwargs['on_stale']))
         bind.assert_called_once()
         self.assertIs(bind.call_args.args[3], prepared)
         self.assertEqual(bind.call_args.args[4], 'A')

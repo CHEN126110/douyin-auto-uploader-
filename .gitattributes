@@ -1,0 +1,44 @@
+# 统一行尾（2026-10-17 加）
+#
+# 背景：此前仓库里存的行尾与工作区不一致（`core.autocrlf=false` 且无本文件），
+# 导致 `git diff` 被行尾翻动支配 —— 实测 28 个文件里真实内容只改了 665 行，
+# 原始 diff 却有 15631 行，其中 `app.py` 原始 `14812/14804`、忽略行尾后只剩 `10/2`。
+# 详见 docs/轻量化与性能优化_2026-10-01.md §7.5。
+#
+# 规则：仓库只存 LF；检出到工作区也是 LF，两台设备（无论 Windows / 其它）
+# 拿到的字节一致，评审与合并都不再被行尾污染。
+* text=auto eol=lf
+
+# 例外：Windows 专属脚本必须保留 CRLF。
+# cmd.exe 解析 LF 结尾的 .bat 时，标签跳转 / 续行等场景会出错，
+# 所以这三类别交给 auto 判断。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：明确声明，避免 git 尝试做文本规范化与 diff
+*.exe   binary
+*.dll   binary
+*.pyd   binary
+*.node  binary
+*.onnx  binary
+*.db    binary
+*.sqlite binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.gif   binary
+*.ico   binary
+*.bmp   binary
+*.zip   binary
+*.7z    binary
+*.gz    binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.xlsx  binary
+*.docx  binary
+*.pptx  binary

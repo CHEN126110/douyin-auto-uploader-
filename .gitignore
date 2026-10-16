@@ -90,3 +90,9 @@ pytest-cache-files-*/
 /.acl_repair/
 /aclprobe-*/
 /tauri-app/python-sidecar/.source-manifest.json
+
+# 与本机绑定的探测残留与回执缓存（2026-10-17 加）
+#   taobao-publisher/aclprobe-<hash>/   ACL 修复探针残留（根目录那份由上面的 /aclprobe-*/ 覆盖）
+#   taobao_folder_import_receipts/      淘宝文件夹导入的本机回执，换机器无意义
+taobao-publisher/aclprobe-*/
+taobao_folder_import_receipts/

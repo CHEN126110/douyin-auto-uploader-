@@ -249,7 +249,16 @@ SERVER_SIDE_TREE_JS = '''(() => {
 
 
 def test_prepared_media_never_creates_empty_folder_to_hide_missing_upload(browser, prepared_case, monkeypatch):
-    """已有完整上传回执但云端目录缺失是交接错误，不能用建空目录掩盖。"""
+    """已有完整上传回执但云端目录缺失是交接错误，不能用建空目录掩盖。
+
+    ⚠️ 2026-10-10 起这条用例还钉住第二件事：**目录确实不在云端时**，
+    `stage_upload_images` 会先重开一次弹层再下结论（选图器的树是"打开弹层那一刻"
+    的快照，见 `docs/05-证据日志.md` 的 E-PICKER-STALE-20261010）。所以这里的事件序列是
+    ``['open', 'open']``：一次是打开弹层，一次是**重取**。真正不许发生的是
+    ``'creator'``——建目录（会出现"图没传成、平台却多了一堆空目录"），
+    以及任何一次上传。
+    """
+
     _, prepared, item = prepared_case
     grouped_gallery(browser, 'OTHER')  # 初始树里没有本商品目录
     browser.evaluate(SERVER_SIDE_TREE_JS)
@@ -279,5 +288,6 @@ def test_prepared_media_never_creates_empty_folder_to_hide_missing_upload(browse
                                  account_profile='account-A')
     outcome = stages.stage_upload_images(ctx)
     assert not outcome.ok and 'directory_missing' in outcome.summary
-    assert events == ['open'], events
+    # 打开一次 + 重取一次；**没有** creator（不许用建空目录掩盖交接失败）。
+    assert events == ['open', 'open'], events
     upload.assert_not_called()

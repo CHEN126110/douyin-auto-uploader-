@@ -10,6 +10,9 @@
 * 云端有的同名文件 → **URL 身份**（同资源号）或**内容身份**（平台 md5 与本地文件一致）
   有一致才采纳（`uploaded_now=False`）；
 * 云端没有的 → 用协议上传补进它该去的那个 folderId，**回读核对**后才算落库，并写进账本；
+* **用途目录云端不存在 → 如实失败，绝不创建**（2026-10-15 用户决策：目录只由
+  整目录导入/拖拽在平台侧诞生；旧实现会在选图前自建目录，而那样建出来的目录
+  当场读不到，真机任务因此停在 upload_images）；
 * 身份对不上 / 账本没有本批回执 → **如实失败且一个字节都不上传**（不覆盖、不将就）。
 """
 
@@ -78,10 +81,19 @@ def completion(monkeypatch, prepared_case):
             rows.append(entry)
         return {"files": rows}
 
-    def ensure_child_directory(_client, parent, name, **_kwargs):
-        key = tuple(parent) + (str(name),)
-        folder_ids.setdefault(key, "fid-{}".format(len(folder_ids) + 1))
-        return folder_ids[key]
+    def directory_folder_id(_client, path, **_kwargs):
+        """只读解析：云端已有的目录返回 folderId；没有就是 None（由生产代码如实失败）。"""
+
+        return folder_ids.get(tuple(path))
+
+    def forbidden_create(*_args, **_kwargs):
+        raise AssertionError('本版本不再允许程序自建目录（只做只读解析 + 补传）')
+
+    # 云端已有商品目录与全部用途目录：目录由整目录导入/人工先建出来，
+    # 本版本只做**只读解析**，所以默认状态必须让它们已经存在。
+    for _source in manifest.images:
+        folder_ids.setdefault(_cloud_path(manifest, _source.relative_path),
+                              "fid-{}".format(len(folder_ids) + 1))
 
     class FakeUploader:
         def __init__(self, _session):
@@ -105,7 +117,8 @@ def completion(monkeypatch, prepared_case):
 
     FakeLedger.current = ledger
     monkeypatch.setattr(media_library, "read_directory_files", read_directory_files)
-    monkeypatch.setattr(media_library, "ensure_child_directory", ensure_child_directory)
+    monkeypatch.setattr(media_library, "directory_folder_id", directory_folder_id)
+    monkeypatch.setattr(media_library, "ensure_child_directory", forbidden_create)
     # 回读前的「进目录 + 让页面重拉这一层」在这里没有真实页面，桩成无副作用；
     # 云端内容由上面的 read_directory_files 假实现提供。
     monkeypatch.setattr(media_library, "open_directory",
@@ -255,32 +268,29 @@ def test_read_returning_nothing_while_ledger_says_uploaded_refuses_to_reupload(c
     assert completion.uploads == [], "这种情况下一个字节都不许传"
 
 
-def test_missing_role_folder_is_created_then_filled(completion):
-    """用途目录云端还不存在时：**先建目录，再把图补进去**，而不是报 directory_missing。
+def test_missing_role_folder_fails_without_creating_anything(completion):
+    """用途目录云端还不存在时：**如实失败，不再由程序建目录**（2026-10-15 用户决策）。
 
-    真机 2026-10-10：本地商品目录当时有 33 张图 / 5 个子目录（`白底图`、`SKU_1x1`
-    是白底图流水线后来生成的），云端只有 3 个目录。旧顺序「先读后建」在
-    `ID-986833932804/SKU_1x1` 上又报了一次 `判据=directory_missing`——
-    而建目录本来就是协议路线的既定动作（`ensure_cloud_folders`，E-287）。
+    目录只由**整目录导入**（拖拽）在平台侧诞生。旧实现会在选图前顺手建目录，
+    而那样刚建出来的目录当场读不到（选图器那棵树刷不出来），真机上一个
+    「直接发布」任务就这样停在 `upload_images`（任务 2026-10-15 20:43）。
+    这条用例钉住新语义：缺目录 = 停下来，**一个字节都不上传、一个目录都不建**，
+    文案把"删掉云端商品目录后重跑"作为一步动作交给用户。
     """
 
     manifest = completion.manifest
     completion.cloud.clear()
+    completion.folder_ids.clear()
     completion.ledger.entries.clear()
 
-    prepared = _complete(completion)
-    prepared.validate("account-A")
-
-    assert all(receipt.uploaded_now for receipt in prepared.receipts)
-    # 每个用途目录都被建出来，且图按目录分组成批上传
-    expected_paths = {_cloud_path(manifest, source.relative_path)
-                      for source in manifest.images}
-    assert set(completion.folder_ids) == expected_paths
-    assert len(completion.uploads) == len(expected_paths)
-    for call in completion.uploads:
-        parts = next(key for key, value in completion.folder_ids.items()
-                     if value == call["folder_id"])
-        assert parts[0] == manifest.folder_name and len(parts) == 2
+    with pytest.raises(PageError) as caught:
+        _complete(completion)
+    assert '缺少子目录' in str(caught.value)
+    assert '整目录导入' in str(caught.value)
+    assert completion.uploads == [], "缺目录时一个字节都不许上传"
+    # 夹具把 `ensure_child_directory` 桩成直接断言失败：一旦有人重新接上
+    # “自建目录”，这条用例会立刻爆出来（而不是悄悄又建一个空目录）。
+    assert manifest.folder_name in str(caught.value)
 
 
 def test_same_name_with_different_identity_fails_and_uploads_nothing(completion):

@@ -124,8 +124,23 @@ class WriteAuthorization:
         )
 
     @classmethod
+    def for_confirmed_publish(cls) -> "WriteAuthorization":
+        """桌面「直接发布」动作的一次性权限；人在界面上已显式确认过发布。
+
+        与 :meth:`for_form_filling` 同属任务级快照，区别是放行 ``submit_publish``
+        并解开第二把锁。调用方必须同时固定 ``dry_run=False`` 与
+        ``stop_before_submit=False``——这两个字段就是「人已确认」的机器可读形态，
+        界面侧在此之前还有一道确认弹窗。不修改环境，不影响其它任务。
+        """
+        return cls(
+            granted=frozenset((WRITE_UPLOAD_IMAGE, WRITE_SAVE_DRAFT, WRITE_SUBMIT_PUBLISH)),
+            submit_unlocked=True,
+            source="desktop_confirmed_publish",
+        )
+
+    @classmethod
     def from_environment(cls, environ: Optional[Mapping[str, str]] = None) -> "WriteAuthorization":
-        """研究/显式提交入口的环境授权；桌面填写使用有限任务快照。"""
+        """研究/脚本入口的环境授权。桌面填写与桌面确认发布用任务级快照，不走这里。"""
 
         env = os.environ if environ is None else environ
         granted, ignored = parse_grant(env.get(ENV_ALLOW_WRITE))

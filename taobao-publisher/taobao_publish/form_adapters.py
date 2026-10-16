@@ -441,12 +441,22 @@ def _attach_ledger_picture_id(entry, *, ledger=None):
 
 
 def bind_prepared_media(client, item, contracts, prepared_product, account_profile, *, context_id,
-                        progress=None, observations=None):
-    """先验证本地内容、账户和上传回执；在各用途真正选择时校验远端卡片。"""
-    from .media_library import product_root_path
+                        progress=None, observations=None, context_holder=None):
+    """先验证本地内容、账户和上传回执；在各用途真正选择时校验远端卡片。
+
+    :param context_holder: 可变映射（``{'context_id': …}``）。上一手
+        （``media_library.ensure_product_root``）查出选图器目录树陈旧时**会重开弹层**，
+        那一刻整个 iframe 上下文就换了——旧 id 之后的每一次读都是死上下文。
+        所以这里必须跟着用**当前**上下文读目录，新 id 由那条链回写进同一个映射。
+        不传时行为与改动前逐字一致（用调用方给的 ``context_id``）。
+    """
+
+    from .media_library import _current_context, product_root_path
     config_for(item, contracts, purpose='media')
     plan = prepared_product.selection_plan(item, account_profile)
-    root = product_root_path(client, prepared_product.manifest.folder_name, context_id=context_id)
+    storage = context_holder if isinstance(context_holder, dict) else {'context_id': context_id}
+    root = product_root_path(client, prepared_product.manifest.folder_name,
+                             context_id=_current_context(storage, context_id))
     if root is None:
         raise page.PageError('图片空间中尚未找到本批准备好的商品目录')
     for role, entries in plan.items():
