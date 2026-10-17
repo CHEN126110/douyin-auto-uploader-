@@ -704,6 +704,13 @@ class EnhancedCategorySelector:
             'xpath://button[contains(@class,"ecom-g-btn-primary")]//span[text()="下一步"]/..',
             'xpath://span[text()="下一步"]/..',
             'xpath://button[.//span[text()="下一步"]]',
+            # 抖店「商品创建组件 UI 改版」灰度把「下一步」换成了「确认信息，继续生成」，
+            # 该实验臂上既没有「下一步」也没有「返回旧版」，只有这一个主 CTA。
+            # 2026-10-17 实测：与经典臂同一个组件、同一个 data-btm，仅文案与类名不同。
+            # 放在经典选择器之后，保证两页并存时优先点经典「下一步」。
+            'xpath://button[contains(@class,"style_aiPublishButton")]',
+            'xpath://button[.//span[normalize-space(text())="确认信息，继续生成"]]',
+            'xpath://span[normalize-space(text())="确认信息，继续生成"]/..',
         ]
         
         next_btn = None
@@ -718,8 +725,28 @@ class EnhancedCategorySelector:
                 continue
         
         if not next_btn:
-            logger.error("[ERROR] 未找到下一步按钮")
+            logger.error("[ERROR] 未找到下一步按钮（既无「下一步」也无「确认信息，继续生成」）")
             return False
+        
+        # AI 卡片臂的 CTA 初始带 disabled：平台要求先有主图与商品标题才允许继续。
+        # 对着禁用按钮把三种点击方式各试一遍、每种还白等 5s，等于空转 15s 且毫无意义，
+        # 所以先等它就绪；超时则明确失败，交给上层报错。
+        try:
+            if next_btn.attr('disabled') is not None:
+                logger.info("按钮当前为禁用态（AI 卡片臂要求先有主图与标题），等待其可点...")
+                for _ in range(60):
+                    time.sleep(0.5)
+                    try:
+                        if next_btn.attr('disabled') is None:
+                            logger.info("[OK] 按钮已可点")
+                            break
+                    except Exception:
+                        break
+                else:
+                    logger.error("[ERROR] 按钮 30s 内仍为禁用态（主图或标题未就绪）")
+                    return False
+        except Exception:
+            pass
         
         # 先滚动到按钮可见位置
         next_btn.scroll.to_center()

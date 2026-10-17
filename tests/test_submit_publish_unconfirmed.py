@@ -104,6 +104,8 @@ def _load_submit_function():
         'time': type('_T', (), {'now': staticmethod(_now)}),
         '_dismiss_interfering_overlays': lambda *a, **k: None,
         '_get_current_tab_url': lambda tab: 'https://fxg.jinritemai.com/ffa/g/create?',
+        # 提交失败的现场信息要带页面形态；这里只需要它给一个可读的名字。
+        '_detect_publish_page_stage': lambda tab: 'ai_form',
     }
     body = '\n\n'.join(segments['const'] + segments['class'] + segments['func'])
     exec(body, namespace)

@@ -5846,9 +5846,31 @@ def _is_any_selector_visible(main_tab, selectors, timeout=0.05):
     return _find_first_visible_element(main_tab, selectors, timeout=timeout) is not None
 
 
+_PUBLISH_AI_CONFIRM_TEXT = '确认信息，继续生成'
+#: AI 卡片臂主 CTA 的标记类（实测：与经典臂同一个组件、同一个 data-btm，
+#: 只有文案与这个类不同）。用它 + 文案双保险，避免文案改版后失效。
+_PUBLISH_AI_CTA_CLASS = 'style_aiPublishButton'
+#: AI 卡片臂主 CTA 的定位式。类名与文案双保险：类名改版时靠文案，文案改版时靠类名。
+#: AI 生成表单（`ai_form`）的标记文案。实测出现于「确认信息，继续生成」落地那一屏：
+#: 这一屏有 54 个 attr-field-id、有「发布商品」，但没有「下一步」也没有经典 step2 锚点。
+_PUBLISH_AI_FORM_MARKERS = [
+    'xpath://*[contains(text(),"继续上传材料")]',
+    'xpath://*[contains(text(),"智能填写")]',
+    'xpath://*[contains(text(),"商品信息质量分")]',
+]
+_PUBLISH_AI_CTA_SELECTORS = [
+    'xpath://button[contains(@class,"style_aiPublishButton")]',
+    'xpath://button[.//span[normalize-space(text())="确认信息，继续生成"]]',
+    'xpath://span[normalize-space(text())="确认信息，继续生成"]/..',
+    'xpath://button[contains(@class,"ecom-g-btn-primary")][.//span[contains(text(),"继续生成")]]',
+]
+
+
 _PUBLISH_STAGE_PROBE_JS = r'''
 const step2 = arguments[0] || [];
 const step1 = arguments[1] || [];
+const aiText = arguments[2] || '';
+const aiClass = arguments[3] || '';
 const visible = function (node) {
     return !!node && node.nodeType === 1 && (node.offsetParent || node.getClientRects().length > 0);
 };
@@ -5865,7 +5887,45 @@ const anyVisible = function (xpaths) {
     }
     return false;
 };
+// AI 卡片臂必须最先判定：它同样带 [attr-field-id="商品标题"] 与可见的 #pg-title-input
+// （2026-10-17 实测），若排在后面就会被当成经典第一页，整条流程跑在没有类目/属性/
+// 发布按钮的页面上。判据以主 CTA 为准。
+let aiCard = false;
+try {
+    if (aiClass && document.querySelector('[class*="' + aiClass + '"]')) aiCard = true;
+} catch (err) {}
+if (!aiCard && aiText) {
+    try {
+        const hits = document.evaluate(
+            '//button[.//span[normalize-space(text())="' + aiText + '"]]',
+            document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < hits.snapshotLength; i++) {
+            if (visible(hits.snapshotItem(i))) { aiCard = true; break; }
+        }
+    } catch (err) {}
+}
+if (aiCard) return 'ai_card';
 if (anyVisible(step2)) return 'step2';
+// AI 生成后的完整表单：点了「确认信息，继续生成」之后落地的那一屏（2026-10-17 实测）。
+// 它有 54 个 attr-field-id、有「发布商品」/「保存草稿」/「填写检查」，但既没有「下一步」
+// 也没有经典 step2 的锚点（goodsEditScrollContainer / 价格与库存 全为 0）。
+// 特征标记：「继续上传材料」按钮 + 「智能填写」/「商品信息质量分」文案。
+let hasPublishBtn = false;
+try {
+    const pub = document.evaluate(
+        '//button[.//span[normalize-space(text())="发布商品"]]',
+        document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    for (let i = 0; i < pub.snapshotLength; i++) {
+        if (visible(pub.snapshotItem(i))) { hasPublishBtn = true; break; }
+    }
+} catch (err) {}
+if (hasPublishBtn) {
+    const bodyText = document.body ? String(document.body.innerText || '') : '';
+    const aiFilled = bodyText.indexOf('继续上传材料') >= 0
+        || bodyText.indexOf('智能填写') >= 0
+        || bodyText.indexOf('商品信息质量分') >= 0;
+    if (aiFilled) return 'ai_form';
+}
 const titleField = document.querySelector('[attr-field-id="商品标题"]');
 let titleReady = false;
 if (titleField) {
@@ -5876,7 +5936,37 @@ return 'unknown';
 '''
 
 
+_PUBLISH_PAGE_SIGNATURE_JS = r'''
+// 诊断用：一次往返取回页面形态的可读指纹。只返回扁平字符串/数字，
+// 因为 FXG 页面装了 JSON.stringify 的 polyfill，DOM 上又有 React fiber 循环引用。
+const norm = function (s) { return String(s || '').replace(/\s+/g, ' ').trim(); };
+const visible = function (node) {
+    return !!node && node.nodeType === 1 && (node.offsetParent || node.getClientRects().length > 0);
+};
+const countAttrFields = function () { return document.querySelectorAll('[attr-field-id]').length; };
+const ctaTexts = [];
+Array.prototype.forEach.call(document.querySelectorAll('button'), function (b) {
+    if (!visible(b)) return;
+    const t = norm(b.innerText);
+    if (t) ctaTexts.push(t.length > 24 ? t.slice(0, 24) + '…' : t);
+});
+const body = document.body ? norm(document.body.innerText) : '';
+return 'attrFields=' + countAttrFields()
+    + ' | aiCta=' + (document.querySelector('[class*="style_aiPublishButton"]') ? 1 : 0)
+    + ' | buttons=' + ctaTexts.slice(0, 10).join('/')
+    + ' | head=' + body.slice(0, 120);
+'''
+
+
 def _detect_publish_page_stage(main_tab):
+    """返回 `outside / step1 / step2 / ai_card / ai_form / unknown`。
+
+    2026-10-17 起把两种 AI 形态单独判出来：
+    - `ai_card`：AI 卡片臂（主 CTA「确认信息，继续生成」）。它和经典第一页一样带标题框，
+      所以必须按主 CTA 优先判定，否则会假阳性。
+    - `ai_form`：点完那个 CTA 之后落地的 **AI 生成表单**（54 个 attr-field-id + 有「发布商品」，
+      但没有「下一步」、也没有经典 step2 锚点）。它等同于「表单已就绪、类目已由 AI 定好」。
+    """
     current_url = _get_current_tab_url(main_tab)
     if '/ffa/g/create' not in current_url:
         return 'outside'
@@ -5888,19 +5978,33 @@ def _detect_publish_page_stage(main_tab):
             _PUBLISH_STAGE_PROBE_JS,
             [item[6:] for item in _PUBLISH_STEP2_SELECTORS],
             [item[6:] for item in _PUBLISH_STEP1_SELECTORS],
+            _PUBLISH_AI_CONFIRM_TEXT,
+            _PUBLISH_AI_CTA_CLASS,
         )
     except Exception:
         stage = None
-    if stage in ('step1', 'step2', 'unknown'):
+    if stage in ('step1', 'step2', 'ai_card', 'ai_form', 'unknown'):
         return stage
 
-    # JS 不可用时回退到逐个探测
+    # JS 不可用时回退到逐个探测。顺序与 JS 一致：AI 卡片臂必须先排除。
+    if _is_any_selector_visible(main_tab, _PUBLISH_AI_CTA_SELECTORS, timeout=0.05):
+        return 'ai_card'
+
     if _is_any_selector_visible(main_tab, _PUBLISH_STEP2_SELECTORS, timeout=0.05):
         return 'step2'
 
+    # AI 生成后的完整表单：有「发布商品」且带 AI 标记（继续上传材料 / 智能填写）。
+    # 顺序很关键：经典 step2 已在上面排除，否则会把经典页误判成 ai_form 而跳过类目选择。
+    if _is_any_selector_visible(
+        main_tab,
+        ['xpath://button[.//span[normalize-space(text())="发布商品"]]'],
+        timeout=0.05,
+    ) and _is_any_selector_visible(main_tab, _PUBLISH_AI_FORM_MARKERS, timeout=0.05):
+        return 'ai_form'
+
     step1_selectors = list(_PUBLISH_STEP1_SELECTORS)
     title_input = _get_title_input(main_tab, timeout=0.05)
-    if title_input:
+    if title_input and not _is_any_selector_visible(main_tab, _PUBLISH_AI_CTA_SELECTORS, timeout=0.05):
         step1_selectors.append('xpath://div[@attr-field-id="商品标题"]')
 
     if _is_any_selector_visible(main_tab, step1_selectors, timeout=0.05):
@@ -5934,6 +6038,141 @@ def _click_return_to_old_version(main_tab):
     return _click_element_safely(btn)
 
 
+_AI_FORM_READY_JS = r'''
+// AI 生成表单是否已经填好（不再是骨架屏）。只返回扁平字符串：
+// FXG 页面装了 JSON.stringify 的 polyfill，返回对象会踩到 React fiber 循环引用。
+const norm = function (s) { return String(s || '').replace(/\s+/g, ' ').trim(); };
+const body = document.body ? norm(document.body.innerText) : '';
+const loading = (body.indexOf('预计需要5') >= 0)
+    || (body.indexOf('继续解析你上传的材料') >= 0)
+    || (body.indexOf('AI将自动帮你填好表单') >= 0);
+const fields = document.querySelectorAll('[attr-field-id]').length;
+return 'loading=' + (loading ? 1 : 0) + '|fields=' + fields;
+'''
+
+
+def _wait_ai_form_ready(main_tab, timeout=90.0):
+    """等 AI 生成表单填好（骨架屏阶段字段容器在、值还没填）。
+
+    2026-10-17 实测：点完「确认信息，继续生成」后平台先给一屏骨架
+    （「继续解析你上传的材料…预计需要5～10秒」），此后 3~10 秒才把表单填满。
+    在这期间探测「面料材质」会判成字段缺失 —— 这是上一次失败的直接原因。
+
+    判据两条同时成立：① 骨架文案消失；② `[attr-field-id]` 数量 ≥ 20。
+    """
+
+    deadline = system_time.perf_counter() + timeout
+    started = system_time.perf_counter()
+    last_raw = ''
+    while system_time.perf_counter() < deadline:
+        raw = ''
+        try:
+            raw = str(main_tab.run_js(_AI_FORM_READY_JS) or '')
+        except Exception:
+            raw = ''
+        last_raw = raw or last_raw
+        loading = 'loading=1' in raw
+        fields = 0
+        if 'fields=' in raw:
+            try:
+                fields = int(raw.split('fields=')[1].split('|')[0].strip())
+            except Exception:
+                fields = 0
+        if not loading and fields >= 20:
+            print(f'AI 生成表单就绪，耗时 {system_time.perf_counter() - started:.1f}s（fields={fields}）')
+            return True
+        system_time.sleep(0.5)
+    print(f'AI 生成表单在 {timeout:.0f}s 内没有就绪（最后一次读到的指纹: {last_raw}）')
+    return False
+
+
+def _publish_page_signature(main_tab):
+    """取页面指纹（诊断用）。失败也不抛错，返回可读的降级说明。"""
+
+    try:
+        sig = main_tab.run_js(_PUBLISH_PAGE_SIGNATURE_JS)
+    except Exception as exc:
+        return f'(指纹采集失败: {exc})'
+    return str(sig or '(空)')
+
+
+def _advance_ai_card_page(main_tab, report_progress=None):
+    """在 AI 卡片臂上点「确认信息，继续生成」，把它当成经典流程的「下一步」。
+
+    平台把这条路做成了另一个实验臂：没有「下一步」、也没有「返回旧版」，
+    只有这一个主 CTA。它初始带 `disabled`，要先有主图与商品标题才可点，
+    所以这里 ① 等到按钮真的可点再点，② 点完等页面离开 `ai_card`，
+    ③ 仍停在 `ai_card` 就**明确抛错并带页面指纹**，绝不在错页面上继续跑。
+    """
+
+    if report_progress:
+        report_progress(30, '检测到 AI 卡片页，正在点击「确认信息，继续生成」')
+    print('检测到 AI 卡片页（主 CTA「确认信息，继续生成」），按「下一步」处理')
+
+    deadline = system_time.perf_counter() + 25.0
+    clicked = False
+    while system_time.perf_counter() < deadline:
+        btn = _find_first_visible_element(main_tab, _PUBLISH_AI_CTA_SELECTORS, timeout=0.3)
+        if btn is None:
+            system_time.sleep(0.3)
+            continue
+        disabled = None
+        try:
+            disabled = btn.attr('disabled')
+        except Exception:
+            disabled = None
+        if disabled is not None:
+            # 主图或标题还没就绪时按钮是禁用的，对着它硬点不会有任何反应。
+            system_time.sleep(0.5)
+            continue
+        _dismiss_interfering_overlays(main_tab, context='ai_card_confirm')
+        clicked = bool(_click_element_safely(btn))
+        print(f'已点击「确认信息，继续生成」（成功={clicked}）')
+        break
+
+    if not clicked:
+        raise Exception(
+            'AI 卡片页的「确认信息，继续生成」在 25s 内没有变成可点状态，'
+            '通常是主图或商品标题还没就绪。页面指纹: ' + _publish_page_signature(main_tab)
+        )
+
+    deadline = system_time.perf_counter() + 120.0   # AI 生成比经典下一步慢得多，且期间页面会短暂 unknown
+    settled_stage = None
+    stable_hits = 0
+    last_stage = None
+    while system_time.perf_counter() < deadline:
+        stage = _detect_publish_page_stage(main_tab)
+        if stage in ('ai_form', 'step1', 'step2'):
+            # 要求连续两次读到同一形态：AI 生成过程中 DOM 会反复重渲染，
+            # 单次命中可能是半成品页面。
+            if stage == last_stage:
+                stable_hits += 1
+            else:
+                stable_hits = 1
+                last_stage = stage
+            if stable_hits >= 2:
+                settled_stage = stage
+                break
+        else:
+            stable_hits = 0
+            last_stage = None
+        system_time.sleep(0.5)
+
+    if settled_stage is None:
+        raise Exception(
+            '点了「确认信息，继续生成」但 120s 内没有出现稳定的表单页'
+            '（期望 ai_form / step1 / step2）。页面指纹: ' + _publish_page_signature(main_tab)
+        )
+    print(f'AI 卡片页已推进并稳定在 {settled_stage}')
+
+    if settled_stage == 'ai_form':
+        # 骨架屏也满足 ai_form 的判据（有「发布商品」+「智能填写」文案），
+        # 所以这里必须再等它真的填好，否则后续字段探测会全部落空。
+        ready = _wait_ai_form_ready(main_tab, timeout=90.0)
+        print(f'AI 生成表单已填好: {ready}')
+    return settled_stage
+
+
 def _open_publish_page(main_tab, report_progress):
     print('打开商品发布页面...')
     report_progress(22, '正在打开商品发布页面')
@@ -5961,12 +6200,31 @@ def _open_publish_page(main_tab, report_progress):
 
     # 会话可能刚导航到发布页，React 尚未 hydrate；先给一小段时间等它渲染，
     # 避免因为「检测早了一步」判成 unknown 而白白再整页重载一次。
-    stage = _settle_to_stage(('step1', 'step2'), timeout=3.0)
-    if stage not in ('step1', 'step2'):
+    #
+    # `ai_card` 也是合法起点：2026-10-17 起不再「识别到 AI 臂就重载回经典」
+    # —— 实测那家店（拾寻袜子铺）重载后仍然只有「确认信息，继续生成」，
+    # 没有「返回旧版」出口，重载只会空转。改为就地推进（见 _advance_ai_card_page）。
+    ok_stages = ('step1', 'step2', 'ai_card', 'ai_form')
+    stage = _settle_to_stage(ok_stages, timeout=3.0)
+    if stage not in ok_stages:
         main_tab.get(_PUBLISH_CREATE_URL)
-        stage = _settle_to_stage(('step1', 'step2'), timeout=10)
-        if stage not in ('step1', 'step2'):
+        stage = _settle_to_stage(ok_stages, timeout=10)
+        if stage not in ok_stages:
             return False
+
+    if stage == 'ai_card':
+        report_progress(22, '检测到 AI 卡片页，将用「确认信息，继续生成」推进')
+        print('检测到 AI 卡片页，保留在该页由「确认信息，继续生成」推进')
+        _dismiss_interfering_overlays(main_tab, context='open_publish_page')
+        return True
+
+    if stage == 'ai_form':
+        # 上一次推进后遗留的 AI 生成表单：它已经是可以直接填属性与提交的完整表单，
+        # 既不该重载（重载会丢掉已生成的内容），也不该当第一页去点「下一步」。
+        report_progress(22, '检测到 AI 生成表单，就地继续')
+        print('检测到 AI 生成表单（ai_form），就地继续填写')
+        _dismiss_interfering_overlays(main_tab, context='open_publish_page')
+        return True
 
     if stage == 'step2':
         report_progress(22, '检测到停留在第二页面，正在返回第一页')
@@ -6096,11 +6354,53 @@ def _upload_main_images(main_tab, record, main_pic_list):
 
 def _select_category_and_prepare_attributes(main_tab, record, diaopai_pic):
     _dismiss_interfering_overlays(main_tab, context='select_category')
-    print(f'开始智能类目选择: {wazi_dict.get(record.clazz)}')
-    if not smart_select_category(main_tab, record.clazz):
-        print('类目选择失败，已尝试推荐与手动选择。请检查页面结构或账号资质。')
-        raise Exception('类目选择失败')
-    print('智能类目选择成功')
+
+    # AI 卡片臂上没有任何类目控件（实测：商品类目 / 类目属性 / categorySelectorV2 全为 0），
+    # 所以必须先把它当「下一步」点过去，落到真正的表单页之后再看要不要选类目。
+    advanced_from_ai = False
+    stage_now = _detect_publish_page_stage(main_tab)
+    if stage_now == 'ai_card':
+        stage_now = _advance_ai_card_page(main_tab)
+        advanced_from_ai = True
+        _dismiss_interfering_overlays(main_tab, context='after_ai_card')
+
+    if stage_now == 'unknown':
+        # AI 生成期间 DOM 会反复重渲染，判定可能连续读到 unknown。
+        # 这里给一个**有界**的稳定窗口，既不放任它白等到超时，也不在半成品页面上动手。
+        settle_deadline = system_time.perf_counter() + 25.0
+        stable = 0
+        last = None
+        while system_time.perf_counter() < settle_deadline:
+            candidate = _detect_publish_page_stage(main_tab)
+            if candidate in ('ai_form', 'step1', 'step2'):
+                stable = stable + 1 if candidate == last else 1
+                last = candidate
+                if stable >= 2:
+                    stage_now = candidate
+                    break
+            else:
+                stable, last = 0, None
+            system_time.sleep(0.5)
+        if stage_now == 'unknown':
+            raise Exception(
+                '类目阶段开始时页面形态判定连续 25s 都是 unknown（可能仍在 AI 生成中）。'
+                '页面指纹: ' + _publish_page_signature(main_tab)
+            )
+        print(f'类目阶段开始时页面形态稳定为 {stage_now}')
+
+    if stage_now == 'ai_form' or (advanced_from_ai and stage_now == 'step2'):
+        # 落地页是 AI 生成好的完整表单：类目已由 AI 定好，不再走「选择类目」这一步。
+        # 2026-10-17 实测该页有 54 个 attr-field-id、有「发布商品」，但没有类目选择器。
+        print(f'当前为 {stage_now}（类目已由 AI 生成结果确定），跳过类目选择')
+    else:
+        print(f'开始智能类目选择: {wazi_dict.get(record.clazz)}')
+        if not smart_select_category(main_tab, record.clazz):
+            print('类目选择失败，已尝试推荐与手动选择。请检查页面结构或账号资质。')
+            raise Exception(
+                '类目选择失败（页面阶段=' + str(stage_now) + '）。'
+                '页面指纹: ' + _publish_page_signature(main_tab)
+            )
+        print('智能类目选择成功')
     _dismiss_interfering_overlays(main_tab, context='select_category')
 
     gen_btn = main_tab.ele(
@@ -6243,9 +6543,115 @@ def _first_existing_field_name(main_tab, field_names, timeout: float = 0.2):
     return None
 
 
+#: 从「面料材质」字段回读出来的 `名称 百分比%` 对。
+_MATERIAL_PERCENT_RE = re.compile(r'([^\s%*]+)\s*(\d{1,3})\s*%')
+
+
+def _read_material_composition(main_tab, field_name: str = '面料材质'):
+    """回读页面上「面料材质」实际生效的成分与百分比。
+
+    返回 ``[(名称, 百分比文本), ...]``；字段不存在或读不到时返回 ``None``。
+
+    为什么要回读：**平台会在水洗标/吊牌图上传后用它自己的 OCR 结果覆盖这个字段**。
+    2026-10-17 实盘（`ID-1086978751076`）：配置写入 3 项
+    （粘纤 50 / 锦纶 22 / 涤纶 28，合计 100），紧接着上传吊牌图，
+    字段被改成单项「涤纶 50%」，提交时被平台以
+    「所填写的材质含量总和需为100%」拦下 —— 而 `set_material_composition` 当时返回 True。
+    **写入成功不等于字段最终正确。**
+    """
+    try:
+        node = main_tab.ele(f'xpath://div[@attr-field-id="{field_name}"]', timeout=0.3)
+    except Exception:
+        return None
+    if not node:
+        return None
+    try:
+        text = str(node.text or '')
+    except Exception:
+        return None
+    # 芯片区会把多余项**折叠**成「+N」（2026-10-17 实盘：6 项只显示 3 个芯片 + 「+3」）。
+    # 这时芯片文本里只有前几项的百分比，拿它去和配置比必然「不一致」——
+    # 而写入其实是成功的（已选 (6)、6 行合计 100%）。读不全就返回 None，
+    # 由调用方按「回读不到 → 跳过校验」处理，绝不据此拦下一次本可成功的发布。
+    if re.search(r'\+\s*\d+', text):
+        print(f'  {field_name}的芯片区被折叠（出现「+N」），无法完整回读；跳过回读校验')
+        return None
+    return _MATERIAL_PERCENT_RE.findall(text)
+
+
+def _material_percentage_sorted(pairs):
+    """把 ``(名称, 百分比)`` 列表归一成「按百分比升序的整数列表」。
+
+    只比百分比、不比名称：平台会做同义归一（配置里的 `聚酰胺纤维（锦纶）`
+    在页面上显示为 `锦纶`），按名称比会永远判不一致。
+    百分比集合一致即蕴含项数与总和一致，而平台校验的正是总和。
+    """
+    values = []
+    for _name, pct in (pairs or []):
+        try:
+            values.append(int(str(pct)))
+        except Exception:
+            continue
+    return sorted(values)
+
+
+def _ensure_material_composition_persisted(main_tab, configured_materials, field_name: str = '面料材质', attempts: int = 2) -> None:
+    """确认 `configured_materials` 真的留在页面上；被平台 OCR 覆盖就重写，仍不一致则明确报错。
+
+    这是「提交阶段才发现材质合计不是 100%」的根因修复：把校验点前移到属性阶段，
+    并且不放过「写入返回 True、字段却被改掉」这种静默失败。
+    读不到百分比时不硬失败 —— 提交阶段的现场采集已能带出平台的校验提示，
+    而误判成失败会让本可发布的商品发不出去。
+    """
+    expected = _material_percentage_sorted(configured_materials)
+    if not expected:
+        return
+    configured_total = sum(expected)
+    if configured_total != 100:
+        raise Exception(
+            f'配置的{field_name}百分比合计为 {configured_total}%（平台要求 100%）：{configured_materials}。'
+            f'请到「设置 → 自动化」把材质成分调整到合计 100%，'
+            f'否则提交必被「所填写的材质含量总和需为100%」拦下。'
+        )
+
+    last_actual = None
+    for attempt in range(1, attempts + 1):
+        last_actual = _material_percentage_sorted(_read_material_composition(main_tab, field_name))
+        if last_actual == expected:
+            return
+        if not last_actual:
+            print(f'  {field_name}回读不到百分比，跳过回读校验（提交阶段会带出平台的校验提示）')
+            return
+        print(f'  {field_name}回读与配置不一致（第{attempt}次）：页面={last_actual}，期望={expected}，稍后重读')
+        # **只重读、不重写。** 2026-10-17 实盘：材质先被正确写入（页面 5 项合计 100%），
+        # 随后这一步发现回读不一致又调了一次写入 —— 而写入是「先清空再重填」，
+        # 重填在这一屏失败，材质就被清成「已选 (0)」，最后报「面料材质填写失败」。
+        # 校验的职责是把问题报出来，不是把已经填好的字段再拆一遍。
+        system_time.sleep(0.8)
+
+    configured_detail = ' / '.join(f'{str(m[0]).strip()} {str(m[1]).strip()}%' for m in configured_materials)
+    raise Exception(
+        f'{field_name}回读始终与配置不一致（平台要求合计 100%）：'
+        f'页面={last_actual}，期望百分比={expected}。'
+        f'配置明细: {configured_detail}。'
+        f'为避免「先清空再重填失败」把字段搞成空，这里不再重写；'
+        f'请到「设置 → 自动化」核对该材质配置，或手工确认页面上这一栏后再发布。'
+    )
+
+
 def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pic, wash_label_tag_image_path):
     category_attr_timer_start = system_time.perf_counter()
     _dismiss_interfering_overlays(main_tab, context='fill_category_attributes')
+
+    # AI 生成表单在点完「确认信息，继续生成」后先给一屏骨架
+    # （「继续解析你上传的材料…预计需要5～10秒」）：字段容器在、值还没填。
+    # 2026-10-17 实盘就是这么失败的 —— 骨架期探测「面料材质」判成字段缺失，
+    # 于是报「已配置面料材质但页面找不到字段」。所以**探测之前**先等它填好。
+    if _detect_publish_page_stage(main_tab) == 'ai_form':
+        ready = _wait_ai_form_ready(main_tab, timeout=90.0)
+        print(f'类目属性阶段：AI 生成表单已填好={ready}')
+        _dismiss_interfering_overlays(main_tab, context='ai_form_ready')
+
     current_category_text = get_current_category_text(main_tab)
     current_sock_height = infer_sock_height_value(current_category_text, record.clazz)
     is_ship_socks = '船袜' in current_category_text
@@ -6263,6 +6669,78 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
     if current_sock_height:
         print(f'当前页面筒高目标值: {current_sock_height}')
 
+    # 本阶段要求页面上**真的有**属性字段。2026-10-17 实测三种「有表单」的形态：
+    #   step2    = 经典第二页（goodsEditScrollContainer / 价格与库存 等锚点）
+    #   ai_form  = 点「确认信息，继续生成」之后 AI 生成的表单（54 个 attr-field-id + 发布商品）
+    #   step1    = 经典第一页（通常不该走到这里，但保留以防流程变化）
+    # AI 卡片页（ai_card）上这些锚点全部不存在，旧实现会一路 print 后跳过 ——
+    # 漏填被带进提交阶段，最后表现为「提交结果未确认」+「已提交待确认」脏状态。
+    #
+    # 判不出形态时给一个短暂重试窗口：上面的字段探测都带 timeout，
+    # React 重渲染（AI 生成期间尤其频繁）的瞬间可能一个锚点都读不到。
+    form_stages = ('step1', 'step2', 'ai_form')
+    variant = _detect_publish_page_stage(main_tab)
+    if variant not in form_stages:
+        settle_deadline = system_time.perf_counter() + 5.0
+        while variant not in form_stages and system_time.perf_counter() < settle_deadline:
+            system_time.sleep(0.2)
+            variant = _detect_publish_page_stage(main_tab)
+    if variant not in form_stages:
+        raise Exception(
+            f'类目属性阶段不在可填写的发品表单上（页面形态={variant}），'
+            f'拒绝在错误页面上继续填写；当前地址: {_get_current_tab_url(main_tab)}；'
+            f'页面指纹: {_publish_page_signature(main_tab)}'
+        )
+
+    # 已配置面料材质却在页面上找不到字段 = 真实不一致，必须报错而不是跳过。
+    if has_configured_materials and not has_material_field:
+        raise Exception(
+            f'已配置面料材质，但页面上找不到「面料材质/材质」字段'
+            f'（类目: {current_category_text or "未识别"}，页面形态={variant}）'
+        )
+    # 页面有筒高字段却推不出目标值 = 真实不一致（船袜无筒高值，见上方单独分支）。
+    if has_sock_height_field and not current_sock_height and not is_ship_socks:
+        raise Exception(
+            f'页面存在「筒高」字段，但未能推断出目标值'
+            f'（类目: {current_category_text or "未识别"}，clazz={record.clazz}）'
+        )
+
+    material_written = False
+
+    # AI 生成表单（ai_form）的「面料材质」是**另一套 UI**：逐行「材质下拉 + 百分比 + 删除」，
+    # 空态时是一个「选择或输入材质」+「添加材质」的行。经典表单那套 aurora 弹层写入在它上面
+    # 跑起来会把这页已有的行**删空**，然后自己又写不进去 —— 2026-10-17 实盘：
+    # AI 已按吊牌图填好 5 项（合计 100%），我们的写入把行删掉，随后报「面料材质填写失败」。
+    #
+    # 因此这里对 ai_form **只读不写**：
+    #   · 页面现有百分比合计已是 100% → 原样保留，直接结束属性阶段
+    #     （品牌 / 适用性别 / 筒高 / 适用人群在 AI 表单上通常已由 AI 填好，不去覆盖）
+    #   · 否则明确报错，绝不先删后失败
+    if variant == 'ai_form' and has_material_field:
+        pairs = _read_material_composition(main_tab, material_field_name) or []
+        percentages = []
+        for pair in pairs:
+            try:
+                percentages.append(int(str(pair[1]).strip()))
+            except Exception:
+                continue
+        total = sum(percentages)
+        labels = ' / '.join(f'{name} {pct}%' for name, pct in pairs)
+        if percentages and total == 100:
+            print(
+                f'ai_form：页面已有材质合计 {total}%（{labels}），保留不覆盖 —— '
+                '该形态的材质编辑器与经典弹层不同，写入会清空已有行'
+            )
+            timer_record('类目属性阶段', f'{material_field_name}沿用页面已有值', 0,
+                         system_time.perf_counter() - category_attr_timer_start, True)
+            return
+        raise Exception(
+            f'ai_form 上「面料材质」当前合计 {total}%（读到的百分比: {percentages}；'
+            f'页面文本: {labels or "空"}），不是 100%；'
+            '而该形态的材质编辑器与经典表单不同，写入会清空已有行、无法可靠回填。'
+            f'请先确认这个字段后再发布。页面指纹: {_publish_page_signature(main_tab)}'
+        )
+
     if is_ship_socks:
         print('处理船袜类目属性...')
         main_tab.ele('xpath://div[@attr-field-id="主图3:4"]').scroll.to_see()
@@ -6274,6 +6752,7 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             timer_record('类目属性阶段', f'{material_field_name}配置写入', 0, system_time.perf_counter() - category_attr_timer_start, material_ok)
             if not material_ok:
                 raise Exception(f'{material_field_name}填写失败')
+            material_written = True
             print(f'船袜类目：已按用户设置写入{material_field_name}')
         else:
             print('页面无“面料材质/材质”字段，跳过材质配置')
@@ -6300,7 +6779,7 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             select_text(main_tab, '适用人群', '成人')
         if has_gender_field:
             select_text(main_tab, '适用性别', get_sex(record.title))
-        if current_sock_height and has_sock_height_field:
+        if has_sock_height_field:
             select_text(main_tab, '筒高', current_sock_height)
         timer_record('类目属性阶段', '基础属性', 0, system_time.perf_counter() - step_timer_start, True)
 
@@ -6313,6 +6792,7 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             material_ok = set_material_composition(main_tab, configured_materials, material_field_name)
             if not material_ok:
                 raise Exception(f'{material_field_name}填写失败')
+            material_written = True
         else:
             print('页面无“面料材质/材质”字段，跳过材质配置')
         timer_record('类目属性阶段', f'{material_field_name or "材质"}配置写入', 0, system_time.perf_counter() - step_timer_start, material_ok)
@@ -6323,7 +6803,7 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
             select_text(main_tab, '适用人群', '成人')
         if has_gender_field:
             select_text(main_tab, '适用性别', get_sex(record.title))
-        if current_sock_height and has_sock_height_field:
+        if has_sock_height_field:
             select_text(main_tab, '筒高', current_sock_height)
         timer_record('类目属性阶段', '基础属性', 0, system_time.perf_counter() - step_timer_start, True)
 
@@ -6337,11 +6817,33 @@ def _fill_category_attributes(main_tab, record, configured_materials, diaopai_pi
         timer_record('类目属性阶段', f'{material_field_name or "材质"}配置写入', 0, system_time.perf_counter() - step_timer_start, material_ok)
         if not material_ok:
             raise Exception(f'{material_field_name or "材质"}填写失败（配置写入失败）')
+        material_written = True
         print(f'已按配置写入{material_field_name or "材质"}，跳过水洗标/吊牌图 OCR 等待')
     elif uploaded_wash_label:
         step_timer_start = system_time.perf_counter()
         _fill_fabric_material_if_wash_label_unrecognized(main_tab, configured_materials)
         timer_record('类目属性阶段', '水洗标OCR判断', 0, system_time.perf_counter() - step_timer_start, True)
+    elif has_configured_materials and has_material_field and not material_written:
+        # 「有吊牌/水洗标图」分支里材质是等上传完成后再写的。上传没成功时旧实现
+        # 两个分支都不进，set_material_composition 从不被调用 —— 面料材质静默漏填，
+        # 而阶段仍记 success。已配置就必须显式补写。
+        print('水洗标/吊牌图未上传成功，改为直接按配置写入面料材质')
+        step_timer_start = system_time.perf_counter()
+        material_ok = set_material_composition(main_tab, configured_materials, material_field_name)
+        timer_record('类目属性阶段', f'{material_field_name or "材质"}补写', 0, system_time.perf_counter() - step_timer_start, material_ok)
+        if not material_ok:
+            raise Exception(f'{material_field_name or "材质"}填写失败（水洗标未上传时的补写失败）')
+        material_written = True
+    # 最后一道：回读确认配置真的留在页面上。
+    # 吊牌/水洗标图是在上面写入之后才上传的，平台 OCR 会覆盖该字段（2026-10-17 实盘）。
+    if has_configured_materials and has_material_field:
+        step_timer_start = system_time.perf_counter()
+        try:
+            _ensure_material_composition_persisted(main_tab, configured_materials, material_field_name or '面料材质')
+            timer_record('类目属性阶段', f'{material_field_name or "材质"}回读校验', 0, system_time.perf_counter() - step_timer_start, True)
+        except Exception:
+            timer_record('类目属性阶段', f'{material_field_name or "材质"}回读校验', 0, system_time.perf_counter() - step_timer_start, False)
+            raise
     timer_record('类目属性阶段', '总计', 0, system_time.perf_counter() - category_attr_timer_start, True)
 
 
@@ -7575,8 +8077,14 @@ _SUBMIT_CONFIRM_TIMEOUT = 60.0
 # 因此作为整句文案之外的第二判据（文案改版时仍能判对）。
 _SUBMIT_RESULT_BUTTONS = ('继续发布', '返回商品列表', '编辑商品')
 # 一次 CDP 往返同时取回「成功文案 / 结果页按钮 / 表单是否卸载 / 发布提醒弹窗」四个状态。
+# 一次 CDP 往返同时取回「成功文案 / 结果页按钮 / 表单是否卸载 / 发布提醒弹窗 / 校验反馈」。
+#
+# `errors` 是 2026-10-17 补的：当天实盘失败只报出「表单字段数: 56」，
+# 说明点了「发布商品」但表单没卸载，而页面到底提示了什么完全没被采集，
+# 根因不可见。字段级红框与顶部 message 都要带回来。
 _SUBMIT_STATE_PROBE_JS = r'''
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+const visible = (n) => !!n && n.nodeType === 1 && (n.offsetParent || n.getClientRects().length > 0);
 const body = document.body ? (document.body.innerText || '') : '';
 const buttons = Array.prototype.map.call(document.querySelectorAll('button'), (b) => norm(b.innerText));
 const wanted = ['继续发布', '返回商品列表', '编辑商品'];
@@ -7586,13 +8094,35 @@ let publishModal = false;
 for (let i = 0; i < titles.length; i++) {
     if (norm(titles[i].innerText) === '发布提醒') { publishModal = true; break; }
 }
+const errTexts = [];
+const errNodes = document.querySelectorAll(
+    '[class*="ecom-g-message"], [class*="form-item-explain"], [class*="ecom-g-form-item-explain"], [class*="error"], [role="alert"], [class*="toast"]');
+for (let i = 0; i < errNodes.length && errTexts.length < 8; i++) {
+    const n = errNodes[i];
+    if (!visible(n)) continue;
+    const t = norm(n.innerText).slice(0, 120);
+    if (t && errTexts.indexOf(t) < 0) errTexts.push(t);
+}
+// 点击后按钮若仍可点，说明提交根本没被受理（多数是被表单校验拦下）。
+let publishButtonDisabled = null;
+const btns = document.querySelectorAll('button');
+for (let i = 0; i < btns.length; i++) {
+    if (norm(btns[i].innerText) === '发布商品') {
+        publishButtonDisabled = !!btns[i].disabled;
+        break;
+    }
+}
 return {
     success: body.indexOf('商品提交成功') >= 0,
     fieldCount: document.querySelectorAll('[attr-field-id]').length,
     resultButtons: resultButtons,
-    publishModal: publishModal
+    publishModal: publishModal,
+    errors: errTexts,
+    publishButtonDisabled: publishButtonDisabled
 };
 '''
+
+
 
 
 def _submit_publish(main_tab, record):
@@ -7700,10 +8230,23 @@ def _submit_publish(main_tab, record):
     current_url = _get_current_tab_url(main_tab)
     field_count = (last_state or {}).get('fieldCount')
     result_buttons = (last_state or {}).get('resultButtons') or []
+    page_errors = (last_state or {}).get('errors') or []
+    button_disabled = (last_state or {}).get('publishButtonDisabled')
+    if button_disabled is True:
+        # 点击后按钮仍可用 = 提交没被受理，最可能是被表单校验拦下。
+        # 这与「已受理但结果页来得慢」是两回事，必须让用户分得清。
+        click_note = '提交未被受理（「发布商品」按钮点击后仍可点，通常是被表单校验拦下）'
+    elif button_disabled is False:
+        click_note = '「发布商品」已进入提交态（按钮已置灰）'
+    else:
+        click_note = '「发布商品」按钮已不在页面上'
     detail = (
         f'当前页面: {current_url}'
+        f'｜页面形态: {_detect_publish_page_stage(main_tab)}'
         f'｜表单字段数: {field_count if field_count is not None else "未知"}'
         f'｜已出现的结果页按钮: {result_buttons or "无"}'
+        f'｜点击后状态: {click_note}'
+        f'｜页面校验提示: {page_errors or "无"}'
     )
     print('发布结果未确认！')
     print(f'  {detail}')

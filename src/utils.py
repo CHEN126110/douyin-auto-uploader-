@@ -509,12 +509,84 @@ _AURORA_OPTION_SELECTORS = [
 ]
 
 
+def _click_aurora_create_material(new_tab, name: str) -> bool:
+    """下拉里搜不到该材质时，点平台自带的「新建材质」入口。
+
+    用户实测：面料材质的搜索框支持**新建材质** —— 输入的名字不在平台候选列表里时，
+    平台会给出新建入口。原实现只认候选选项，搜不到就只记一条日志后跳过，
+    于是配置里的多项只落了部分（2026-10-17 实盘：3 项只落了 1 项）。
+
+    只在**下拉行内**、文本同时包含材料名与「新建 / 新增 / 创建」、且自身文本很短时才点击：
+    宁可点不到（由上层明确失败），也不能误点容器或别的选项把字段写脏。
+    """
+    selectors = [
+        'xpath://*[contains(@class,"aurora-select-item") or contains(@class,"option") or self::li]'
+        '[contains(normalize-space(.),"{name}")'
+        ' and (contains(normalize-space(.),"新建") or contains(normalize-space(.),"新增")'
+        ' or contains(normalize-space(.),"创建"))'
+        ' and string-length(normalize-space(.)) < 40]',
+        'xpath://*[contains(@class,"create") or contains(@class,"Create")]'
+        '[contains(normalize-space(.),"{name}")'
+        ' and string-length(normalize-space(.)) < 40]',
+    ]
+    for template in selectors:
+        selector = template.format(name=name)
+        try:
+            node = new_tab.ele(selector, timeout=0.25)
+        except Exception:
+            node = None
+        if not node:
+            continue
+        try:
+            node.click(by_js=True)
+        except Exception:
+            continue
+        # 新建出的标签需要一点时间渲染进已选列表
+        _time.sleep(0.3)
+        return True
+    return False
+
+
+#: 快路径：一次 JS 往返完成「写搜索词 → 等选项 → 点中目标」。
+#: 返回 `ok:<title>` / `miss` / `noinput`。用原生 value setter + input 事件，
+#: 才能让 React 的受控输入真正更新；`elem.click()` 会冒泡到根节点，React 的委托能收到。
+_AURORA_SEARCH_AND_PICK_JS = r'''
+(function (name) {
+  const inp = document.querySelector('input.aurora-dorami-composition-select-search')
+      || document.querySelector('input[placeholder="搜索材质"]');
+  if (!inp) return 'noinput';
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(inp, String(name));
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+  const deadline = Date.now() + 1500;
+  while (Date.now() < deadline) {
+    const opts = document.querySelectorAll('.aurora-select-item-option[title]');
+    for (let i = 0; i < opts.length; i++) {
+      const t = String(opts[i].getAttribute('title') || '').trim();
+      if (!t) continue;
+      if (t === name || t.indexOf(name) === 0) {
+        opts[i].click();
+        return 'ok:' + t;
+      }
+    }
+  }
+  return 'miss';
+})(arguments[0])
+'''
+
+
+#: 上一次「面料材质」多选里**没选中**的材质名。上层把它拼进失败消息 —— 因为
+#: 这个模块的 logger 没有落盘（sidecar 的 stdout 也没被捕获），只靠日志拿不到证据。
+_AURORA_LAST_MISSING: list = []
+
+
 def _fill_aurora_composition_select(new_tab, area, materials, field_id):
     """适配 aurora-select-multiple 多选组件的面料材质填写。
 
     新版抖店发布页面料材质字段使用单一 combobox 的多选组件，不再需要"添加材质"
     按钮。流程：逐个选择材质 → 选择后动态出现的占比输入框填写百分比。
     """
+    _AURORA_LAST_MISSING.clear()
     # 平台材质列表采集：只在本次填写的第一个材质、下拉刚打开时采一次
     harvested_options = False
     try:
@@ -558,6 +630,10 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
         pass
 
     selected_count = 0
+    # 期望选中的材质（去掉空名字）。用于判定「是否全部选中」——
+    # 部分选中绝不能算成功：占比是按选中顺序回填的，缺项会让占比配到错误的材质上。
+    expected_names = [str(m[0]).strip() for m in materials if str(m[0]).strip()]
+    expected_count = len(expected_names)
     for idx, (material_name, _ratio) in enumerate(materials):
         name = str(material_name).strip()
         if not name:
@@ -780,23 +856,74 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
                 except Exception as e:
                     logger.info(f'aurora-select: 两步 setter 失败[{idx}] {name}: {e}')
 
-        # 等待 React 过滤 + 虚拟列表重渲染
-        _time.sleep(0.5)
+        # 快路径：一次 JS 往返完成「写入搜索词 → 等选项渲染 → 点中目标」。
+        # 旧实现是「Python 侧 sleep 0.5s + 3 个选择器逐个 0.3s 超时轮询」，每项要几百毫秒；
+        # 6 项材质光这里就能吃掉 3~5 秒，而且中间还有一堆诊断 dump。
         option_clicked = False
-        for selector_template in _AURORA_OPTION_SELECTORS:
-            selector = selector_template.format(name=name)
+        try:
+            picked = str(new_tab.run_js(_AURORA_SEARCH_AND_PICK_JS, name) or '')
+        except Exception:
+            picked = ''
+        if picked.startswith('ok'):
+            option_clicked = True
+            logger.info(f'aurora-select: 快路径命中[{idx}] {name} -> {picked}')
+        elif picked == 'noinput':
+            option_clicked = False
+        else:
+            # 快路径没命中（选项可能因为虚拟列表还没渲染出来），退回原来的逐选择器轮询。
+            _time.sleep(0.2)
+        if not option_clicked:
+            for selector_template in _AURORA_OPTION_SELECTORS:
+                selector = selector_template.format(name=name)
+                try:
+                    opt = new_tab.ele(selector, timeout=0.3)
+                except Exception:
+                    opt = None
+                if not opt:
+                    continue
+                try:
+                    opt.click(by_js=True)
+                    option_clicked = True
+                    break
+                except Exception:
+                    continue
+
+        if not option_clicked:
+            # 虚拟列表：选中几项后已选面板变高、选项区变矮，目标项可能根本没渲染进 DOM。
+            # 先把下拉的选项容器滚到底再找一遍 —— 2026-10-17 实盘 6 项只进 3 项，
+            # 且这 6 个名字在平台材质清单（892 条）里**都存在**，说明不是搜不到，是没渲染。
             try:
-                opt = new_tab.ele(selector, timeout=0.3)
+                new_tab.run_js(
+                    'var cs=document.querySelectorAll(".aurora-select-dropdown .rc-virtual-list-holder,'
+                    '.aurora-select-dropdown .aurora-select-item-option,'
+                    'div[class*="dropdown"] div[class*="virtual-list-holder"]);'
+                    'for(var i=0;i<cs.length;i++){cs[i].scrollTop=cs[i].scrollHeight;}return cs.length;'
+                )
+                _time.sleep(0.4)
             except Exception:
-                opt = None
-            if not opt:
-                continue
-            try:
-                opt.click(by_js=True)
-                option_clicked = True
-                break
-            except Exception:
-                continue
+                pass
+            for selector_template in _AURORA_OPTION_SELECTORS:
+                selector = selector_template.format(name=name)
+                try:
+                    opt = new_tab.ele(selector, timeout=0.3)
+                except Exception:
+                    opt = None
+                if not opt:
+                    continue
+                try:
+                    opt.click(by_js=True)
+                    option_clicked = True
+                    logger.info(f'aurora-select: 滚动后命中[{idx}] {name}')
+                    break
+                except Exception:
+                    continue
+
+        if not option_clicked:
+            # 搜索没命中时，先试平台自带的「新建材质」入口 —— 文本框里输入的名字
+            # 未必存在于平台候选列表（清单里没有的名字只能新建）。
+            option_clicked = _click_aurora_create_material(new_tab, name)
+            if option_clicked:
+                logger.info(f'aurora-select: 搜索未命中，已走「新建材质」[{idx}] {name}')
 
         if not option_clicked:
             # 回车确认（搜索过滤后第一项可能是目标）；锁定下拉内搜索框
@@ -821,6 +948,11 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
                     except Exception:
                         continue
 
+        if not option_clicked:
+            option_clicked = _click_aurora_create_material(new_tab, name)
+            if option_clicked:
+                logger.info(f'aurora-select: 回车后仍未命中，已走「新建材质」[{idx}] {name}')
+
         # 诊断：仍未点击时，dump 当前可见选项的 title，便于定位是搜索未生效还是选项缺失
         if not option_clicked:
             try:
@@ -839,11 +971,22 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
             selected_count += 1
             logger.info(f'aurora-select: 已选择材质[{idx}] {name}')
         else:
+            _AURORA_LAST_MISSING.append(name)
             logger.info(f'aurora-select: 未能选择材质[{idx}] {name}（下拉选项未找到）')
-        _time.sleep(0.15)
+        # 每项之间只需让 React 把已选面板刷一帧；0.15s 纯属保守。
+        _time.sleep(0.05)
 
-    if selected_count == 0:
-        logger.info('aurora-select: 未成功选择任何材质')
+    if selected_count != expected_count:
+        # 部分选中绝不能继续往下走。占比是按「配置顺序」回填到第 idx 个占比输入框的，
+        # 缺项会让「配置第 i 项的占比」落到「实际第 i 个标签」上，产出错误成分：
+        # 2026-10-17 实盘就是 3 项只选中 1 项，第 0 项（粘纤 50）的占比被填给了
+        # 唯一存在的标签，页面成了单项「涤纶 50%」，提交被
+        # 「所填写的材质含量总和需为100%」拦下。这里明确失败，由上层报错。
+        logger.info(
+            f'aurora-select: 材质未全部选中（成功 {selected_count}/{expected_count}），'
+            f'按失败返回且不写占比；未选中: {_AURORA_LAST_MISSING}'
+        )
+        close_aurora_composition_panel(new_tab)
         return False
 
     # 填写占比：选择材质后占比输入框动态出现（在 aurora-select-content 的 tag 内）
@@ -906,14 +1049,22 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
         else:
             logger.info(f'aurora-select: 占比输入框[{idx}]未找到（共{len(ratio_inputs)}个）')
 
-    if ratio_filled == 0 and any(len(m) > 1 and m[1] for m in materials):
-        logger.info('aurora-select: 未填写任何占比，占比输入框结构可能需要进一步适配')
+    expected_ratio_count = len([m for m in materials if len(m) > 1 and str(m[1]).strip()])
+    if expected_ratio_count and ratio_filled != expected_ratio_count:
+        # 占比没填全同样不能算成功：平台以「所填写的材质含量总和需为100%」校验，
+        # 缺一个占比就必然被拦下，而旧实现只在 ratio_filled == 0 时打一条日志。
+        logger.info(
+            f'aurora-select: 占比未全部填写（{ratio_filled}/{expected_ratio_count}），按失败返回'
+        )
+        close_aurora_composition_panel(new_tab)
+        return False
 
     # 收起下拉面板：它是覆盖面很大的浮层，留着会压住品牌、适用性别等相邻字段，
     # 使随后的 select_text 点击落到面板上，表现为「品牌未能设置为无品牌」。
     close_aurora_composition_panel(new_tab)
 
-    return selected_count > 0
+    # 走到这里说明 expected_count 项全部选中，且占比按同序回填完毕。
+    return True
 
 
 _AURORA_PANEL_OPEN_JS = r"""
