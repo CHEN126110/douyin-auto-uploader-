@@ -108,7 +108,7 @@ def test_real_http_task_continues_through_images_before_missing_detail_adapter(h
     assert len(handoff.uploads) == 5
     assert page.read_main_image_slots(handoff.browser)['filled'] == 1
     assert handoff.browser.evaluate('window.submitCalls + window.draftCalls') == 0
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
+    from taobao_publish.sanitize import assert_clean
     artifact = {'scope': 'local_file_model_with_real_http_worker_and_category_handler',
         'boundaries_simulated': ['browser_bootstrap', 'session_metadata', 'navigation_address'],
         'live_platform_tested': False, 'next_clicks': state['nextClicks'],
@@ -116,7 +116,6 @@ def test_real_http_task_continues_through_images_before_missing_detail_adapter(h
         'actual_browser_protocol': 'file:', 'platform_writes': False,
         'model_upload_count': len(handoff.uploads), 'model_main_image_count': 1,
         'test_source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (ROOT / 'taobao-publisher/outputs/category_first_pipeline_handoff.json').write_text(
         json.dumps(artifact, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

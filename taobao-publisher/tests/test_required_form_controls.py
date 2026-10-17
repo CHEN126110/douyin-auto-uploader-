@@ -206,12 +206,11 @@ def test_real_worker_checks_required_logistics_outside_property_area(handoff,mon
     assert handoff.browser.evaluate('document.querySelector("input[name=delivery]").checked') is selected
     from pathlib import Path
     import hashlib
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
+    from taobao_publish.sanitize import assert_clean
     artifact={'scope':'isolated_native_required_controls_and_real_http_worker',
         'live_platform_tested':False,'upload_server_simulated':True,'selected_logistics':selected,
         'model_submit_calls':0,'model_draft_calls':0,'result':task['result'],'error':task['error'],
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     filename='required_form_pipeline_'+('selected' if selected else 'missing')+'.json'
     (Path(__file__).resolve().parents[1]/'outputs'/filename).write_text(

@@ -113,12 +113,11 @@ def test_native_folder_drop_preserves_nested_directories_and_reads_over_100_file
     assert result['roots']==[{'name':'123','isDirectory':True}]
     assert sorted(result['paths'])==sorted(wanted)
     assert browser.evaluate('location.href')==url
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
+    from taobao_publish.sanitize import assert_clean
     artifact={'scope':'isolated_browser_and_memory_only_loopback_http_folder_drop','live_platform_tested':False,
         'root_is_directory':True,'groups':{'主图':2,'SKU':105,'详情页':2},
         'file_count':len(result['paths']),'all_relative_paths_matched':True,
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (Path(__file__).resolve().parents[1]/'outputs/native_folder_drop_capability.json').write_text(
         json.dumps(artifact,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')

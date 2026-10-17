@@ -110,13 +110,12 @@ def test_directory_and_upload_batch_run_through_the_real_pipeline(handoff, monke
     assert any('选择主图：1/1' in message for message in messages)
     from pathlib import Path
     import hashlib
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
+    from taobao_publish.sanitize import assert_clean
     artifact={'scope':'isolated_file_browser_with_product_subfolders_and_real_http_worker',
         'live_platform_tested':False,'upload_server_simulated':True,'batches':batches,
         'model_files':len(handoff.uploads),'model_submit_calls':0,'model_draft_calls':0,
         'progress_messages':messages,'result':task['result'],
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (Path(__file__).resolve().parents[1]/'outputs/media_single_upload_directory_handoff.json').write_text(
         json.dumps(artifact,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')

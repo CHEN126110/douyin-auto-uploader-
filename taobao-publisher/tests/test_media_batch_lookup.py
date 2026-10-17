@@ -155,12 +155,11 @@ def test_five_main_slots_and_other_media_finish_the_local_pipeline(handoff,monke
         name for name in STAGE_ORDER if name != 'submit']
     assert handoff.browser.evaluate('window.submitCalls + window.draftCalls')==0
     assert task['result']['data']['form_verification']['status']=='partial'
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
+    from taobao_publish.sanitize import assert_clean
     artifact={'scope':'local_synthetic_browser_with_real_http_worker','live_platform_tested':False,
         'server_uploads_simulated':True,'main_slots':5,'upload_batches':batches,'lookup_batch_sizes':queries,
         'model_files':9,'submitted_or_saved_draft':False,'result':task['result'],
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    artifact = normalize_machine_paths(artifact)
     assert_clean(artifact)
     (Path(__file__).resolve().parents[1]/'outputs/media_cache_scan_handoff.json').write_text(
         json.dumps(artifact,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')

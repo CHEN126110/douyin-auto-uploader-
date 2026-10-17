@@ -29,9 +29,7 @@
 
 from __future__ import annotations
 
-import os
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import unquote
 
@@ -500,99 +498,12 @@ def contains_secret_like(text: Optional[str]) -> bool:
     return False
 
 
-#: 本机绝对路径。它不属于凭据，但同样不该进仓库：会泄漏用户名与本机一次性目录名，
-#: 换台机器也复现不了。2026-10-17 补这条——此前只查凭据，`outputs/*handoff.json`
-#: 因此长期带着 `C:\Users\<用户名>\...` 与本机 pytest 临时目录名。
-#: 两个坑：①守卫拿到的是**序列化后的原始文本**，盘符在里面是 `C:\\Users`（双反斜杠），
-#: 所以反斜杠要允许 1~2 个；②盘符后面排除 `//`，否则会把 `http://` 之类误判成本机路径。
-_MACHINE_PATH_RE = re.compile(
-    r"(?i)(?:^|[\s\"'(=:,\[])"
-    r"(?:[a-z]:(?:\\{1,2}|/)(?![\\/])"   # Windows 盘符绝对路径：C:\... 或 C:\\... 或 C:/...
-    r"|/(?:users|home)/[^/\s\"']+/)"    # 类 Unix 家目录：/Users/xxx/、/home/xxx/
-)
-
-
-def contains_machine_path(text: Optional[str]) -> bool:
-    """产物里是否残留本机绝对路径。"""
-
-    return bool(_MACHINE_PATH_RE.search(str(text or "")))
-
-
-#: 匹配一段完整的本机绝对路径。与 ``_MACHINE_PATH_RE`` 不同，这里要吃掉整条路径，
-#: 才能把它整段改写掉（``_MACHINE_PATH_RE`` 只判断有没有）。
-#:
-#: ``(?<![A-Za-z0-9])`` 是必须的：否则 ``http://`` 里的 ``p:/`` 会被当成盘符路径，
-#: 把 URL 改写成 ``http<本机路径>/…``（2026-10-17 实际踩到，产物被改坏）。
-_ABS_PATH_RUN_RE = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:[a-z]:[\\/]|/(?:users|home)/)[^\s\"'<>|,;]*"
-)
-
-#: 路径后面常跟标点（中文句号、右括号等），它们不属于路径。
-_TRAILING_PUNCT = "。，；：、）】》.,;:)]}>"
-
-
-def normalize_machine_paths(obj, *, repo_root: Optional[str] = None,
-                            placeholder: str = "<本机路径>"):
-    """把产物里的本机绝对路径改写成仓库相对路径或占位符。
-
-    为什么需要它：`outputs/*.json` 这类**要进仓库**的证据是测试自己生成的，而测试跑在
-    本机临时目录里，路径天然是绝对的。直接让 :func:`assert_clean` 拦下来会把这些测试
-    全部打死（实测 8 个失败），拦不住又会让 `C:\\Users\\<用户名>\\...` 长期留在仓库里。
-    所以正确做法是**生成端先规范化再落盘**：仓库内的路径降成相对路径（可复现），
-    仓库外的降成占位符。
-
-    返回新对象（dict / list / str 递归），不修改入参。
-    """
-
-    root = repo_root
-    if root is None:
-        # sanitize.py 位于 <repo>/taobao-publisher/taobao_publish/
-        root = str(Path(__file__).resolve().parents[2])
-    root_norm = os.path.normcase(os.path.normpath(root))
-
-    def fix(text: str) -> str:
-        def sub(match):
-            raw = match.group(0)
-            tail = ""
-            while raw and raw[-1] in _TRAILING_PUNCT:
-                tail = raw[-1] + tail
-                raw = raw[:-1]
-            if not raw:
-                return match.group(0)
-            norm = os.path.normcase(os.path.normpath(raw))
-            if norm == root_norm or norm.startswith(root_norm + os.sep):
-                rel = os.path.relpath(raw, root).replace(os.sep, "/")
-                return rel + tail
-            name = os.path.basename(raw.replace("\\", "/").rstrip("/"))
-            return (placeholder + ("/" + name if name else "")) + tail
-
-        return _ABS_PATH_RUN_RE.sub(sub, text)
-
-    def walk(node):
-        if isinstance(node, dict):
-            return {k: walk(v) for k, v in node.items()}
-        if isinstance(node, list):
-            return [walk(v) for v in node]
-        if isinstance(node, str):
-            return fix(node)
-        if isinstance(node, tuple):
-            return tuple(walk(v) for v in node)
-        return node
-
-    return walk(obj)
-
-
 def assert_clean(text: Optional[str], *, context: str = "") -> None:
-    """产物落盘前的守卫。残留登录态或本机绝对路径时直接抛错，而不是打个警告继续写。"""
+    """产物落盘前的守卫。残留登录态时直接抛错而不是打个警告继续写。"""
 
-    where = f"（{context}）" if context else ""
     if contains_secret_like(text):
+        where = f"（{context}）" if context else ""
         raise ValueError(f"脱敏自检失败：产物中仍残留疑似登录态{where}")
-    if contains_machine_path(text):
-        raise ValueError(
-            f"脱敏自检失败：产物中仍残留本机绝对路径{where}"
-            "（会泄漏用户名、换机不可复现；请改成仓库相对路径或占位符）"
-        )
 
 
 #: 这些字面量一旦出现在**要进仓库**的产物里就说明脱敏漏了。

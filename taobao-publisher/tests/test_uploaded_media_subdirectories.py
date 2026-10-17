@@ -147,8 +147,7 @@ def test_21_images_continue_from_upload_to_main_sku_and_detail(browser,tmp_path,
         'upload_batches':[21],'subdirectory_lookup_required':True,'caption_is_sibling':True,
         'stage_summaries':results,'saved_draft_or_submitted':False,
         'test_source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
-    from taobao_publish.sanitize import assert_clean, normalize_machine_paths
-    artifact = normalize_machine_paths(artifact)
+    from taobao_publish.sanitize import assert_clean
     assert_clean(artifact)
     (Path(__file__).resolve().parents[1]/'outputs/uploaded_media_subdirectories_handoff.json').write_text(
         json.dumps(artifact,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
