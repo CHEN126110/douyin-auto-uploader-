@@ -25,10 +25,22 @@ APP_PATH = PROJECT_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 def _start_function_source() -> str:
+    """只取 `taobao_publish_start` **这一个函数**的源码。
+
+    2026-10-17 修：原实现是「从函数定义切到下一个路由装饰器」，中间夹着的其它函数
+    也一并算进来，于是「加锁块只应有一处」这条断言把别人函数的锁也数了进去
+    （实际数到 7 处，而 taobao_publish_start 自己只有 1 处），导致这个测试长期红着，
+    并且**挡住每一次发布**（CI 的「运行发布回归」步骤会因此失败）。
+    改成 AST 精确取函数体，与本仓库其它源码级断言一致。
+    """
     source = APP_PATH.read_text(encoding="utf-8")
-    start = source.index("def taobao_publish_start():")
-    end = source.index("@app.get('/api/taobao/publish/status", start)
-    return source[start:end]
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "taobao_publish_start":
+            segment = ast.get_source_segment(source, node)
+            if segment:
+                return segment
+    raise AssertionError("app.py 里没有 taobao_publish_start")
 
 
 class TaobaoPublishConcurrencyTest(unittest.TestCase):
