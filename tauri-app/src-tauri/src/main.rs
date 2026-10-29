@@ -331,6 +331,14 @@ Get-CimInstance Win32_Process |
 #[cfg(not(target_os = "windows"))]
 fn force_kill_known_backend_processes(_app: &tauri::AppHandle, _reason: &str) {}
 
+// 本机 Sidecar 不走环境代理，否则停止时代理返回的错误页可能被当成后端仍在线。
+fn backend_control_client() -> Result<reqwest::blocking::Client, reqwest::Error> {
+    reqwest::blocking::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(800))
+        .build()
+}
+
 fn shutdown_existing_backend(app: &tauri::AppHandle, reason: &str) {
     if !is_backend_port_alive() {
         return;
@@ -338,10 +346,7 @@ fn shutdown_existing_backend(app: &tauri::AppHandle, reason: &str) {
 
     log_runtime(app, &format!("shutdown_existing_backend invoked: {reason}"));
 
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_millis(800))
-        .build()
-    {
+    let client = match backend_control_client() {
         Ok(value) => value,
         Err(error) => {
             log_runtime(app, &format!("shutdown_existing_backend client build failed: {error}"));
@@ -461,14 +466,14 @@ async fn stop_python_backend(
     }
 }
 
-#[tauri::command]
-async fn check_backend_status() -> Result<serde_json::Value, String> {
+async fn request_backend_health(url: &str) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(5))
         .build()
         .map_err(|e| e.to_string())?;
 
-    match client.get("http://127.0.0.1:5001/health").send().await {
+    match client.get(url).send().await {
         Ok(response) => {
             if response.status().is_success() {
                 response.json().await.map_err(|e| e.to_string())
@@ -481,6 +486,138 @@ async fn check_backend_status() -> Result<serde_json::Value, String> {
             "status": "offline",
             "message": "Backend not responding"
         })),
+    }
+}
+
+#[tauri::command]
+async fn check_backend_status() -> Result<serde_json::Value, String> {
+    request_backend_health("http://127.0.0.1:5001/health").await
+}
+
+#[cfg(test)]
+mod backend_http_tests {
+    use super::{backend_control_client, request_backend_health};
+    use std::env;
+    use std::ffi::OsString;
+    use std::io::{ErrorKind, Read, Write};
+    use std::net::{SocketAddr, TcpListener};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore(Vec<(&'static str, Option<OsString>)>);
+
+    impl EnvRestore {
+        fn set(&mut self, key: &'static str, value: &str) {
+            self.0.push((key, env::var_os(key)));
+            env::set_var(key, value);
+        }
+
+        fn remove(&mut self, key: &'static str) {
+            self.0.push((key, env::var_os(key)));
+            env::remove_var(key);
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in &self.0 {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    fn serve_once(
+        status: &'static str,
+        body: &'static str,
+    ) -> (SocketAddr, Arc<AtomicUsize>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local HTTP fixture");
+        let address = listener.local_addr().expect("local HTTP fixture address");
+        listener.set_nonblocking(true).expect("nonblocking fixture");
+        let hits = Arc::new(AtomicUsize::new(0));
+        let thread_hits = Arc::clone(&hits);
+        let handle = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        thread_hits.fetch_add(1, Ordering::SeqCst);
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(2)))
+                            .expect("fixture read timeout");
+                        let mut request = [0; 2048];
+                        let _ = stream.read(&mut request);
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len(),
+                        );
+                        stream.write_all(response.as_bytes()).expect("fixture response");
+                        return;
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return;
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("local HTTP fixture failed: {error}"),
+                }
+            }
+        });
+        (address, hits, handle)
+    }
+
+    #[test]
+    fn local_requests_bypass_environment_proxy() {
+        let _lock = ENV_LOCK.lock().expect("environment test lock");
+        let (health_address, health_hits, health_thread) = serve_once(
+            "200 OK",
+            r#"{"success":true,"status":"ok"}"#,
+        );
+        let (control_address, control_hits, control_thread) =
+            serve_once("200 OK", r#"{"success":true}"#);
+        let (proxy_address, proxy_hits, proxy_thread) =
+            serve_once("502 Bad Gateway", r#"{"error":"proxied"}"#);
+
+        let mut restore = EnvRestore(Vec::new());
+        let proxy = format!("http://{proxy_address}");
+        for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"] {
+            restore.set(key, &proxy);
+        }
+        restore.remove("NO_PROXY");
+        restore.remove("no_proxy");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("health test runtime");
+        let health = runtime
+            .block_on(request_backend_health(&format!(
+                "http://{health_address}/health"
+            )))
+            .expect("direct local health response");
+        assert_eq!(health["success"], true);
+        drop(runtime);
+
+        let response = backend_control_client()
+            .expect("direct local control client")
+            .post(format!("http://{control_address}/internal/terminate"))
+            .send()
+            .expect("direct local control response");
+        assert!(response.status().is_success());
+
+        health_thread.join().expect("health fixture thread");
+        control_thread.join().expect("control fixture thread");
+        proxy_thread.join().expect("proxy fixture thread");
+        assert_eq!(health_hits.load(Ordering::SeqCst), 1);
+        assert_eq!(control_hits.load(Ordering::SeqCst), 1);
+        assert_eq!(proxy_hits.load(Ordering::SeqCst), 0);
     }
 }
 
