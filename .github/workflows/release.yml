@@ -208,6 +208,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "发布回归失败" }
           node --test tests/media_processing_flow.cjs tests/whitebg_selection_flow.cjs tests/product_delete_flow.cjs tests/updater_flow.cjs
           if ($LASTEXITCODE -ne 0) { throw "前端交互回归失败" }
+          # cargo test 也会展开 tauri::generate_context!；干净检出里必须先生成 frontendDist。
+          npm run build --prefix tauri-app
+          if ($LASTEXITCODE -ne 0) { throw "前端生产构建失败" }
           cargo test --locked --manifest-path tauri-app/src-tauri/Cargo.toml backend_http_tests
           if ($LASTEXITCODE -ne 0) { throw "本机后端代理兼容回归失败" }
 
