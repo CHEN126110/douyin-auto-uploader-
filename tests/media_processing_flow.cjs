@@ -168,6 +168,7 @@ test('完成后刷新当前目录，关闭或换商品后忽略旧任务的刷�
     '@/stores/productStore': {useProductStore: () => store},
     '@/services/api': {api: {}, productMediaImageUrl() {}},
     '@/components/WhiteBgPanel.vue': {},
+    '@/components/XhsPublishPanel.vue': {},
     '@element-plus/icons-vue': {}, 'element-plus': {},
   }, t);
   loads.length = 0;

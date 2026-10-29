@@ -15,7 +15,24 @@ function fixture(options = {}) {
     async download() { calls.push('download'); if (options.downloadError) throw Error('下载失败'); },
     async install() { calls.push('install'); if (options.installError) throw Error('安装失败'); },
   };
+  const fetchReadiness = async url => {
+    calls.push('readiness');
+    assert.ok(url.endsWith('/internal/update-readiness'));
+    return {ok: options.httpOK ?? true, json: async () => options.body ?? {success: true, data: {ready: true}}};
+  };
   const dependencies = {
+    '@/services/api': {
+      api: {getUpdateReadiness: async () => {
+        const response = await fetchReadiness('/internal/update-readiness');
+        if (!response.ok) {
+          const error = new Error('HTTP 500');
+          error.response = {status: 500};
+          throw error;
+        }
+        return response.json();
+      }},
+      apiErrorStatus: error => error.response?.status,
+    },
     '@tauri-apps/plugin-updater': {check: options.check ?? (async () => update)},
     '@tauri-apps/plugin-process': {relaunch: async () => calls.push('relaunch')},
     '@tauri-apps/api/core': {invoke: async name => {
@@ -39,11 +56,7 @@ function fixture(options = {}) {
   const module = {exports: {}};
   vm.runInNewContext(code, {module, exports: module.exports, AbortSignal,
     require: name => dependencies[name],
-    fetch: async url => {
-      calls.push('readiness');
-      assert.ok(url.endsWith('/internal/update-readiness'));
-      return {ok: options.httpOK ?? true, json: async () => options.body ?? {success: true, data: {ready: true}}};
-    },
+    fetch: fetchReadiness,
   });
   return {run: module.exports.checkForUpdate, calls, errors, running: () => running};
 }
