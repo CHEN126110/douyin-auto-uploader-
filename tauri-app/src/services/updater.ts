@@ -51,14 +51,32 @@ async function assertBackendIdle(): Promise<void> {
   }
 }
 
+const BACKEND_STOP_TIMEOUT_MS = 8000;
+
+/** 停止过程中健康接口可能短暂返回非 2xx；只有明确离线或超时才能结束等待。 */
+async function waitBackendStopped(): Promise<void> {
+  const deadline = Date.now() + BACKEND_STOP_TIMEOUT_MS;
+  let lastError: unknown;
+  while (true) {
+    try {
+      if (!backendIsRunning(await invoke<unknown>("check_backend_status"))) return;
+    } catch (error) {
+      lastError = error;
+    }
+    if (Date.now() >= deadline) {
+      if (lastError) throw lastError;
+      throw new Error("后端尚未停止，未开始安装更新");
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+}
+
 /** 更新前优雅停掉 python-backend，避免覆盖安装时 exe 文件被占用导致失败 */
 async function gracefullyStopBackend(): Promise<void> {
   if (!backendIsRunning(await invoke<unknown>("check_backend_status"))) return;
   // Rust 侧负责优雅停止、等待和必要的进程清理，释放安装文件占用。
   await invoke("stop_python_backend");
-  if (backendIsRunning(await invoke<unknown>("check_backend_status"))) {
-    throw new Error("后端尚未停止，未开始安装更新");
-  }
+  await waitBackendStopped();
 }
 
 function formatMB(bytes: number): string {

@@ -20,6 +20,7 @@ function fixture(options = {}) {
     assert.ok(url.endsWith('/internal/update-readiness'));
     return {ok: options.httpOK ?? true, json: async () => options.body ?? {success: true, data: {ready: true}}};
   };
+  let stopCheckFlaps = options.stopCheckFlaps ?? 0;
   const dependencies = {
     '@/services/api': {
       api: {getUpdateReadiness: async () => {
@@ -37,7 +38,10 @@ function fixture(options = {}) {
     '@tauri-apps/plugin-process': {relaunch: async () => calls.push('relaunch')},
     '@tauri-apps/api/core': {invoke: async name => {
       if (name === 'check_backend_status') {
-        if (options.stopCheckError && !running) throw Error('停止状态检查失败');
+        if ((options.stopCheckError || stopCheckFlaps > 0) && !running) {
+          if (stopCheckFlaps > 0) stopCheckFlaps--;
+          throw Error('停止状态检查失败');
+        }
         return running ? {success: true, status: 'ok'} : {success: false, status: 'offline'};
       }
       calls.push(name);
@@ -53,13 +57,17 @@ function fixture(options = {}) {
       ElLoading: {service: () => ({setText() {}, close() {}})},
     },
   };
-  const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../tauri-app/src/services/updater.ts'), 'utf8'), {
+  // 永久错误的恢复用例只缩短测试超时；生产默认仍为 8 秒。
+  const source = fs.readFileSync(path.join(__dirname, '../tauri-app/src/services/updater.ts'), 'utf8')
+    .replace('const BACKEND_STOP_TIMEOUT_MS = 8000', 'const BACKEND_STOP_TIMEOUT_MS = 25');
+  const code = ts.transpileModule(source, {
     compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020},
   }).outputText;
   const module = {exports: {}};
   vm.runInNewContext(code, {module, exports: module.exports, AbortSignal,
     require: name => dependencies[name],
     fetch: fetchReadiness,
+    setTimeout: callback => setImmediate(callback),
   });
   return {run: module.exports.checkForUpdate, calls, errors, running: () => running};
 }
@@ -88,6 +96,11 @@ test('安装失败恢复后端并报告失败', async () => {
   const f = fixture({installError: true}); await f.run();
   assert.equal(f.calls.at(-1), 'start_python_backend'); assert.equal(f.running(), true);
   assert.match(f.errors[0], /安装失败/); assert.ok(!f.calls.includes('relaunch'));
+});
+test('停止后健康接口短暂报错会等待离线再安装', async () => {
+  const f = fixture({stopCheckFlaps: 2}); await f.run();
+  assert.deepEqual(f.calls, ['download', 'readiness', 'stop_python_backend', 'install', 'relaunch']);
+  assert.equal(f.errors.length, 0);
 });
 test('停止后的状态检查失败也恢复后端', async () => {
   const f = fixture({stopCheckError: true}); await f.run();
