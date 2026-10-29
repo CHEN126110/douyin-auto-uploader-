@@ -57,17 +57,21 @@ function fixture(options = {}) {
       ElLoading: {service: () => ({setText() {}, close() {}})},
     },
   };
-  // 永久错误的恢复用例只缩短测试超时；生产默认仍为 8 秒。
-  const source = fs.readFileSync(path.join(__dirname, '../tauri-app/src/services/updater.ts'), 'utf8')
-    .replace('const BACKEND_STOP_TIMEOUT_MS = 8000', 'const BACKEND_STOP_TIMEOUT_MS = 25');
+  // 虚拟时钟只随等待推进，避免 CI 的实际调度耗时挤占测试窗口；生产默认仍为 8 秒。
+  let now = 0;
+  const source = fs.readFileSync(path.join(__dirname, '../tauri-app/src/services/updater.ts'), 'utf8');
   const code = ts.transpileModule(source, {
     compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020},
   }).outputText;
   const module = {exports: {}};
   vm.runInNewContext(code, {module, exports: module.exports, AbortSignal,
+    Date: {now: () => now},
     require: name => dependencies[name],
     fetch: fetchReadiness,
-    setTimeout: callback => setImmediate(callback),
+    setTimeout: callback => {
+      now += 200;
+      setImmediate(callback);
+    },
   });
   return {run: module.exports.checkForUpdate, calls, errors, running: () => running};
 }
