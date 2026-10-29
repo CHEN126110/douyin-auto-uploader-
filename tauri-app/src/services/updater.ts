@@ -19,9 +19,19 @@ import { api, apiErrorStatus } from "@/services/api";
 
 let updateInProgress = false;
 
+/** Rust 的命令同时支持布尔旧形态和 {success,status} 新形态；对象本身不能当布尔值。 */
+function backendIsRunning(status: unknown): boolean {
+  if (typeof status === "boolean") return status;
+  if (status && typeof status === "object") {
+    const body = status as { success?: unknown; status?: unknown };
+    if (body.success === false || body.status === "offline") return false;
+  }
+  return Boolean(status);
+}
+
 /** 下载后、停止后端前检查，不能依赖弹窗中的人工提醒。 */
 async function assertBackendIdle(): Promise<void> {
-  const running = await invoke<boolean>("check_backend_status");
+  const running = backendIsRunning(await invoke<unknown>("check_backend_status"));
   // 后端没有启动时仍允许通过更新修复应用。
   if (!running) return;
   let body;
@@ -43,10 +53,10 @@ async function assertBackendIdle(): Promise<void> {
 
 /** 更新前优雅停掉 python-backend，避免覆盖安装时 exe 文件被占用导致失败 */
 async function gracefullyStopBackend(): Promise<void> {
-  if (!(await invoke<boolean>("check_backend_status"))) return;
+  if (!backendIsRunning(await invoke<unknown>("check_backend_status"))) return;
   // Rust 侧负责优雅停止、等待和必要的进程清理，释放安装文件占用。
   await invoke("stop_python_backend");
-  if (await invoke<boolean>("check_backend_status")) {
+  if (backendIsRunning(await invoke<unknown>("check_backend_status"))) {
     throw new Error("后端尚未停止，未开始安装更新");
   }
 }
@@ -138,18 +148,21 @@ async function performUpdate(opts?: { silent?: boolean }): Promise<void> {
 
     await assertBackendIdle();
     // 只有覆盖安装才需要释放 python-backend.exe 的文件占用
-    loading.setText("正在停止后端服务...");
-    await gracefullyStopBackend();
-
+    let stopAttempted = false;
     try {
+      loading.setText("正在停止后端服务...");
+      stopAttempted = true;
+      await gracefullyStopBackend();
       loading.setText("正在安装...");
       await update.install();
     } catch (installError) {
-      // 安装失败必须把后端拉回来，否则用户停在「应用开着但什么都干不了」的状态
-      try {
-        await invoke("start_python_backend");
-      } catch (restartError: any) {
-        throw new Error(`安装失败，后端恢复也失败，请重新启动软件：${restartError?.message || restartError}`);
+      // 停止状态检查或安装失败都必须恢复后端，不能让用户停在无后端状态。
+      if (stopAttempted) {
+        try {
+          await invoke("start_python_backend");
+        } catch (restartError: any) {
+          throw new Error(`安装失败，后端恢复也失败，请重新启动软件：${restartError?.message || restartError}`);
+        }
       }
       throw installError;
     }

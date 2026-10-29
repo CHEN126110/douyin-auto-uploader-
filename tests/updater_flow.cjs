@@ -36,7 +36,10 @@ function fixture(options = {}) {
     '@tauri-apps/plugin-updater': {check: options.check ?? (async () => update)},
     '@tauri-apps/plugin-process': {relaunch: async () => calls.push('relaunch')},
     '@tauri-apps/api/core': {invoke: async name => {
-      if (name === 'check_backend_status') return running;
+      if (name === 'check_backend_status') {
+        if (options.stopCheckError && !running) throw Error('停止状态检查失败');
+        return running ? {success: true, status: 'ok'} : {success: false, status: 'offline'};
+      }
       calls.push(name);
       if (name === 'stop_python_backend') running = false;
       if (name === 'start_python_backend') {
@@ -85,6 +88,13 @@ test('安装失败恢复后端并报告失败', async () => {
   const f = fixture({installError: true}); await f.run();
   assert.equal(f.calls.at(-1), 'start_python_backend'); assert.equal(f.running(), true);
   assert.match(f.errors[0], /安装失败/); assert.ok(!f.calls.includes('relaunch'));
+});
+test('停止后的状态检查失败也恢复后端', async () => {
+  const f = fixture({stopCheckError: true}); await f.run();
+  assert.deepEqual(f.calls, ['download', 'readiness', 'stop_python_backend', 'start_python_backend']);
+  assert.equal(f.running(), true);
+  assert.ok(!f.calls.includes('install'));
+  assert.match(f.errors[0], /停止状态检查失败/);
 });
 test('恢复后端失败明确提示用户', async () => {
   const f = fixture({installError: true, restartError: true}); await f.run();
