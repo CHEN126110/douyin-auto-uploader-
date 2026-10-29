@@ -75,6 +75,19 @@ INTENT_ALL: Tuple[str, ...] = (
 )
 
 
+def main_image_source_error(path: object) -> str:
+    """主图误用规格图目录时返回明确原因；其它路径不在这里替调用方猜角色。
+
+    同时识别 Windows 与 POSIX 分隔符，只匹配目录段，不会误伤 ``SKU.jpg``
+    这类合法文件名。预检与实际上传阶段共用这道门，避免绕过预检后混图。
+    """
+    parts = str(path or "").replace("\\", "/").split("/")
+    directories = {part.strip().casefold() for part in parts[:-1]}
+    if directories.intersection({"sku", "sku_1x1"}):
+        return "主图不能取自 SKU 或 SKU_1x1 规格图目录：{}".format(path)
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # 构建发布意图
 # ---------------------------------------------------------------------------
@@ -568,6 +581,17 @@ def validate_images(item: PublishItem, contracts: Contracts) -> List[Blocker]:
     for index, path in enumerate(main):
         field_name = f"images.main[{index}]"
         candidate = Path(path)
+        source_error = main_image_source_error(path)
+        if source_error:
+            blockers.append(
+                Blocker(
+                    code="IMAGE_SOURCE_MISMATCH",
+                    field=field_name,
+                    detail=source_error,
+                    source="mapping.validate_images",
+                )
+            )
+            continue
         if not candidate.is_file():
             blockers.append(
                 Blocker(

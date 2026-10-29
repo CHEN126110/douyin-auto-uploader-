@@ -1024,6 +1024,24 @@ class TaobaoShopInfoTest(unittest.TestCase):
                 self.assertIsNone(listed["shop_name"])
                 self.assertEqual(listed["account_id"], "2223179290236")
 
+    def test_shop_name_only_profile_still_counts_as_verified_login(self) -> None:
+        """千帆只有 DOM 店铺名、没有店铺 ID，也必须保存并显示实测身份。"""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"DOUYIN_DATA_DIR": tmp}):
+                slug = shop_session.create_profile(platform="xiaohongshu")
+                shop_session.observe_identity(
+                    slug, None, "涩计似空的店", platform="xiaohongshu"
+                )
+                saved = shop_session.load_registry()["profiles"][slug]
+                self.assertEqual(saved["shop_name"], "涩计似空的店")
+                self.assertIsNotNone(saved["last_seen_at"])
+                listed = next(i for i in shop_session.list_profiles() if i["profile_name"] == slug)
+                self.assertEqual(listed["identity_source"], "registry_last_seen")
+                self.assertEqual(listed["label"], "涩计似空的店")
+                self.assertEqual(listed["shop_name"], "涩计似空的店")
+                self.assertIsNone(listed["shop_id"], "千帆店铺名不得被伪造成店铺 ID")
+
     def test_nothing_at_all_is_still_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"DOUYIN_DATA_DIR": tmp}):

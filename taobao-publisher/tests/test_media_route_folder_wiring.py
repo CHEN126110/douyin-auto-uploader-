@@ -42,6 +42,7 @@ from taobao_publish.errors import WriteNotAuthorizedError
 from taobao_publish.page import PageError
 
 SUBPROJECT_ROOT = Path(__file__).resolve().parents[1]
+import sidecar_source as sidecar
 SIDECAR_APP = SUBPROJECT_ROOT.parent / "tauri-app" / "python-sidecar" / "app.py"
 
 
@@ -254,16 +255,8 @@ class PrepareMediaForwardingTest(unittest.TestCase):
 class SidecarRouteDefaultTest(unittest.TestCase):
     """第 1 条：桌面任务必须真的打开协议路线，且**显式值优先**（可一行回滚）。"""
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.source = SIDECAR_APP.read_text(encoding="utf-8")
-
     def task_source(self) -> str:
-        marker = "def _run_taobao_publish_task("
-        start = self.source.index(marker)
-        rest = self.source[start + len(marker):]
-        end = rest.index("\ndef ")
-        return rest[:end]
+        return sidecar.function_source("run_publish_task", "_run_taobao_publish_task")
 
     def test_task_enables_protocol_media_route(self) -> None:
         task = self.task_source()

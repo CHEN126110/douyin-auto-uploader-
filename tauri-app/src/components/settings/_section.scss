@@ -1,0 +1,46 @@
+// 设置页各 Tab 共用的区块样式（区块容器、区块标题、带按钮的标题行）。
+// scoped 样式不会穿透到子组件，所以每个用到它的组件都要在自己的 <style scoped> 里 @use 一次。
+.settings-section {
+  margin-bottom: 28px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(92, 124, 250, 0.12);
+}
+
+// Section头部（带按钮）
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(92, 124, 250, 0.12);
+  
+  .section-title {
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+}
+
+// ========== Section 标题带图标 ==========
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .section-icon {
+    color: var(--primary-color);
+    font-size: 18px;
+  }
+}

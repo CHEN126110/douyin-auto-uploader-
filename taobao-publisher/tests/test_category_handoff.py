@@ -122,7 +122,7 @@ class SelectCategoryHandoffTest(unittest.TestCase):
                 stack.enter_context(mock.patch.object(page, name, return_value=value))
             result = stages.stage_select_category(ctx)
         if keyword and not path:
-            leaf.assert_called_once_with(client, keyword)
+            leaf.assert_called_once_with(client, keyword, timeout=3.0)
         else:
             leaf.assert_not_called()
         self.assertTrue(client.closed)

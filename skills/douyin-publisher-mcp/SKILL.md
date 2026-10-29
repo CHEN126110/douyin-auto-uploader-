@@ -50,6 +50,8 @@ Use this skill when work should happen through the local app's MCP layer instead
 - Daily operations loop: `ops_health_check`, `ops_read_shop_metrics_cdp`, `ops_read_strategy_signals_cdp`, `ops_sync_shop_metrics`, `ops_sync_strategy_signals`, `ops_product_issue_actions`, `ops_update_product_issue_action`, `ops_sync_product_record_mappings`, `ops_product_record_mappings`, `ops_evaluate_product`, `ops_stock_plan`, `ops_product_candidates`, `ops_apply_candidate_pricing`, `ops_daily_plan`, `ops_daily_review`.
 - File and asset inspection: `list_product_files`, `get_product_asset_manifest`, `list_sku_assets`, `validate_product_assets`, `open_product_folder`.
 - Upload safety: `validate_product_for_upload`, `start_validated_upload`, `get_upload_status`, `list_upload_tasks`, `cancel_upload`.
+- Status inspection: `get_shop_session`, `list_taobao_publish_tasks`, `get_taobao_publish_status`. `no_browser` only means no inspection browser, not proof of logout; use `restore_shop_session` only when browser recovery is needed (it may open a browser).
+- Remark boundaries: product-level `remark` is not a SKU remark. Use each SKU row's own optional `remark` for SKU-specific notes; never copy the product remark into SKU rows.
 - Capture safety: `start_capture`, `start_capture_batch`, `get_capture_status`, `import_capture_result`, `cancel_capture`.
 
 ## OpenClaw Command Patterns

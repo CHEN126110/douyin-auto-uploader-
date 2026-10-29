@@ -1297,19 +1297,23 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
                 entry["tags"] = {"brand_cn_name": ""}
             cp[pid] = [entry]
 
-    # 材质成分 (785) — 单独处理，因为结构特殊
+    # 材质成分 (785) — 比例必须显式且完整，支持小数；不得把缺失比例猜成100%。
     material = product_data.get("material", "")
     if material:
         cp["785"] = []
+        material_total = 0.0
         for part in material.split(";"):
             part = part.strip()
             if not part:
                 continue
-            m = re.match(r"(.+?)(\d+)%?", part)
-            if m:
-                mat_name, mat_pct = m.group(1).strip(), m.group(2)
-            else:
-                mat_name, mat_pct = part, "100"
+            m = re.fullmatch(r"(.+?)(\d+(?:\.\d+)?)%", part)
+            if not m or not m.group(1).strip():
+                return _mkerr("INVALID_MATERIAL", detail=f"材质必须明确写出名称和百分比：{part}")
+            mat_name, mat_pct = m.group(1).strip(), m.group(2)
+            mat_pct_number = float(mat_pct)
+            if mat_pct_number <= 0 or mat_pct_number > 100:
+                return _mkerr("INVALID_MATERIAL", detail=f"材质比例超出有效范围：{part}")
+            material_total += mat_pct_number
             cp["785"].append({
                 "value_id": "", "value_name": f"{mat_name}{mat_pct}%",
                 "measure_info": {
@@ -1321,6 +1325,8 @@ def step_build_body_offline(product_data, image_urls, category_config, publish_i
                     ]
                 }
             })
+        if not cp["785"] or abs(material_total - 100.0) > 0.000001:
+            return _mkerr("INVALID_MATERIAL", detail="材质成分不完整，含量总和必须等于100%")
 
     # -- spec_detail --
     colors = list(dict.fromkeys(str(s.get("name", "默认")).strip() for s in sku_list)) or ["默认"]

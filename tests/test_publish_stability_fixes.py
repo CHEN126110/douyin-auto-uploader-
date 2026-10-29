@@ -27,11 +27,19 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 APP_PY = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
+UPLOAD_STEPS_PY = os.path.join(REPO_ROOT, 'src', 'sidecar', 'upload_steps.py')
 UTILS_PY = os.path.join(REPO_ROOT, 'src', 'utils.py')
 
 
 def _read(path):
     return io.open(path, encoding='utf-8').read()
+
+
+def _upload_text():
+    """整个上传域的源码（app.py + src/sidecar/upload_*.py）：发布流程分散在几个文件里，文本断言要读全。"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from sidecar_function_source import upload_text
+    return upload_text()
 
 
 def _extract_function(source, name):
@@ -57,7 +65,7 @@ def _extract_assign(source, name):
 # ---------------------------------------------------------------------------
 
 def _load_is_element_lost_error():
-    source = _read(APP_PY)
+    source = _read(UPLOAD_STEPS_PY)
     namespace = {'__builtins__': __builtins__}
     exec(_extract_function(source, '_is_element_lost_error'), namespace)
     return namespace['_is_element_lost_error']
@@ -102,7 +110,7 @@ def test_title_fill_no_longer_reuses_a_stale_handle():
     之后直接 `input_element.click()` —— 中间那次页面交互一旦触发重渲染，
     句柄就作废，6 次实盘失败全部死在这一行。
     """
-    body = _extract_function(_read(APP_PY), '_fill_title_for_record')
+    body = _extract_function(_read(UPLOAD_STEPS_PY), '_fill_title_for_record')
     assert '_is_element_lost_error' in body, '必须按句柄失效重试，而不是整体吞掉异常'
     assert '_title_field_stable' in body, '取句柄前必须等输入框渲染稳定'
     # 取句柄要发生在品牌处理之后（也就是循环体内），不能再是一次性缓存
@@ -122,7 +130,7 @@ def test_title_fill_no_longer_reuses_a_stale_handle():
 
 def test_size_picker_click_has_fallbacks_and_menu_confirmation():
     """点击码数下拉必须确认菜单真的展开，并在失败时换点击方式重试。"""
-    body = _extract_function(_read(APP_PY), '_configure_sku_structure')
+    body = _extract_function(_read(UPLOAD_STEPS_PY), '_configure_sku_structure')
     assert '_size_menu_opened' in body, '点击后必须确认菜单是否展开'
     assert 'by_js=True' in body, '需要准备 JS 点击兜底'
     assert '_click_element_safely' in body, '需要准备安全点击兜底'
@@ -133,7 +141,7 @@ def test_size_picker_click_has_fallbacks_and_menu_confirmation():
 
 def test_size_menu_candidates_text_only_reads_visible_menu():
     """诊断 helper 只读可见级联菜单，且不吞掉全部异常。"""
-    body = _extract_function(_read(APP_PY), '_size_menu_candidates_text')
+    body = _extract_function(_read(UPLOAD_STEPS_PY), '_size_menu_candidates_text')
     assert 'ecom-g-cascader-menus' in body
     assert 'not(contains(@class,"hidden"))' in body, '必须排除隐藏的菜单，否则会读到陈旧节点'
     assert '(读取失败)' in body, '读取失败要显式标注，不能静默返回空'
@@ -195,7 +203,7 @@ def test_white_bg_settle_no_longer_blocks_on_a_dead_wait():
     实测 `wait_white_bg_processing_complete(timeout=3.0)` 中位 4.04s、
     33/64 次跑满 4.00~4.25s，返回值只用于一句 print —— 纯等待、零作用。
     """
-    source = _read(APP_PY)
+    source = _upload_text()
     assert 'wait_white_bg_processing_complete(main_tab, timeout=3.0' not in source, (
         '该阻塞等待必须已替换为一次状态探测'
     )
@@ -212,25 +220,30 @@ def test_white_bg_state_is_imported_explicitly():
     原来那行 `from src.utils import _wait_until ...` 不复存在，所以这里改成
     解析 AST 判断——不变量（下划线名字必须在显式导入清单里）没变，而且顺带
     把"不许再用通配导入"也钉住了。
+
+    2026-10-21：页面操作函数搬进了 upload_steps.py，`_white_bg_state` 现在只有它在用，
+    所以显式导入的检查对象换成两个文件：app.py 和 upload_steps.py 都不许通配导入，
+    用到 `_white_bg_state` 的那个文件必须显式导入它。
     """
-    source = _read(APP_PY)
-    tree = ast.parse(source)
+    imported_by_file = {}
+    for path in (APP_PY, UPLOAD_STEPS_PY):
+        tree = ast.parse(_read(path))
+        imported = set()
+        star_imports = []
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module == 'src.utils':
+                for alias in node.names:
+                    if alias.name == '*':
+                        star_imports.append(node.lineno)
+                        continue
+                    imported.add(alias.asname or alias.name)
 
-    imported = set()
-    star_imports = []
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == 'src.utils':
-            for alias in node.names:
-                if alias.name == '*':
-                    star_imports.append(node.lineno)
-                    continue
-                imported.add(alias.asname or alias.name)
-
-    assert not star_imports, (
-        f'app.py 不应再用 `from src.utils import *`（L{star_imports}）：'
-        '通配导入会让静态分析和改名检查都失效'
-    )
-    assert '_white_bg_state' in imported, '下划线开头的名字必须写进显式导入列表'
+        assert not star_imports, (
+            f'{os.path.basename(path)} 不应再用 `from src.utils import *`（L{star_imports}）：'
+            '通配导入会让静态分析和改名检查都失效'
+        )
+        imported_by_file[path] = imported
+    assert '_white_bg_state' in imported_by_file[UPLOAD_STEPS_PY], '下划线开头的名字必须写进显式导入列表'
 
 
 def test_spec_image_dead_calls_removed():

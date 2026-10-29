@@ -109,9 +109,9 @@ class FillSkuRowNumbersTest(unittest.TestCase):
         result, setter = self._run(skus, table_rows, numbers)
 
         calls = [(c.args[1], c.kwargs) for c in setter.call_args_list]
-        self.assertEqual(calls[0], (0, {"price": "22.00", "stock": "200"}),
+        self.assertEqual(calls[0], (0, {"price": "22.00", "stock": "200", "wait": 0}),
                          "第 0 行是 L，应当填 L 的价格")
-        self.assertEqual(calls[1], (1, {"price": "11.00", "stock": "100"}))
+        self.assertEqual(calls[1], (1, {"price": "11.00", "stock": "100", "wait": 0}))
         self.assertEqual([r["specs"] for r in result], ["L", "M"])
 
     def test_a_row_with_no_matching_sku_fails(self) -> None:
@@ -157,7 +157,7 @@ class FillSkuRowNumbersTest(unittest.TestCase):
         skus = [SkuEntry(spec_values={"尺码": "M"}, price=None, stock=None)]
         _result, setter = self._run(skus, [{"specs": ["M"]}],
                                     [{"price": "", "stock": ""}])
-        self.assertEqual(setter.call_args_list[0].kwargs, {"price": "", "stock": ""})
+        self.assertEqual(setter.call_args_list[0].kwargs, {"price": "", "stock": "", "wait": 0})
 
 
 class StageWiringTest(unittest.TestCase):

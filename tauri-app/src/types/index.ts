@@ -19,6 +19,8 @@ export interface SKU {
   spec_values?: Record<string, string>;
   image_source?: string;
   price_source?: string;
+  /** 这一条 SKU 自己的可选备注；与商品级 ProductDetail.remark 独立。 */
+  remark?: string;
 }
 
 export interface ProductDetail {
@@ -88,6 +90,36 @@ export interface ApiResponse<T = unknown> {
   msg?: string;
   message?: string;
   data?: T;
+}
+
+/**
+ * Rust 壳层 `get_app_info` 命令的返回（`src-tauri/src/main.rs`）。
+ * 「高级集成」页用它生成 MCP 接入说明；字段与 Rust 侧一一对应。
+ */
+export interface AppInfo {
+  name: string;
+  version: string;
+  platform: string;
+  arch: string;
+  backend_url: string;
+  runtime_mode: "development" | "packaged";
+  app_dir: string;
+  workspace_root: string;
+  resource_root: string | null;
+  mcp_server_dir: string;
+  mcp_server_entry: string;
+  mcp_readme_path: string;
+  skill_dir: string;
+  mcp_http_endpoint: string;
+  mcp_executable_path: string | null;
+  bundled_node_path: string | null;
+  mcp_server_exists: boolean;
+  mcp_server_entry_exists: boolean;
+  mcp_readme_exists: boolean;
+  skill_dir_exists: boolean;
+  mcp_executable_exists: boolean;
+  bundled_node_exists: boolean;
+  preferred_mcp_launch_mode: "node" | "exe";
 }
 
 /**
@@ -499,6 +531,14 @@ export interface PricingConfigUsed {
   cost_items_count: number;
 }
 
+/** 「智能填充」之后弹窗里展示的成本分析结果 */
+export interface PricingResultsData {
+  results: PricingResult[];
+  statistics: PricingStatistics;
+  configUsed: PricingConfigUsed;
+  unitPrice: number;
+}
+
 // 由采集端保存并直接交给发布端；共同编辑页面不需要新增配置。
 export interface CapturedProductAttributes {
   version: 1;
@@ -545,6 +585,15 @@ export interface UploadStepInfo {
   status: "running" | "ok" | "failed";
   elapsed_ms: number;
   summary: string;
+}
+
+/** 上传进度面板里的一个步骤；抖音 / 淘宝 / 小红书的后台任务都按这个形状展示 */
+export interface UploadProgressStep {
+  name: string;
+  label?: string;
+  status: string;
+  elapsed_ms?: number;
+  summary?: string;
 }
 
 export interface UploadTaskSummary {
@@ -767,6 +816,17 @@ export interface ShopSwitchResult {
   browser_opened: boolean;
   browser_error?: string | null;
   debug_address?: string | null;
+}
+
+export interface ShopRestoreResult {
+  /** 本次是否确实尝试恢复浏览器；已在线时为 false。 */
+  recovery_attempted: boolean;
+  /** 只表示浏览器打开结果，不代表登录已恢复。 */
+  browser_opened: boolean;
+  browser_error?: string | null;
+  debug_address?: string | null;
+  /** 恢复动作后的实测身份；不能拿历史店铺名替代。 */
+  shop: ShopSessionState;
 }
 
 export interface Settings {

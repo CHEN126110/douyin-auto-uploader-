@@ -17,6 +17,8 @@ This file is the detailed index for the `douyin-publisher-mcp` skill. It should 
 | `products` | `douyin://products` | Read the current product list |
 | `settings` | `douyin://settings` | Read pricing, model, and automation settings |
 | `upload-tasks` | `douyin://upload/tasks` | Read upload tasks and browser automation state |
+| `shop-session` | `douyin://shop/session` | Read measured shop identity and browser state; no_browser is not proof of logout |
+| `taobao-publish-tasks` | `douyin://taobao/publish/tasks` | Read Taobao publish tasks |
 
 ## Prompts
 
@@ -38,6 +40,10 @@ This file is the detailed index for the `douyin-publisher-mcp` skill. It should 
 - `get_product_detail`
 - `list_category_options`
 - `get_settings`
+- `get_shop_session`
+- `restore_shop_session`
+- `list_taobao_publish_tasks`
+- `get_taobao_publish_status`
 
 ### Capture and Import
 
@@ -100,6 +106,8 @@ This file is the detailed index for the `douyin-publisher-mcp` skill. It should 
 - `start_batch_upload`
 - `get_upload_status`
 - `list_upload_tasks`
+- `list_taobao_publish_tasks`
+- `get_taobao_publish_status`
 - `cancel_upload`
 
 ### Destructive Operations
@@ -139,6 +147,7 @@ Use these only when upload automation fails, page state must be inspected, or th
 - `start_upload` and `start_validated_upload` default to safe preflight (`stopBeforeSubmit=true`); this maps to Sidecar `stop_before_submit=true`.
 - `start_validated_upload` should be preferred over `start_upload` for one product because it validates readiness first. Final publish requires both `stopBeforeSubmit=false` and `confirmFinalPublish=true` after explicit user confirmation.
 - `list_upload_tasks` is the best first read when another agent may already be uploading.
+- Product-level `remark` and per-SKU `remark` are different: `get_product_detail` keeps them separate, while `list_sku_assets` returns only each row's own optional remark and stock. Missing SKU remarks are null, never copied from the product remark.
 - `cancel_upload` and `cancel_capture` are available and should be surfaced when a user asks to stop work.
 
 ## OpenClaw Notes

@@ -5,6 +5,7 @@ from ruamel.yaml import YAML
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, List, Optional
 from .runtime_paths import resolve_data_file
+from .material_evidence import format_material_percentage
 
 #: 无 ``cfg.yaml`` 时的默认配置模板。``base.version`` 必须与当前发布版本一致 ✓ ——
 #: 它曾是 **4.0.0** ✗，而仓库/远端最新版是 **4.0.30** ✓：全新安装会从这份模板生成 cfg.yaml，
@@ -339,8 +340,10 @@ class SettingsManager:
                     continue
                 material = str(item.get('material') or '').strip()
                 try:
-                    percentage = int(float(item.get('percentage')))
-                except Exception:
+                    percentage = float(format_material_percentage(item.get('percentage')))
+                    if percentage.is_integer():
+                        percentage = int(percentage)
+                except (TypeError, ValueError):
                     percentage = 0
                 # 允许自定义材质：不再要求命中 material_options，
                 # 名称是否被平台接受由发布流程在真实页面上校验并报错。

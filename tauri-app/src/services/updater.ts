@@ -15,8 +15,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { ElMessage, ElMessageBox, ElLoading } from "element-plus";
+import { api, apiErrorStatus } from "@/services/api";
 
-const BACKEND_URL = "http://127.0.0.1:5001";
 let updateInProgress = false;
 
 /** 下载后、停止后端前检查，不能依赖弹窗中的人工提醒。 */
@@ -24,11 +24,15 @@ async function assertBackendIdle(): Promise<void> {
   const running = await invoke<boolean>("check_backend_status");
   // 后端没有启动时仍允许通过更新修复应用。
   if (!running) return;
-  const response = await fetch(`${BACKEND_URL}/internal/update-readiness`, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!response.ok) throw new Error("无法确认后台任务状态，请稍后重新更新");
-  const body = await response.json();
+  let body;
+  try {
+    body = await api.getUpdateReadiness();
+  } catch (error) {
+    // 后端回了非 2xx：明确告诉用户「没确认到」，而不是把 axios 的英文错误抛给界面。
+    // 连不上 / 超时（没有 HTTP 状态码）则原样抛出，由更新流程展示真实原因。
+    if (apiErrorStatus(error) !== undefined) throw new Error("无法确认后台任务状态，请稍后重新更新");
+    throw error;
+  }
   if (body?.success !== true || typeof body?.data?.ready !== "boolean") {
     throw new Error("后台任务状态无效，未停止服务或安装更新");
   }

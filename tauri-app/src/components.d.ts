@@ -7,6 +7,10 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AboutTab: typeof import('./components/settings/AboutTab.vue')['default']
+    AutomationMaterialSection: typeof import('./components/settings/AutomationMaterialSection.vue')['default']
+    AutomationTab: typeof import('./components/settings/AutomationTab.vue')['default']
+    AutomationWashLabelSection: typeof import('./components/settings/AutomationWashLabelSection.vue')['default']
     CaptureSection: typeof import('./components/CaptureSection.vue')['default']
     ContextMenu: typeof import('./components/ContextMenu.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -39,7 +43,11 @@ declare module 'vue' {
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
+    McpTab: typeof import('./components/settings/McpTab.vue')['default']
+    ModelTab: typeof import('./components/settings/ModelTab.vue')['default']
     OnboardingGuide: typeof import('./components/OnboardingGuide.vue')['default']
+    PricingResultsDialog: typeof import('./components/PricingResultsDialog.vue')['default']
+    PricingTab: typeof import('./components/settings/PricingTab.vue')['default']
     ProductMediaManager: typeof import('./components/ProductMediaManager.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
@@ -48,6 +56,7 @@ declare module 'vue' {
     SkuList: typeof import('./components/SkuList.vue')['default']
     TaobaoPreflightSummary: typeof import('./components/TaobaoPreflightSummary.vue')['default']
     TaobaoPublishPanel: typeof import('./components/TaobaoPublishPanel.vue')['default']
+    UploadProgressPanel: typeof import('./components/UploadProgressPanel.vue')['default']
     WhiteBgPanel: typeof import('./components/WhiteBgPanel.vue')['default']
     XhsPublishPanel: typeof import('./components/XhsPublishPanel.vue')['default']
   }

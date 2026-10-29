@@ -90,6 +90,23 @@ class BuildPublishItemTest(unittest.TestCase):
         assert outcome.item is not None
         self.assertEqual(outcome.item.images.main, ["/other.jpg"])
 
+    def test_sku_directory_cannot_be_used_as_main_image_source(self) -> None:
+        for path in (r"C:\商品\SKU\白色.jpg", "/商品/SKU_1x1/白色.jpg"):
+            with self.subTest(path=path):
+                outcome = build_publish_item(
+                    self.local, {"images": {"main": [path]}}, contracts=self.contracts
+                )
+                self.assertIsNotNone(outcome.item)
+                blockers = validate_images(outcome.item, self.contracts)
+                mismatch = next(item for item in blockers if item.code == "IMAGE_SOURCE_MISMATCH")
+                self.assertEqual(mismatch.field, "images.main[0]")
+                self.assertIn("主图不能取自 SKU", mismatch.detail)
+                self.assertFalse(any(item.code == "REQUIRED_FIELD_MISSING" for item in blockers))
+
+    def test_sku_in_filename_does_not_trigger_directory_guard(self) -> None:
+        from taobao_publish.mapping import main_image_source_error
+        self.assertEqual(main_image_source_error("/商品/主图/SKU.jpg"), "")
+
     def test_absent_key_still_falls_back(self) -> None:
         outcome = build_publish_item(
             self.local, {"images": {"detail": ["/d.jpg"]}}, contracts=self.contracts

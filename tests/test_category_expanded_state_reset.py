@@ -10,7 +10,6 @@ docstring 写明「在新商品上传开始时调用」，但此前**全仓库�
 品牌失败现在会中断发布（无品牌是合规硬约束），所以这个缺陷会让第 2 个商品直接失败。
 """
 
-import io
 import os
 import sys
 
@@ -19,8 +18,6 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 import src.utils as utils  # noqa: E402
-
-APP_PY = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
 
 
 def test_reset_function_actually_clears_the_flag():
@@ -52,17 +49,21 @@ def test_expand_short_circuits_while_flag_is_set():
 
 
 def test_upload_flow_resets_state_for_every_record():
-    """发布流程必须在每条记录开始时复位，否则第 2 个商品起类目属性区不展开。"""
-    source = io.open(APP_PY, encoding='utf-8').read()
+    """发布流程必须在每条记录开始时复位，否则第 2 个商品起类目属性区不展开。
 
-    assert 'reset_category_expanded_state()' in source, \
+    2026-10-21 起 DOM 流水线是 ``UploadService.execute_upload_flow``（在 ``upload_service.py``，经 ``UploadBrowserPort`` 调用复位函数），
+    所以按方法名取这个方法的源码来查：循环体就限定在这个方法里，不会误判到别处。
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from sidecar_function_source import function_source
+    flow = function_source('execute_upload_flow', within='upload_service.py')
+
+    assert 'reset_category_expanded_state()' in flow, \
         '发布流程必须调用 reset_category_expanded_state()，否则跨商品缓存不复位'
 
     # 必须位于「逐条记录」的循环体内，而不是循环外只调一次
     loop_marker = 'for record in record_list:'
-    assert loop_marker in source, '未找到发布流程的记录循环，请同步更新本测试'
-    loop_body = source.split(loop_marker, 1)[1]
-    # 截到该循环结束（下一个顶层 def）为止，避免误判到别处
-    loop_body = loop_body.split('\ndef ', 1)[0]
+    assert flow.count(loop_marker) == 1, '未找到（或找到多个）发布流程的记录循环，请同步更新本测试'
+    loop_body = flow.split(loop_marker, 1)[1]
     assert 'reset_category_expanded_state()' in loop_body, \
         'reset_category_expanded_state() 必须在每条记录的循环体内调用'

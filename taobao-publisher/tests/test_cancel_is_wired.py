@@ -39,11 +39,11 @@ import re
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 PANEL = REPO_ROOT / "tauri-app" / "src" / "components" / "TaobaoPublishPanel.vue"
 API_TS = REPO_ROOT / "tauri-app" / "src" / "services" / "api.ts"
-APP = REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 def code_only(text: str) -> str:
@@ -107,23 +107,16 @@ class CancelIsWiredTest(unittest.TestCase):
 
 class SidecarCancelSemanticsTest(unittest.TestCase):
     def test_the_endpoint_exists(self) -> None:
-        self.assertIn("/api/taobao/publish/cancel/<task_id>",
-                      APP.read_text(encoding="utf-8"))
+        self.assertIn("/api/taobao/publish/cancel/<task_id>", sidecar.text())
 
     def test_it_says_it_does_not_interrupt_the_running_step(self) -> None:
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def taobao_publish_cancel")
-        end = source.index("\n@app.", start)
-        body = source[start:end]
+        body = sidecar.function_source("taobao_publish_cancel")
         self.assertIn("不中断已经在跑的那一步", body)
 
     def test_cancelling_a_finished_task_is_not_an_error(self) -> None:
         """跑完了再点取消（界面来不及刷新）不该报错。"""
 
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def taobao_publish_cancel")
-        end = source.index("\n@app.", start)
-        body = source[start:end]
+        body = sidecar.function_source("taobao_publish_cancel")
         self.assertIn("任务已结束，无需取消", body)
 
 

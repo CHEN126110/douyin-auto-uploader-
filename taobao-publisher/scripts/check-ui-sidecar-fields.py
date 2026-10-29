@@ -30,11 +30,12 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import sidecar_source as sidecar  # noqa: E402  —— app.py 与前端已拆分，统一经它读取
+
 SUB = pathlib.Path(__file__).resolve().parents[1]
 REPO = SUB.parent
 PANEL = REPO / "tauri-app" / "src" / "components" / "TaobaoPublishPanel.vue"
-MAIN_VIEW = REPO / "tauri-app" / "src" / "views" / "ProductManager.vue"
-APP = REPO / "tauri-app" / "python-sidecar" / "app.py"
 TYPES = REPO / "tauri-app" / "src" / "types" / "index.ts"
 
 
@@ -78,10 +79,13 @@ def ui_built_fields() -> set:
                           if not line.strip().startswith("//"))
         keys |= set(re.findall(r"^\s*(\w+)\s*:", block, re.M))
     # 主操作入口直接构造填写快照；独立旧面板仍可生成完整路径资料。
-    main_source = MAIN_VIEW.read_text(encoding="utf-8")
-    main_match = re.search(r"async function handlePublishByAccount\(\).*?\n\}", main_source, re.S)
-    if main_match:
-        main_literal = re.search(r"const product[^=]*=\s*\{(.*?)\n\s*\};", main_match.group(0), re.S)
+    # 主页面的发布流程 2026-10-19 起抽到了 composables/usePublishFlow.ts（缩进的嵌套函数），按花括号配对取函数体
+    try:
+        main_body = sidecar.js_function_source(sidecar.product_manager_text(), "async function handlePublishByAccount()")
+    except ValueError:
+        main_body = None
+    if main_body:
+        main_literal = re.search(r"const product[^=]*=\s*\{(.*?)\n\s*\};", main_body, re.S)
         if main_literal:
             fields = re.findall(r"^(\s*)(\w+)\s*(?::|,)", main_literal.group(1), re.M)
             if fields:
@@ -93,10 +97,7 @@ def ui_built_fields() -> set:
 def sidecar_accepted_fields() -> set:
     """从 `_taobao_product_request_payload` 取它读的键。"""
 
-    source = APP.read_text(encoding="utf-8")
-    start = source.index("def _taobao_product_request_payload(")
-    end = source.index("\ndef ", start + 10)
-    body = source[start:end]
+    body = sidecar.function_source("product_request_payload", "_taobao_product_request_payload")
     body = "\n".join(line for line in body.splitlines()
                      if not line.strip().startswith("#"))
     # `for key in ("a", "b", "c")` 与 `product.get("x")`

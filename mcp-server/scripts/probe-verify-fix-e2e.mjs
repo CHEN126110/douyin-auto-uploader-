@@ -6,7 +6,7 @@ import { withCdpTarget } from "../cdp-client.js";
 
 const targetUrlContains = process.env.TARGET_HINT || "fxg.jinritemai.com";
 
-// Mirrors app.py:_click_return_to_old_version selector order after the fix.
+// Mirrors src/sidecar/upload_steps.py:_click_return_to_old_version selector order after the fix.
 const SELECTORS = [
   '//div[normalize-space(text())="返回旧版"]',
   '//*[normalize-space(text())="返回旧版"]',

@@ -17,6 +17,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 APP_PATH = PROJECT_ROOT / "tauri-app" / "python-sidecar" / "app.py"
+SERVICE_PATH = PROJECT_ROOT / "src" / "sidecar" / "upload_service.py"
 
 from src.utils import (  # noqa: E402
     _SHOP_BROWSER_PORT_END,
@@ -27,22 +28,24 @@ from src.utils import (  # noqa: E402
 class SidecarProtocolPortsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.source = APP_PATH.read_text(encoding="utf-8")
+        # 找浏览器的两个方法 2026-10-21 起在 UploadService 里；候选端口列表（采集也在用）留在 app.py
+        self.service_source = SERVICE_PATH.read_text(encoding="utf-8")
 
-    def _body(self, start: str, end: str) -> str:
-        return self.source.split(start, 1)[1].split(end, 1)[0]
+    def _body(self, start: str, end: str, source: str = "") -> str:
+        return (source or self.source).split(start, 1)[1].split(end, 1)[0]
 
     def test_finder_discovers_browsers_by_process_enumeration(self) -> None:
         # 写死端口范围找不到落在其它端口上的店铺浏览器，必须走进程枚举。
-        body = self._body("def _find_cdp_port_with_jinritemai():", "def _ensure_protocol_browser")
+        body = self._body("def _find_cdp_port_with_jinritemai(self):", "def _ensure_protocol_browser", self.service_source)
         self.assertIn("discover_debuggable_browsers", body)
 
     def test_finder_excludes_other_shops_browsers(self) -> None:
         # 多店铺并存时抢到别人的浏览器就会发错店。
-        body = self._body("def _find_cdp_port_with_jinritemai():", "def _ensure_protocol_browser")
+        body = self._body("def _find_cdp_port_with_jinritemai(self):", "def _ensure_protocol_browser", self.service_source)
         self.assertIn("filter_browsers_for_profile", body)
 
     def test_candidate_ports_still_cover_every_range_we_launch(self) -> None:
-        body = self._body("def _protocol_cdp_port_candidates():", "def _find_cdp_port_with_jinritemai")
+        body = self._body("def _protocol_cdp_port_candidates():", "\ndef ")
         for marker in (
             "_DEBUG_BROWSER_PORT_START",
             "_DEBUG_BROWSER_PORT_END",

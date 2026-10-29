@@ -111,6 +111,17 @@ function addCard(name, url) {
     const image = document.createElement('img'); image.src = url;
     window.imageTargetSlot.replaceChildren(image);
     if (window.imageTarget) window.imageTarget.dataset.image = url;
+    // 主图两种页面形态：新版在当前弹层推进到下一空位；兼容版选后自动关闭。
+    // SKU 图片不推进主图槽位。测试可用 mainSelectionBehavior='close' 覆盖兼容路径。
+    if (!window.imageTarget) {
+      if (window.mainSelectionBehavior === 'close') {
+        closeGallery();
+      } else {
+        const next = Array.from(document.querySelectorAll('#mainImages .image-empty'))
+          .find(empty => empty.parentElement !== window.imageTargetSlot);
+        if (next) window.imageTargetSlot = next.parentElement;
+      }
+    }
   };
   // ⚠️ **checkbox 不参与指针事件**：`label` 包着 checkbox 时，原生 label 语义会把
   //    label 的点击**再转发**给控件，于是"点一次 label"会走两条路径、选中回调执行两次
@@ -150,6 +161,15 @@ window.renderFolder = function () {
 };
 function confirmRows() {
   const table=document.createElement('table');
+  const auxiliary=window.skuAuxiliaryColumns||[];
+  if(auxiliary.length){
+    // 与真实平台一致：动态表头按 td 顺序给出；价格/数量也有 required，但不属于附加列。
+    for(const header of ['SKU搜索主图','商品规格','价格','数量',...auxiliary.map(col=>col.name)]){
+      const element=document.createElement('div');element.className='sell-sku-table-header-common-new';
+      if(['价格','数量',...auxiliary.filter(col=>col.required).map(col=>col.name)].includes(header))element.classList.add('required');
+      element.textContent=header;table.append(element);
+    }
+  }
   // 故意逆序，防止适配器把 SKU 图片/价格按行号误配。
   for (const row of Array.from(document.querySelectorAll('#names li')).reverse()) {
     const tr=document.createElement('tr'); tr.className='sku-table-row';
@@ -157,6 +177,48 @@ function confirmRows() {
     if(row.dataset.image){const img=document.createElement('img');img.src=row.dataset.image;spec.append(img)}
     tr.append(spec,document.createElement('td'));
     for(const unit of ['元','件']){const td=document.createElement('td'),input=document.createElement('input');td.append(document.createTextNode(unit),input);tr.append(td)}
+    for(const column of auxiliary){
+      const td=document.createElement('td'),input=document.createElement('input');
+      if(column.type==='measurement'){
+        td.classList.add('sell-sku-cell-skuMeasurement');
+        const wrapper=document.createElement('div');wrapper.className='fake-input-wrapper';
+        input.placeholder='规格';
+        const overlay=document.createElement('div');overlay.className='overlay';
+        overlay.onclick=()=>{
+          const popup=document.createElement('div');popup.className='sell-common-sale-props-multi-expression-overlay';
+          const quantity=document.createElement('input');quantity.placeholder='请输入数量';popup.append(quantity);
+          const select=document.createElement('div');select.className='next-select';select.textContent='双';
+          select.onclick=()=>{
+            const menu=document.createElement('div');menu.className='next-select-popup-wrap';
+            const option=document.createElement('div');option.className='options-item';option.textContent='双';
+            option.onclick=()=>{input.value=quantity.value+'双';menu.remove();};
+            menu.append(option);document.body.append(menu);
+          };
+          popup.append(select);
+          const mask=document.createElement('div');mask.className='mask';mask.onclick=()=>popup.remove();
+          mask.style.cssText='display:block;width:10px;height:10px';popup.append(mask);
+          document.body.append(popup);
+        };
+        wrapper.append(input,overlay);td.append(wrapper);
+      }else{
+        if(column.type==='combobox'){
+          input.setAttribute('role','combobox');input.readOnly=true;input.placeholder='请选择';
+          input.onclick=()=>{
+            const popup=document.createElement('div');popup.className='next-select-popup-wrap';
+            for(const option of (window.skuAuxiliaryOptions||{})[column.name]||[]){
+              const item=document.createElement('div');item.className='options-item';item.textContent=option;
+              item.onclick=()=>{input.value=option;popup.remove();};
+              popup.append(item);
+            }
+            document.body.append(popup);
+          };
+        }else{
+          input.placeholder=column.placeholder||'规格';
+        }
+        td.append(input);
+      }
+      tr.append(td);
+    }
     table.append(tr);
   }
   document.getElementById('skuTable').replaceChildren(table);

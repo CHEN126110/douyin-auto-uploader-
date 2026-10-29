@@ -118,7 +118,9 @@ def test_duplicate_sibling_names_do_not_select_the_first_image(browser):
         page.find_media_images(browser,['target.jpg'],context_id=None)
 
 
-def test_21_images_continue_from_upload_to_main_sku_and_detail(browser,tmp_path,monkeypatch):
+@pytest.mark.parametrize('main_behavior', ['advance', 'close'])
+def test_21_images_continue_from_upload_to_main_sku_and_detail(
+        browser,tmp_path,monkeypatch,main_behavior):
     paths=[]
     for index in range(21):
         path=tmp_path/('素材_%02d.jpg'%index)
@@ -129,7 +131,7 @@ def test_21_images_continue_from_upload_to_main_sku_and_detail(browser,tmp_path,
         skus=[SkuEntry(spec_values={'颜色分类':'规格%d'%index},image_path=path,price=29.8+index,stock=100)
               for index,path in enumerate(paths[5:11])])
     grouped_gallery(browser,item.record_name,caption='sibling')
-    browser.evaluate('closeGallery()')
+    browser.evaluate('window.mainSelectionBehavior='+json.dumps(main_behavior)+';closeGallery()')
     batches=group_upload(browser,monkeypatch,item)
     ctx=stages.PipelineContext(item=item,dry_run=False)
     results=[]

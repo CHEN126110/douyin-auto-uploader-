@@ -22,7 +22,7 @@
 - 新增 `docs/price-stock-evidence-review-20260505.md`，明确旧样本只能作为参考证据，不升级为本目录当前 live 实证。
 - 调整 `mcp-server/scripts/capture-fxg-submit-preflight.mjs` 默认输出参数：提高 `POST_DATA_PREVIEW_LIMIT`、`SANITIZE_MAX_DEPTH`、`SANITIZE_ARRAY_LIMIT`、`SANITIZE_OBJECT_LIMIT`，降低后续 `spec_detail/sku_detail` 被 `<max-depth>` 截断的概率；该调整不改变本地截停语义。
 - 运行 `npm run check:cdp`，确认 `http://127.0.0.1:9333/json/list` 下有可用 FXG 发布页，页面非登录页且可见 `主图`、`商品标题`；当前仍在发布第一页，适合只读探针，不适合立即截停 `addWithSchema`。
-- 使用 `项目备份 禁止改动使用 只参考/C-975/主图/白底.jpg` 执行真实单图上传验收。首次请求成功但产物中的中文文件名出现 mojibake；随后为 `mcp-server/fxg-upload-probe.js` 增加 `UPLOAD_FILE_NAME`，用 `c975-white-bg.jpg` 重新上传并通过。（2026-10-17 后记：`项目备份 禁止改动使用 只参考/` 及其 `recycle_bin/` 已被用户删除，此处提到的样本图路径现已不存在；本条为 2026-05-05 的当时记录，原文保留，不改写结论。）
+- 使用 `项目备份 禁止改动使用 只参考/C-975/主图/白底.jpg` 执行真实单图上传验收。首次请求成功但产物中的中文文件名出现 mojibake；随后为 `mcp-server/fxg-upload-probe.js` 增加 `UPLOAD_FILE_NAME`，用 `c975-white-bg.jpg` 重新上传并通过。
 - 正式采信产物：`captures/fxg_upload_sample_c975_white_bg_ascii_20260505.json`。结果：`POST /product/img/batchupload` HTTP 200、`code=0`、返回 1 条平台图片 URL。
 - 为 `mcp-server/fxg-upload-probe.js` 增加 `UPLOAD_IMAGE_PATHS` / `UPLOAD_FILE_NAMES`，支持多图 batch 验收。
 - 使用 `C-975/主图/TM.png` 与 `C-975/主图/白底.jpg` 执行真实批量上传验收。正式采信产物：`captures/fxg_upload_batch_c975_main_images_20260505.json`。结果：`POST /product/img/batchupload?_bid=ffa_goods` HTTP 200、`code=0`、返回 2 条平台图片 URL。

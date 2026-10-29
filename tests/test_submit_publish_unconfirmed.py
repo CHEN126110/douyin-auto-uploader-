@@ -11,7 +11,7 @@
 `xpath://*[contains(text(),"商品提交成功")]` 均命中。
 真正的根因是 13 秒等待窗口太短（5 次失败的耗时全部跑满窗口）。
 
-本测试不依赖浏览器：用 AST 把 app.py 里的 `_submit_publish` 真实源码取出来，
+本测试不依赖浏览器：用 AST 把 src/sidecar/upload_steps.py 里的 `_submit_publish` 真实源码取出来，
 在一份桩 tab 上执行。
 """
 
@@ -27,7 +27,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-APP_PY = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
+UPLOAD_STEPS_PY = os.path.join(REPO_ROOT, 'src', 'sidecar', 'upload_steps.py')
 
 _WANTED_FUNCS = {'_submit_publish'}
 _WANTED_CLASSES = {'PublishUnconfirmedError'}
@@ -78,8 +78,8 @@ class StubRecord:
 
 
 def _load_submit_function():
-    """把 app.py 里的目标函数 / 常量 / 异常类取出来，在桩环境里执行（测的是真实代码）。"""
-    source = io.open(APP_PY, encoding='utf-8').read()
+    """把 upload_steps.py 里的目标函数 / 常量 / 异常类取出来，在桩环境里执行（测的是真实代码）。"""
+    source = io.open(UPLOAD_STEPS_PY, encoding='utf-8').read()
     tree = ast.parse(source)
     segments = {'const': [], 'class': [], 'func': []}
     for node in tree.body:
@@ -104,8 +104,6 @@ def _load_submit_function():
         'time': type('_T', (), {'now': staticmethod(_now)}),
         '_dismiss_interfering_overlays': lambda *a, **k: None,
         '_get_current_tab_url': lambda tab: 'https://fxg.jinritemai.com/ffa/g/create?',
-        # 提交失败的现场信息要带页面形态；这里只需要它给一个可读的名字。
-        '_detect_publish_page_stage': lambda tab: 'ai_form',
     }
     body = '\n\n'.join(segments['const'] + segments['class'] + segments['func'])
     exec(body, namespace)
@@ -181,16 +179,17 @@ def test_probe_js_checks_result_buttons_not_only_success_text():
     _, namespace = _load_submit_function()
     probe = namespace['_SUBMIT_STATE_PROBE_JS']
     assert '商品提交成功' in probe
+    assert '商品发布成功' in probe, '新版真实结果页文案也必须覆盖'
     for button in ('继续发布', '返回商品列表', '编辑商品'):
         assert button in probe
     assert 'attr-field-id' in probe, '探针应一并带回表单字段数，供失败现场判断'
 
 
 class _TextOnlyTab:
-    """`run_js` 不可用（返回 None），只让成功文案的 XPath 命中。"""
+    """`run_js` 不可用（返回 None），只让指定成功文案的 XPath 命中。"""
 
-    def __init__(self):
-        self.clicked = 0
+    def __init__(self, success_text='商品提交成功，继续发布商品视频'):
+        self.success_text = success_text
 
     def run_js(self, script, *args):
         return None
@@ -198,15 +197,38 @@ class _TextOnlyTab:
     def ele(self, selector, timeout=None):
         if 'text()="发布商品"' in selector:
             return StubElement()
-        if '商品提交成功，继续发布商品视频' in selector:
+        if self.success_text in selector:
             return StubElement()
         return None
 
 
-def test_falls_back_to_text_criterion_when_js_unavailable():
-    """`run_js` 不可用时必须回退到原来的整句文案判据，不能直接判失败。"""
-    submit, _ = _load_submit_function()
+@pytest.mark.parametrize('success_text', [
+    '商品提交成功，继续发布商品视频',
+    '商品发布成功，继续发布商品视频',
+    '商品发布成功，线上商品数据已更新',
+])
+def test_falls_back_to_legacy_and_new_text_when_js_unavailable(success_text):
+    """JS 回退同时认旧版「提交成功」和新版「发布成功」，不能只认一种文案。"""
+    submit, namespace = _load_submit_function()
+    namespace['_SUBMIT_CONFIRM_TIMEOUT'] = 0.3
     record = StubRecord()
 
-    assert submit(_TextOnlyTab(), record) is True
+    assert submit(_TextOnlyTab(success_text), record) is True
+    assert record.status == 1
+
+
+class _ResultButtonsOnlyTab(_TextOnlyTab):
+    def ele(self, selector, timeout=None):
+        if any(button in selector for button in ('继续发布', '返回商品列表', '编辑商品')):
+            return StubElement()
+        return super().ele(selector, timeout=None)
+
+
+def test_falls_back_to_result_button_group_when_js_unavailable():
+    """新版结果页即使文案再次变化，至少两个结果页按钮也可独立确认成功。"""
+    submit, namespace = _load_submit_function()
+    namespace['_SUBMIT_CONFIRM_TIMEOUT'] = 0.3
+    record = StubRecord()
+
+    assert submit(_ResultButtonsOnlyTab(success_text='不会命中的文案'), record) is True
     assert record.status == 1

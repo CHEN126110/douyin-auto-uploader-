@@ -15,6 +15,7 @@ from PIL import Image
 import peewee
 import pytest
 
+from capture_test_support import capture_routes, make_blueprint, make_service
 from test_product_save_snapshot import save_case
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -35,7 +36,7 @@ def definitions(path,names):
 
 
 @pytest.fixture
-def storage(tmp_path):
+def storage(tmp_path, monkeypatch):
     database=peewee.SqliteDatabase(':memory:')
     namespace={name:getattr(peewee,name) for name in peewee.__all__}
     namespace['database']=database
@@ -43,21 +44,21 @@ def storage(tmp_path):
     Record=namespace['Record']
     database.create_tables([Record])
     app=Flask('capture-attribute-test')
+    # 采集服务和导入接口是真实的（直接构造 CaptureService + 注册 capture 蓝图）；ns 是给同夹具里
+    # 其它「从 app.py 抽函数」的测试（白底图选择等）准备的公共命名空间。
+    service=make_service(record_model=Record,load_capture_attributes=lambda:captured_attributes)
+    app.register_blueprint(make_blueprint(service,get_app_root=lambda:str(tmp_path)))
+    monkeypatch.setattr(capture_routes.traceback,'print_exc',lambda:None)
     ns={'app':app,'request':request,'jsonify':jsonify,'os':os,'re':re,'json':json,
-        'datetime':datetime,'Record':Record,'capture_tasks':{},
-        'traceback':SimpleNamespace(print_exc=lambda:None),
-        '_load_capture_attributes':lambda:captured_attributes,
-        'infer_clazz_from_title':lambda text:2,
-        }
-    exec(definitions(ROOT/'tauri-app/python-sidecar/app.py',{
-        '_import_capture_product_record','import_capture_result','_capture_product_attributes'}),ns)
+        'datetime':datetime,'Record':Record,'traceback':SimpleNamespace(print_exc=lambda:None),
+        '_load_capture_attributes':lambda:captured_attributes}
     product=tmp_path/'商品资料'
     (product/'SKU').mkdir(parents=True)
     Image.new('RGB', (80, 80), 'white').save(product/'SKU/模型袜子.jpg')
     value={'title':'本地测试商品','download_path':str(product),'url':'https://example.invalid/product/1',
            'sku_info':[{'name':'模型袜子','price':20.8}],'main_images':[],
            'captured_attributes':envelope()}
-    yield SimpleNamespace(ns=ns,Record=Record,database=database,product=value,client=app.test_client(),
+    yield SimpleNamespace(ns=ns,service=service,Record=Record,database=database,product=value,client=app.test_client(),
                           migrate=namespace['_ensure_record_columns'])
     database.close()
 
@@ -65,11 +66,11 @@ def storage(tmp_path):
 @pytest.mark.parametrize('route',['helper','single','store'])
 def test_all_capture_import_entries_persist_attributes(storage,route):
     if route=='helper':
-        result=storage.ns['_import_capture_product_record'](storage.product)
+        result=storage.service.import_capture_product_record(storage.product)
         record_id=result['record_id']
     else:
         product=storage.product if route=='single' else {'capture_type':'store','products':[storage.product]}
-        storage.ns['capture_tasks']['local']={'result':product}
+        storage.service.tasks['local']={'result':product}
         response=storage.client.post('/api/capture/import',json={'task_id':'local'})
         assert response.json['success'],response.json
         record_id=storage.Record.select().get().id
@@ -80,11 +81,11 @@ def test_all_capture_import_entries_persist_attributes(storage,route):
 
 @pytest.mark.parametrize('route',['helper','single'])
 def test_invalid_attributes_are_rejected_before_replacing_an_existing_product(storage,route):
-    storage.ns['_import_capture_product_record'](storage.product)
+    storage.service.import_capture_product_record(storage.product)
     before=storage.Record.select().get().__data__.copy()
     storage.product['captured_attributes']['source']='trackParams'
     if route=='helper':
-        with pytest.raises(ValueError): storage.ns['_import_capture_product_record'](storage.product)
+        with pytest.raises(ValueError): storage.service.import_capture_product_record(storage.product)
     else:
         response=storage.client.post('/api/capture/import',json={'task_id':'local','product_data':storage.product})
         assert response.json['success'] is False
@@ -93,11 +94,11 @@ def test_invalid_attributes_are_rejected_before_replacing_an_existing_product(st
 
 @pytest.mark.parametrize('route',['helper','single'])
 def test_create_failure_rolls_back_record_replacement(storage,route,monkeypatch):
-    storage.ns['_import_capture_product_record'](storage.product)
+    storage.service.import_capture_product_record(storage.product)
     before=storage.Record.select().get().__data__.copy()
     monkeypatch.setattr(storage.Record,'update',Mock(side_effect=RuntimeError('模拟写入失败')))
     if route=='helper':
-        with pytest.raises(RuntimeError): storage.ns['_import_capture_product_record'](storage.product)
+        with pytest.raises(RuntimeError): storage.service.import_capture_product_record(storage.product)
     else:
         response=storage.client.post('/api/capture/import',json={'task_id':'local','product_data':storage.product})
         assert response.json['success'] is False
@@ -107,7 +108,7 @@ def test_create_failure_rolls_back_record_replacement(storage,route,monkeypatch)
 def test_unproven_parameters_do_not_enter_automatic_filling(storage):
     del storage.product['captured_attributes']
     storage.product['parameters']=[{'name':'适用季节','value':'埋点值'}]
-    storage.ns['_import_capture_product_record'](storage.product)
+    storage.service.import_capture_product_record(storage.product)
     assert storage.Record.select().get().captured_attributes is None
 
 
@@ -139,8 +140,19 @@ def test_capture_adapter_respects_extract_params_option_and_records_absence(stor
     page=Mock()
     page.run_js.return_value={'version':1,'source':captured_attributes.SOURCE,'status':'not_found','attributes':[]}
     value={}
-    storage.ns['_capture_product_attributes'](page,value,{'extract_params':False})
+    storage.service.capture_product_attributes(page,value,{'extract_params':False})
     page.run_js.assert_not_called()
     assert value['captured_attributes']['status']=='disabled'
-    storage.ns['_capture_product_attributes'](page,value,{'extract_params':True})
+    storage.service.capture_product_attributes(page,value,{'extract_params':True})
     assert value['parameters']==[] and value['captured_attributes']['status']=='not_found'
+
+
+def test_duplicate_history_records_are_never_overwritten(storage):
+    storage.service.import_capture_product_record(storage.product)
+    first = storage.Record.select().get()
+    storage.Record.create(name=first.name,path=first.path,type=2,status=0,repo=1,title='重复的历史记录',clazz=2,
+                          content='[]',remark='',update_time=datetime(2026,1,1))
+    before = sorted((r.id,r.title,r.content) for r in storage.Record.select())
+    with pytest.raises(ValueError,match='多条历史记录'):
+        storage.service.import_capture_product_record(storage.product)
+    assert sorted((r.id,r.title,r.content) for r in storage.Record.select()) == before

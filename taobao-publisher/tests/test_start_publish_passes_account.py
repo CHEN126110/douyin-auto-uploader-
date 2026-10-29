@@ -50,11 +50,11 @@ import re
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 PANEL = REPO_ROOT / "tauri-app" / "src" / "components" / "TaobaoPublishPanel.vue"
 API_TS = REPO_ROOT / "tauri-app" / "src" / "services" / "api.ts"
-APP = REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 def code_only(text: str) -> str:
@@ -111,15 +111,13 @@ class ApiForwardsItTest(unittest.TestCase):
 
 class SidecarEnforcesItTest(unittest.TestCase):
     def test_the_guard_exists(self) -> None:
-        source = APP.read_text(encoding="utf-8")
+        source = sidecar.text()
         self.assertIn("ACCOUNT_CHANGED", source)
         self.assertIn("当前账户已改变，请刷新账户后重新检查发布资料", source)
 
     def test_it_returns_409(self) -> None:
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def _require_publish_platform")
-        end = source.index("\ndef ", start + 10)
-        body = source[start:end]
+        # 账户门禁 2026-10-19 起是 ShopAccountGuard.require_publish_platform（src/sidecar/shop_accounts.py）
+        body = sidecar.function_source("require_publish_platform", "_require_publish_platform")
         self.assertIn("ACCOUNT_CHANGED", body)
         self.assertIn("409", body)
 
@@ -127,10 +125,8 @@ class SidecarEnforcesItTest(unittest.TestCase):
         """Sidecar 侧「不传就不校验」是有意的（CLI 等调用方可能没有账户概念），
         **但界面必须传**——界面一定有账户。"""
 
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def _require_publish_platform")
-        end = source.index("\ndef ", start + 10)
-        self.assertIn("if account_profile is not None:", source[start:end])
+        body = sidecar.function_source("require_publish_platform", "_require_publish_platform")
+        self.assertIn("if account_profile is not None:", body)
 
 
 if __name__ == "__main__":

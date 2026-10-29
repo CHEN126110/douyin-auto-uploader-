@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""账户绑定平台的真实 Flask 路由与发布门禁，隔离注册表、DB 和浏览器。"""
+"""账户绑定平台的真实 Flask 路由与发布门禁，隔离注册表、DB 和浏览器。
+
+店铺路由（/api/shop/*）来自真实的 ``src/sidecar/shop_routes.py``，账户门禁与店铺会话服务来自
+``shop_accounts.py`` / ``shop_service.py``，淘宝入口（/api/taobao/*）来自真实的 ``taobao_routes.py`` /
+``taobao_service.py``；上传入口仍在 app.py，按函数名从源码里抽出来，
+和上面这些真实对象放进同一个 Flask 应用里，验证「账户切换与发布入口互斥、平台对不上就拒绝」这些跨域行为。
+"""
 
 from __future__ import annotations
 
@@ -15,28 +21,30 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from flask import Flask, jsonify, request
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 APP_PATH = PROJECT_ROOT / "tauri-app" / "python-sidecar" / "app.py"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from src.sidecar import upload_routes  # noqa: E402
+from src.sidecar.shop_accounts import ShopAccountGuard  # noqa: E402
+from src.sidecar.shop_routes import create_shop_blueprint  # noqa: E402
+from src.sidecar.shop_service import ShopBrowserPort, ShopSessionService  # noqa: E402
+from src.sidecar.taobao_routes import create_taobao_blueprint  # noqa: E402
+from src.sidecar.taobao_service import TaobaoPublishService  # noqa: E402
+from src.sidecar.upload_routes import create_upload_blueprint  # noqa: E402
+from upload_test_support import inert_browser_port, make_upload_service  # noqa: E402
+
 FUNCTIONS = {
-    "_active_shop_profile", "_active_shop_account", "_require_publish_platform",
-    "_with_shop_account_lock", "_account_change_blocked",
-    "_shop_profile_matches", "_build_shop_current_payload", "_activate_shop_profile",
-    # platform_label 被 shop_add / shop_switch 用来拼面向用户的消息；
-    # 它是被这两个路由调用的，必须一起抽出来，否则隔离命名空间里会 NameError。
-    "platform_label",
-    "shop_current", "shop_profiles", "shop_add", "shop_switch", "shop_forget", "shop_freight_templates",
-    "_load_taobao_desktop", "_taobao_product_request", "taobao_prepare", "taobao_export",
-    "upload_start", "upload_start_all", "upload_ensure_session",
-}
-# 这些路由引用到的模块级常量。它们不是函数，但缺一个就会在某个分支 NameError。
-MODULE_CONSTANTS = {
-    "_SHOP_LOGIN_URL", "_TAOBAO_SHOP_LOGIN_URL", "_PUBLISH_CREATE_URL",
+    # 「是否有发布任务在跑」留在 app.py（任务字典属于上传 / 淘宝域），账户切换会问它。
+    # 抖店上传接口（/api/upload/*）2026-10-21 起来自真实的 upload_routes.py / upload_service.py，不再从源码里抽。
+    "_publish_tasks_running",
 }
 
 
@@ -213,47 +221,83 @@ def platform_api():
 
     app = Flask("isolated-shop-platform-api")
     app.config.update(TESTING=True)
-    tasks = {}
     namespace = {
         "__name__": "shop_platform_api_isolated", "app": app,
         "os": os, "sys": sys, "json": json, "datetime": datetime,
         "traceback": traceback, "repo_root": str(PROJECT_ROOT),
-        "wraps": wraps, "_shop_account_lock": threading.RLock(),
+        "wraps": wraps,
         "request": request, "jsonify": jsonify,
         "shop_session": shop, "settings_manager": settings,
         "api_ok": lambda msg, data=None: {"success": True, "msg": msg, "data": data},
         "api_error": lambda msg, data=None: {"success": False, "msg": msg, "data": data},
         "gui": SimpleNamespace(page=SimpleNamespace()),
-        "get_page": browser_open, "_set_browser_debug_instance": browser_reset,
-        "_normalize_debug_address": lambda value: value or "",
-        "_get_gui_page_debug_address": lambda: "127.0.0.1:9400",
-        "_resolve_active_shop_browser": browser_resolver,
-        "_debug_bool": lambda value, default=False: default if value is None else bool(value),
         "Record": FakeRecord, "resolve_data_file": forbidden,
-        "_run_upload_task": forbidden, "_ensure_publish_session": forbidden,
-        "_resolve_upload_stop_before_submit": lambda _data: (True, False),
-        "_upload_tasks": tasks, "_upload_tasks_lock": threading.RLock(),
-        "_taobao_tasks": {}, "_taobao_tasks_lock": threading.RLock(),
-        "threading": SimpleNamespace(Thread=FakeThread),
     }
+    # 真实的账户门禁与店铺会话服务：只有浏览器 / 注册表 / 发布任务字典是假的。
+    guard = ShopAccountGuard(
+        shop_session=shop, has_running_publish_tasks=lambda: namespace["_publish_tasks_running"](),
+    )
+    service = ShopSessionService(
+        accounts=guard,
+        browser=ShopBrowserPort(
+            page_state=lambda: namespace["gui"],
+            open_page=browser_open,
+            normalize_address=lambda value: value or "",
+            gui_page_debug_address=lambda: "127.0.0.1:9400",
+            find_browser_process=lambda _address: {},
+            find_reusable_browser=forbidden,
+            set_debug_browser_instance=browser_reset,
+            host="127.0.0.1", shop_port_start=9500, shop_port_end=9599,
+        ),
+        shop_session=shop,
+    )
+    # 浏览器解析整体换成可控的 Mock：测试直接设定「当前会话用的是哪个浏览器」。
+    service.resolve_active_browser = browser_resolver
+    app.register_blueprint(create_shop_blueprint(accounts=guard, service=service, shop_session=shop))
+    # 真实的淘宝发布服务与接口；读商品、写数据目录、调流水线的依赖都是会报错的假件——被平台门禁拒绝的请求碰不到它们
+    taobao = TaobaoPublishService(
+        record_model=FakeRecord, repo_root=str(PROJECT_ROOT), accounts=guard, shop_service=service,
+        normalize_debug_address=lambda value: value or "", resolve_data_file=forbidden,
+        bootstrap_log=lambda message: None,
+    )
+    namespace["taobao_service"] = taobao      # app.py 里的 _publish_tasks_running 读它
+    # 真实的抖店上传服务与接口：只有浏览器端口（页面状态取 namespace["gui"]）、后台 worker、会话建立、停在提交前的判定是替身；
+    # 被平台门禁拒绝的请求碰不到它们（forbidden 会让用例当场失败）
+    upload = make_upload_service(
+        record_model=FakeRecord, accounts=guard, browser=inert_browser_port(page_state=lambda: namespace["gui"]),
+    )
+    upload.run_upload_task = forbidden
+    upload.ensure_publish_session = forbidden
+    upload.resolve_stop_before_submit = lambda _data: (True, False)
+    tasks = upload.tasks
+    namespace["upload_service"] = upload      # app.py 里的 _publish_tasks_running 读它
+    app.register_blueprint(create_upload_blueprint(
+        service=upload, accounts=guard, record_model=FakeRecord, require_product_revision=forbidden,
+    ))
+    app.register_blueprint(create_taobao_blueprint(
+        service=taobao, accounts=guard, record_model=FakeRecord, resolve_data_file=forbidden,
+        require_product_revision=forbidden,
+    ))
+    namespace.update(
+        _shop_account_lock=guard.lock,
+        _active_shop_account=guard.active_account,
+        _with_shop_account_lock=guard.with_lock,
+        _require_publish_platform=guard.require_publish_platform,
+        _account_change_blocked=guard.account_change_blocked,
+    )
     tree = ast.parse(APP_PATH.read_text(encoding="utf-8"))
     definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in FUNCTIONS]
     assert {node.name for node in definitions} == FUNCTIONS
-    # 路由用到的模块级常量也要抽出来。少一个不会报 ImportError，
-    # 而是等到某个分支才 NameError——淘宝那条 open_browser=True 的路径就这样漏过了一整轮。
-    constants = [
-        node for node in tree.body
-        if isinstance(node, ast.Assign)
-        and any(isinstance(t, ast.Name) and t.id in MODULE_CONSTANTS for t in node.targets)
-    ]
-    assert {t.id for node in constants for t in node.targets if isinstance(t, ast.Name)} == MODULE_CONSTANTS
-    exec(compile(ast.Module(body=constants + definitions, type_ignores=[]), str(APP_PATH), "exec"), namespace)
-    yield SimpleNamespace(
-        app=app, client=app.test_client(), namespace=namespace, shop=shop, settings=settings,
-        browser_resolver=browser_resolver, browser_open=browser_open,
-        browser_reset=browser_reset, forbidden=forbidden, db_calls=db_calls,
-        tasks=tasks, workers=workers,
-    )
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), str(APP_PATH), "exec"), namespace)
+    # 上传接口起后台线程用的是 upload_routes 里的 threading：换成只记录调度、不执行的假线程
+    with patch.object(upload_routes, "threading", SimpleNamespace(Thread=FakeThread)):
+        yield SimpleNamespace(
+            app=app, client=app.test_client(), namespace=namespace, shop=shop, settings=settings,
+            guard=guard, service=service, taobao_service=taobao, upload_service=upload,
+            browser_resolver=browser_resolver, browser_open=browser_open,
+            browser_reset=browser_reset, forbidden=forbidden, db_calls=db_calls,
+            tasks=tasks, workers=workers,
+        )
     forbidden.assert_not_called()
 
 
@@ -737,7 +781,7 @@ def test_pending_or_running_publish_blocks_account_changes(platform_api, route, 
 
 @pytest.mark.parametrize('status', ('pending', 'running'))
 def test_taobao_fill_blocks_account_switch_and_preserves_its_browser(platform_api, status):
-    platform_api.namespace['_taobao_tasks']['taobao-active'] = {'status': status, 'platform': 'taobao'}
+    platform_api.taobao_service.tasks['taobao-active'] = {'status': status, 'platform': 'taobao'}
     before = copy.deepcopy(platform_api.shop.registry)
     response = platform_api.client.post('/api/shop/switch', json={'profile_name': 'taobao-local'})
     assert response.status_code == 409 and response.json['success'] is False
@@ -876,8 +920,8 @@ def test_account_switch_waits_for_task_creation_then_rejects(platform_api, monke
             raise AssertionError("测试未允许任务创建继续")
         return True, False
 
-    monkeypatch.setitem(platform_api.namespace, "_shop_account_lock", ObservedRLock())
-    monkeypatch.setitem(platform_api.namespace, "_resolve_upload_stop_before_submit", pause_after_platform_check)
+    monkeypatch.setattr(platform_api.guard, "_lock", ObservedRLock())
+    monkeypatch.setattr(platform_api.upload_service, "resolve_stop_before_submit", pause_after_platform_check)
 
     def invoke(name, route, body):
         try:

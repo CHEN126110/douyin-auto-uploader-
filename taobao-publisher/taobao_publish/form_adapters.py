@@ -451,12 +451,17 @@ def bind_prepared_media(client, item, contracts, prepared_product, account_profi
         不传时行为与改动前逐字一致（用调用方给的 ``context_id``）。
     """
 
-    from .media_library import _current_context, product_root_path
+    from .media_library import _current_context, product_root_path, _scroll_product_into_view
     config_for(item, contracts, purpose='media')
     plan = prepared_product.selection_plan(item, account_profile)
     storage = context_holder if isinstance(context_holder, dict) else {'context_id': context_id}
     root = product_root_path(client, prepared_product.manifest.folder_name,
                              context_id=_current_context(storage, context_id))
+    if root is None:
+        # 前一步导航可能让虚拟窗口再次移动；绑定回执时与目录解析共用同一套分段定位。
+        root = _scroll_product_into_view(
+            client, prepared_product.manifest.folder_name,
+            context_id=_current_context(storage, context_id))
     if root is None:
         raise page.PageError('图片空间中尚未找到本批准备好的商品目录')
     for role, entries in plan.items():
@@ -711,11 +716,12 @@ def _pick_sku_receipt(client, config, receipt, context_id, *, open_folder=True):
 
 
 def create_custom_skus(client, item, contracts, prepared_media):
+    from .sku_specs import primary_spec_name, primary_spec_value
     config = config_for(item, contracts, purpose='sku')
-    dimensions = {tuple(sorted(s.spec_values)) for s in item.skus}
-    if len(dimensions) != 1 or len(next(iter(dimensions), ())) != 1:
-        raise page.PageError('候选自定义模式只支持单个规格维度，不能拆分或猜测组合')
-    values = [next(iter(s.spec_values.values())).strip() for s in item.skus]
+    dimensions = {primary_spec_name(sku) for sku in item.skus}
+    if len(dimensions) != 1 or not next(iter(dimensions), ''):
+        raise page.PageError('候选自定义模式只支持一个主规格；附加规格列必须在创建后另行补齐')
+    values = [primary_spec_value(sku) for sku in item.skus]
     if os.environ.get('TAOBAO_MEDIA_DEBUG') == '1':
         import sys as _sys
         _sys.stderr.write('[sku-debug] 目标规格值 {} 个: {!r}\n'.format(len(values), values))
@@ -782,7 +788,7 @@ def create_custom_skus(client, item, contracts, prepared_media):
                                   open_folder=folder != previous_folder)
                 previous_folder = folder
                 batch.verify_image(values[index], receipt['url'], _detail_url_matches)
-                bindings.append({'specs': list(sku.spec_values.values()), 'path': sku.image_path,
+                bindings.append({'specs': [primary_spec_value(sku)], 'path': sku.image_path,
                                  'url': receipt['url'], 'picture_id': str(receipt.get('picture_id') or '')})
             batch.confirm({values[index]: receipt['url'] for index, _, receipt in jobs}, _detail_url_matches)
             _wait(client, build_custom_expression(config), lambda result: result['values'] == values
@@ -805,7 +811,7 @@ def create_custom_skus(client, item, contracts, prepared_media):
                     pass
                 _wait(client, build_custom_expression(config), lambda result: result['values'] == values
                       and _detail_url_matches(str(result['images'][index] or ''), receipt['url']))
-                bindings.append({'specs': list(sku.spec_values.values()), 'path': sku.image_path,
+                bindings.append({'specs': [primary_spec_value(sku)], 'path': sku.image_path,
                                  'url': receipt['url'], 'picture_id': str(receipt.get('picture_id') or '')})
     _t = time.perf_counter()
     final = _checked(client, build_custom_expression(config))
@@ -934,6 +940,7 @@ def fill_detail_by_picture_id(client, item, contracts, prepared_media):
     if not isinstance(opened, dict) or opened.get('ok') is not True:
         raise page.PageError('详情「图片」模块未打开：' + str(
             (opened or {}).get('reason') if isinstance(opened, dict) else '无有效返回'))
+    # 弹层与 iframe 出现不等于目录树已初始化；保留实测需要的初始化等待。
     time.sleep(2.0)
     context_id = page.media_iframe_context(client, timeout=20.0)
     # ⚠️ 按用途分目录归档后，详情图在「全部图片/<商品>/详情页」子目录里，
@@ -953,10 +960,7 @@ def fill_detail_by_picture_id(client, item, contracts, prepared_media):
         picked = pick_media_by_id_with_requery(client, picture_ids, context_id=context_id,
                                                select=True, wait=10.0, stage='fill_detail', expected_urls={str(r['picture_id']):r['url'] for r in receipts})
     except page.MediaImageMissing:
-        # ⚠️ 与主图路径同一恢复思路（2026-10-08 run53 真机：详情 12 张全 missing）：
-        # 选图器刚打开时卡片偶发渲染不出，10s 轮询 + 点走再点回共 20s 都等不到。
-        # 重开选图器是完整重置——平台对新弹层一定会做初始加载。missing 时表达式
-        # 还没勾选任何卡片（先找齐再勾），重试是幂等的。图真不在则第二次仍如实抛。
+        # 目标未齐时没有勾选任何卡片；重开选图器仍保留原恢复路径。
         page.ensure_media_popup_closed(client)
         reopened = client.evaluate(page.build_open_detail_pic_module_expression(), timeout=45.0)
         if not isinstance(reopened, dict) or reopened.get('ok') is not True:
@@ -968,16 +972,23 @@ def fill_detail_by_picture_id(client, item, contracts, prepared_media):
         picked = pick_media_by_id_with_requery(client, picture_ids, context_id=context_id,
                                                select=True, wait=10.0, stage='fill_detail', expected_urls={str(r['picture_id']):r['url'] for r in receipts})
     confirmed = page.confirm_media_selection(client, context_id=context_id)
-    time.sleep(2.0)
-    actual = client.evaluate(page.build_detail_content_images_expression(), timeout=30.0)
+    want = [_identity_of(str(r['url'])) for r in receipts]
+    deadline = time.monotonic() + 10.0
+    actual = {}
+    actual_identities = []
+    while True:
+        actual = client.evaluate(page.build_detail_content_images_expression(), timeout=30.0)
+        if isinstance(actual, dict) and actual.get('ok') is True:
+            actual_identities = [_identity_of(str(url)) for url in (actual.get('images') or [])]
+            if actual_identities == want:
+                return [dict(r) for r in receipts]
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.1)
     if not isinstance(actual, dict) or actual.get('ok') is not True:
         raise page.PageError('详情区回读失败：' + str(
             (actual or {}).get('reason') if isinstance(actual, dict) else '无有效返回'))
-    actual_identities = [_identity_of(str(url)) for url in (actual.get('images') or [])]
-    want = [_identity_of(str(r['url'])) for r in receipts]
-    if actual_identities != want:
-        raise page.FieldMismatchError('详情区图片身份或顺序与本次回执不一致')
-    return [dict(r) for r in receipts]
+    raise page.FieldMismatchError('详情区图片身份或顺序与本次回执不一致')
 
 
 def _identity_of(url: str) -> str:
@@ -1088,13 +1099,14 @@ def fill_detail(client, item, contracts, prepared_media):
 
 
 def missing_media_roles(item, bound_media):
+    from .sku_specs import primary_spec_value
     missing = []
     if not isinstance(bound_media, dict):
         bound_media = {}
     sku = bound_media.get('sku', [])
     if not isinstance(sku, list):
         sku = []
-    expected = [(sorted(s.spec_values.values()), s.image_path) for s in item.skus if s.image_path]
+    expected = [([primary_spec_value(sku)], sku.image_path) for sku in item.skus if sku.image_path]
     provided = [(sorted(r.get('specs', [])), r.get('path')) for r in sku if isinstance(r, dict) and r.get('url')]
     if (item.images.sku or expected) and (not expected or sorted(expected) != sorted(provided)
             or set(item.images.sku) - {path for _, path in provided}):

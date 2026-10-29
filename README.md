@@ -1,157 +1,78 @@
-# 电商产品发布工具
+# 电商产品发布工具（抖音袜子发布工具 v4.0）
 
-把「商品采集 → 资料整理 → 多平台发布」封装成本地桌面客户端的多平台电商发布工具。
+把「商品采集 → 资料整理 → 平台发布」做成本地桌面客户端：**Tauri 2（Rust 壳）+ Vue 3 前端 + Python Flask Sidecar**，
+业务逻辑和浏览器自动化都在本机运行。
 
-> **关于名称**：项目对外名为 **电商产品发布工具**；发行物的内部产品名是 **抖音袜子发布工具**
-> —— `tauri.conf.json` 的 `productName` 与应用窗口标题都用它，本地打包出的安装包是
-> `抖音袜子发布工具_<版本>_x64-setup.exe`；发布到 GitHub 时由 `.github/workflows/release.yml`
-> 的 `ASSET_PREFIX` 重命名为 ASCII 资产名 `DouyinSockPublisher_<版本>_x64-setup.exe`，
-> 应用内更新读的就是后者。两者指同一个应用；统一改名会牵动发布工作流与更新签名，故暂按现状并存。
+> 对外名称是「电商产品发布工具」（2026-10-20 起，窗口标题、页面标题和欢迎页也改用它）；安装包名、`tauri.conf.json` 的 `productName`、exe 文件描述与应用内更新链路仍沿用内部名「抖音袜子发布工具」，`identifier`（`com.dyin.sock-publisher`，决定数据目录）和 exe 名 `douyin-sock-publisher` 也不改。两者是同一个应用。
+> 旧版 README（v1.0「淘宝商品信息采集系统」）已归档到 [`docs/历史/README_v1.0_淘宝采集系统.md`](docs/历史/README_v1.0_淘宝采集系统.md)。
 
----
+## 平台与现状
 
-## 覆盖平台
-
-| 平台 | 现状 | 代码位置 |
+| 平台 | 目录 | 现状 |
 |---|---|---|
-| 抖音（抖店 `fxg.jinritemai.com`） | 主链路，已用于日常发布 | `tauri-app/python-sidecar/app.py`、`src/`、`mcp-server/` |
-| 淘宝（千牛 / 发布工作台） | 资料准备与表单链路，进行中 | `taobao-publisher/` |
-| 小红书（千帆） | 表单测绘与部分链路，进行中 | `xiaohongshu-publisher/` |
+| 抖店 | `src/`、`tauri-app/python-sidecar/` | 主线：采集、整理、发布（DOM 与协议化两条路径） |
+| 淘宝 | `taobao-publisher/` | 独立子项目，与抖店链路隔离；就绪度和红线以其 `README.md` / `AGENTS.md` 为准 |
+| 小红书千帆 | `xiaohongshu-publisher/` | 独立子项目；默认零写入，提交上架需单独授权 |
 
 ## 架构
 
-Tauri 2 桌面壳 + Vue 3 前端 + Python Flask Sidecar + 共享 Python 业务库，
-四层通过本地 HTTP 与进程托管协作：
-
-- **Tauri Rust 壳层**（`tauri-app/src-tauri/`）：窗口、Sidecar 进程托管
-  （启动 / 健康检查 / 强杀 / 日志重定向）。文件拖拽事件在 Rust 侧只开了
-  `tauri.conf.json` 的 `dragDropEnabled`，实际的 `onDragDropEvent` 处理在前端 `App.vue`。
-- **Vue 3 前端**（`tauri-app/src/`）：Vue 3 + TypeScript + Element Plus + Pinia。
-  视图为 `views/ProductManager.vue`（主页面）与 `views/Settings.vue`。
-- **Python Sidecar**（`tauri-app/python-sidecar/app.py`）：Flask 入口，承载产品 CRUD、
-  链接采集、智能标题与定价、商品发布、CDP 调试浏览器、协议化上传、运营闭环与设置管理。
-- **共享业务库**（`src/`）：ORM、浏览器自动化、运营闭环、白底图语义抠图等。
-
-## 下载安装
-
-安装包发布在 GitHub Releases：
-
-- 最新版：<https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest>
-- v4.0.30 直链：
-  `https://github.com/CHEN126110/douyin-auto-uploader-/releases/download/v4.0.30/DouyinSockPublisher_4.0.30_x64-setup.exe`
-- 应用内更新源：`https://github.com/CHEN126110/douyin-auto-uploader-/releases/latest/download/latest.json`
-
-## 从源码构建
-
-前置：Node.js、Rust 工具链、Python 3.11。
-
-```powershell
-git clone https://github.com/CHEN126110/douyin-auto-uploader-.git
-cd douyin-auto-uploader-
-git checkout DouYin
-
-# 1) 前端依赖
-cd tauri-app
-npm install
-
-# 2) mcp-server 依赖（必须装）
-#    tauri.conf.json 的 bundle.resources 会把整个 mcp-server 目录打进安装包，
-#    而 node_modules 被 .gitignore 排除 —— 不装的话装机后内置 MCP 一启动就
-#    ERR_MODULE_NOT_FOUND。CI 里同样有这一步，见 .github/workflows/release.yml。
-cd ../mcp-server
-npm install
-
-# 3) 补齐打包前置资产：sqlite.db / trending_keywords.db / user_settings.json（根与 tauri-app 各一份）
-#    以及 runtime/node.exe（该文件不入库）
-cd ../tauri-app
-python scripts/ci_prepare_build_assets.py
-
-# 4) 构建 Python sidecar，产物落 src-tauri/sidecar/（构建产物不入库）
-cd python-sidecar
-pip install -r requirements.txt
-python build_sidecar.py
-
-# 5) 打包桌面应用
-cd ..
-npm run tauri:build -- --no-bundle           # 只产出可执行文件
-npm run tauri:build                          # 产出 NSIS 安装包
+```text
+Vue 3 前端 ──HTTP──▶ Python Flask Sidecar（127.0.0.1:5001）
+    ▲                   ├─ tauri-app/python-sidecar/app.py   入口与依赖组装、尚未拆出的业务
+    │                   ├─ src/sidecar/                       按业务域拆出的 Blueprint（运营闭环、设置、定价、AI、标题、图片…）
+Tauri 壳（Rust）        └─ src/                               共享业务库（ORM、浏览器自动化、定价、运营引擎…）
+ 窗口 / 拖拽 / 更新                                              └─▶ SQLite、本地文件、经 CDP 控制的 Chrome
+ 托管 Sidecar 进程
 ```
 
-启动桌面端用根目录 `start_frontend.bat`：它**默认直接运行已构建的**
-`tauri-app/src-tauri/target/release/douyin-sock-publisher.exe`，不重新编译；
-需要编译时用 `start_frontend.bat --dev`。其余启动类 `.bat`（`start_backend.bat`、
-`tauri-app/` 下的同名脚本）都跳回它；例外是 `tauri-app/setup_dev.bat`，那是独立的环境安装脚本。
+## 目录
 
-可选——白底图语义抠图需另装模型（不进仓库、不进安装包）：
+| 目录 | 内容 |
+|---|---|
+| `tauri-app/` | 桌面端：`src/` Vue 前端、`src-tauri/` Rust 壳、`python-sidecar/` Flask 入口与打包脚本 |
+| `src/` | 共享业务库；`src/sidecar/` 是各业务域的接口模块 |
+| `mcp-server/` | 把 Sidecar 暴露为 MCP 工具，另带只读的 CDP 探针 |
+| `skills/douyin-publisher-mcp/` | 与 MCP Server 配对的技能包 |
+| `taobao-publisher/`、`xiaohongshu-publisher/` | 另两个平台的研究与实现 |
+| `ecom-agent/` | 选品 / 盈利分析（发布之前的环节） |
+| `protocol-research-clean-20260505/` | 协议化上传的研究与脚本（唯一允许扩展的协议研究目录，只输出去敏产物，约束见其 `AGENTS.md`） |
+| `tests/` | Python 回归测试 |
+| `docs/` | 设计、实证与运维文档 |
+| `lab/` | 实验与辅助脚本（白底图实验、Sidecar 拆分工具） |
+
+## 快速开始
 
 ```powershell
-$env:PYTHONPATH = 'src'
-python -m whitebg.setup_models        # 默认组合（birefnet-general + CLIP）约 1.1 GB
+.\start_frontend.bat           # 启动已构建的应用（不会自动编译；还没有构建时会提示先 npm run tauri:build -- --no-bundle）
+.\start_frontend.bat --dev     # 改了源码后重新编译运行（tauri dev）
 ```
 
-默认只下 `birefnet-general` + CLIP，约 **1.1 GB**；若再加 `bria-rmbg`（约 0.98 GB，
-⚠️ CC BY-NC 4.0 非商用）与 `isnet-general-use`（约 0.17 GB），合计约 2.2 GB。
+开发环境配置、构建与打包命令见 [`tauri-app/README.md`](tauri-app/README.md)。后端依赖只有一份清单：
+[`tauri-app/python-sidecar/requirements.txt`](tauri-app/python-sidecar/requirements.txt)（根目录 `requirements.txt` 只转发到它）。
 
 ## 测试
 
 ```powershell
-# Python：必须在仓库根目录运行（测试自行把仓库根注入 sys.path）
+# Python：需要 3.10+；依赖见上面的清单（不需要 PySide6 / onnxruntime 也能跑全量）
 python -m pytest tests
 
-# mcp-server
-cd mcp-server
-npm run check        # node --check 覆盖所有脚本
-npm run test:ops     # node --test tests/*.test.mjs
+# 前端类型检查
+Set-Location tauri-app; npx vue-tsc --noEmit
+
+# MCP Server
+Set-Location mcp-server; npm run check; npm run test:ops
 ```
 
-## 目录结构
+## 文档索引
 
-```
-2.1/
-├── start_frontend.bat          # 桌面端统一启动入口（其余 .bat 都跳回它）
-├── AGENTS.md / CLAUDE.md       # 项目约定与架构说明（改动前先读）
-├── src/                        # 共享 Python 业务库（Sidecar 直接 import）
-│   ├── utils.py                # DrissionPage 浏览器自动化
-│   ├── orm.py                  # Peewee + SQLite + 列迁移
-│   ├── ops_engine.py           # 运营闭环（只做本地规则计算 + 账本读写）
-│   ├── sidecar/                # 图片 / 白底图 / 更新 / 小红书 接口 Blueprint
-│   └── whitebg/                # 白底图语义抠图流水线
-├── tauri-app/                  # 桌面应用
-│   ├── src/                    # Vue 3 前端
-│   ├── src-tauri/              # Rust 壳层
-│   ├── python-sidecar/         # Flask Sidecar 与 build_sidecar.py
-│   └── scripts/                # 构建辅助脚本
-├── mcp-server/                 # 把 Sidecar 暴露为 MCP 工具 + 独立 CDP 工具
-├── taobao-publisher/           # 淘宝发布路线
-├── xiaohongshu-publisher/      # 小红书发布路线
-├── protocol-research-clean-20260505/   # 协议研究（只输出脱敏产物）
-├── tests/                      # Python 回归测试
-├── lab/whitebg/                # 白底图实验室（实测证据在 out/）
-└── docs/                       # 历史调研、方案与复盘
-```
+- [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md)：工程约定、模块边界、常用命令（两份内容保持同步）。
+- [`docs/架构重构方案_2026-10-18.md`](docs/架构重构方案_2026-10-18.md)：Sidecar 按业务域拆分的方案与进度。
+- [`docs/TAURI_MIGRATION_SPEC.md`](docs/TAURI_MIGRATION_SPEC.md)：v3.0 → v4.0 迁移规格。
+- [`tauri-app/README.md`](tauri-app/README.md)：桌面端结构、构建、端口、主要接口。
+- [`mcp-server/README.md`](mcp-server/README.md)：MCP 工具与 CDP 探针。
 
-## 端口
+## 安全红线
 
-| 端口 | 用途 |
-|---|---|
-| 1420 | Vite dev server |
-| 5001 | Python Flask Sidecar |
-| 9333 | Chrome 远程调试（协议研究只读探针） |
-| 3300 | MCP Streamable HTTP |
-
-## 文档
-
-| 文档 | 用途 |
-|---|---|
-| `AGENTS.md` / `CLAUDE.md` | 项目约定、架构、常用命令 —— **改动前必读** |
-| `tauri-app/README.md` | 桌面端说明 |
-| `docs/TAURI_MIGRATION_SPEC.md` | v3.0 → v4.0 迁移规格 |
-| `lab/whitebg/README.md` | 白底图多场景实测结论 |
-| `protocol-research-clean-20260505/AGENTS.md` | 协议研究的硬约束 |
-
-## 许可
-
-仓库根目录**没有 `LICENSE` 文件**，也没有根级许可证声明。各包的清单文件里另有声明：
-`tauri-app/package.json` 与 `tauri-app/src-tauri/Cargo.toml` 写的是 MIT，
-`mcp-server/package.json` 写的是 ISC —— 这些只是包管理字段，不构成仓库级授权。
-若要公开分发，建议补一份正式的 `LICENSE`。
+- 不绕过登录、验证码和平台风控。
+- 上传、保存、提交等会改动平台数据的动作，必须有显式授权；探针和抓包脚本只做观察。
+- 运营闭环（`src/ops_engine.py`）只做本地规则计算和账本读写，不调用外部 AI。

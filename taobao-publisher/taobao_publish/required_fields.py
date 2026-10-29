@@ -179,11 +179,29 @@ def expression():
             const raw=String(e.value||'').trim();
             return raw&&Number.isFinite(Number(raw.replace(/[^0-9.\-]/g,'')))&&Number(raw.replace(/[^0-9.\-]/g,''))>=0;
           });
+          // 平台动态附加列也必须检查：价格库存齐全不能掩盖「袜筒高度/双数」等必填列为空。
+          const auxRequired=roots.length===1?Array.from(roots[0].querySelectorAll('.sell-sku-table-header-common-new.required'))
+            .map((header,index,all)=>({index:all.indexOf(header),label:norm(header.textContent)}))
+            .filter(col=>!['价格','数量'].includes(col.label)):[];
           const present=skuRows.length>0&&skuRows.every(r=>{
             const cells=Array.from(r.querySelectorAll('td'));
             const hasSpec=cells.slice(0,2).some(c=>norm(c.textContent));
-            // 每行至少要有 2 个有效数值（价格 + 库存）
-            return hasSpec&&numberish(r).length>=2;
+            const auxFilled=auxRequired.every(col=>{
+              const cell=cells[col.index];
+              if(!cell)return false;
+              const input=cell.querySelector('input[role="combobox"],input,textarea');
+              if(input){
+                if(input.getAttribute('role')==='combobox'){
+                  const selected=Array.from(cell.querySelectorAll('.next-select-values'))
+                    .map(el=>norm(el.textContent)).find(text=>text&&text!=='请选择')||'';
+                  return !!(selected||String(input.value||'').trim());
+                }
+                return String(input.value||'').trim().length>0;
+              }
+              return norm(cell.textContent)&&norm(cell.textContent)!=='请选择';
+            });
+            // 每行至少要有 2 个有效数值（价格 + 库存），且动态必填规格列都有值。
+            return hasSpec&&numberish(r).length>=2&&auxFilled;
           });
           required.push({...entry,supportedReader:roots.length===1,filled:present,valid:present,reader:'sku_table'});continue;
         }

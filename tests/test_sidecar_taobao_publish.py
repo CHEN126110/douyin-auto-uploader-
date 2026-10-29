@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """淘宝发布接口的安全不变量。
 
-与 `test_sidecar_protocol_ports.py` 同一套路：把 `app.py` 当文本读，断言**关键片段**
+与 `test_sidecar_protocol_ports.py` 同一套路：把 Sidecar 源码当文本读，断言**关键片段**
 在不在。这样做的理由是这些不变量属于「接口契约」，不是「业务逻辑」——
 真要跑起来需要 Flask 上下文、数据库和一个已登录的浏览器，成本远高于收益。
+
+2026-10-20 淘宝发布搬进 `src/sidecar/taobao_routes.py`（接口）、`taobao_service.py`（worker / 翻译 / 任务表）、
+`taobao_helpers.py`（开关解析，纯函数）：按函数名用 AST 取源码（见 `tests/sidecar_function_source.py`），不再按 `app.py`
+里的文本位置切片；开关解析是纯函数，直接导入真函数调用，不再 exec 摘出来的副本。
 
 覆盖的都是**一旦写错就会静默出错**的地方：
 
@@ -22,22 +26,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
-APP_PATH = PROJECT_ROOT / "tauri-app" / "python-sidecar" / "app.py"
+sys.path.insert(0, str(PROJECT_ROOT / "tests"))
+from sidecar_function_source import function_source  # noqa: E402
+from src.sidecar.taobao_helpers import _parse_taobao_publish_options  # noqa: E402
 
 
 class TaobaoPublishRouteTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.source = APP_PATH.read_text(encoding="utf-8")
-
-    def _body(self, start: str, end: str) -> str:
-        self.assertIn(start, self.source, f"app.py 里找不到 {start!r}")
-        return self.source.split(start, 1)[1].split(end, 1)[0]
-
     def _start_body(self) -> str:
-        return self._body(
-            "def taobao_publish_start():",
-            "@app.get('/api/taobao/publish/status",
-        )
+        return function_source("taobao_publish_start")
 
     def _options_body(self) -> str:
         """参数解析与校验所在的**纯函数**。
@@ -47,23 +43,12 @@ class TaobaoPublishRouteTest(unittest.TestCase):
         "默认值写反就静默出错"的不变量可以**直接调用**验证，不必只断言字符串。
         """
 
-        return self._body("def _parse_taobao_publish_options(", "@app.post('/api/taobao/publish/start')")
+        return function_source("_parse_taobao_publish_options")
 
     def _parse(self, data):
-        """直接调用纯函数（不需 Flask 上下文、不需账户）。"""
+        """直接调用真正的纯函数（不需 Flask 上下文、不需账户）。"""
 
-        import ast as _ast
-        import types as _types
-
-        source = APP_PATH.read_text(encoding="utf-8")
-        tree = _ast.parse(source)
-        node = next(n for n in tree.body
-                    if isinstance(n, _ast.FunctionDef) and n.name == "_parse_taobao_publish_options")
-        module = _types.ModuleType("_options_probe")
-        module.TAOBAO_LISTING_MODES = ("", "立刻上架", "定时上架", "放入仓库")
-        exec(compile(_ast.Module(body=[node], type_ignores=[]), str(APP_PATH), "exec"),
-             module.__dict__)
-        return module._parse_taobao_publish_options(data)
+        return _parse_taobao_publish_options(data)
 
     def test_defaults_to_dry_run(self) -> None:
         """默认必须是**不写平台**。默认值写反 = 用户点一下就往平台写。"""
@@ -92,7 +77,7 @@ class TaobaoPublishRouteTest(unittest.TestCase):
         """调试地址必须走当前淘宝账户的浏览器，不能写死研究用的 9334。"""
 
         body = self._start_body()
-        self.assertIn("_taobao_cdp_list_url()", body)
+        self.assertIn("service.cdp_list_url()", body)
         self.assertNotIn("9334", body)
 
     def test_refuses_when_no_taobao_browser_is_available(self) -> None:
@@ -103,7 +88,7 @@ class TaobaoPublishRouteTest(unittest.TestCase):
         """在抖音账户下发起淘宝发布会选错浏览器与登录态。"""
 
         body = self._start_body()
-        self.assertIn("_require_publish_platform('taobao'", body)
+        self.assertIn("accounts.require_publish_platform('taobao'", body)
 
     def test_only_accepts_known_parameters(self) -> None:
         options, error = self._parse({"record_id": 1, "未知参数": 1})
@@ -164,27 +149,26 @@ class TaobaoPublishRouteTest(unittest.TestCase):
         """绝不回退到抖店上传——那会把商品发到另一个平台。"""
 
         body = self._start_body()
-        for forbidden in ("_run_upload_task", "/api/upload/start", "_upload_tasks["):
+        # 抖店上传的 worker / 任务表现在是 upload_service 的成员（run_upload_task / tasks），老名字一并留着，防止倒退
+        for forbidden in ("_run_upload_task", "run_upload_task", "upload_service", "/api/upload/start", "_upload_tasks["):
             self.assertNotIn(forbidden, body)
 
     def test_task_is_kept_separate_from_douyin_tasks(self) -> None:
         body = self._start_body()
-        self.assertIn("_taobao_tasks[task_id] = task", body)
+        self.assertIn("service.tasks[task_id] = task", body)
         self.assertNotIn("_upload_tasks[task_id]", body)
 
     def test_worker_reads_authorization_from_environment(self) -> None:
         """授权只能来自 sidecar 的环境变量，不能由请求体传入。"""
 
-        body = self._body("def _run_taobao_publish_task(", "@app.post('/api/taobao/publish/start')")
+        body = function_source("run_publish_task")
         self.assertIn("WriteAuthorization.from_environment()", body)
         self.assertNotIn("data.get('authorization'", body)
 
 
 class TaobaoPublishTaskOutcomeTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.source = APP_PATH.read_text(encoding="utf-8")
-        self.worker = self.source.split("def _run_taobao_publish_task(", 1)[1].split(
-            "@app.post('/api/taobao/publish/start')", 1)[0]
+        self.worker = function_source("run_publish_task")
 
     def test_never_claims_publish_confirmed(self) -> None:
         """**核心不变量**：流水线跑完 ≠ 商品已上架。
@@ -231,7 +215,7 @@ class TaobaoPublishTaskOutcomeTest(unittest.TestCase):
 
     def test_cancel_hook_reads_the_task_flag_under_lock(self) -> None:
         hook = self.worker.split("def _should_cancel():", 1)[1].split("try:", 1)[0]
-        self.assertIn("_taobao_tasks_lock", hook)
+        self.assertIn("self.lock", hook)
         self.assertIn("task.get('cancelled')", hook)
 
     def test_cancelled_result_maps_to_cancelled_status(self) -> None:
@@ -249,27 +233,18 @@ class TaobaoPublishTaskOutcomeTest(unittest.TestCase):
 
 
 class TaobaoPublishStatusRouteTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.source = APP_PATH.read_text(encoding="utf-8")
-
     def test_status_locks_when_reading(self) -> None:
         """任务表被工作线程写、被请求线程读，读的时候也要持锁。"""
 
-        body = self.source.split("@app.get('/api/taobao/publish/status", 1)[1].split(
-            "@app.post('/api/taobao/publish/cancel", 1)[0]
-        self.assertIn("_taobao_tasks_lock", body)
+        self.assertIn("service.lock", function_source("taobao_publish_status"))
 
     def test_status_returns_404_for_unknown_task(self) -> None:
-        body = self.source.split("@app.get('/api/taobao/publish/status", 1)[1].split(
-            "@app.post('/api/taobao/publish/cancel", 1)[0]
-        self.assertIn("404", body)
+        self.assertIn("404", function_source("taobao_publish_status"))
 
     def test_cancel_does_not_claim_the_worker_stopped(self) -> None:
         """取消只是**请求**；实际停止发生在阶段边界，不能报成「已停止」。"""
 
-        body = self.source.split("@app.post('/api/taobao/publish/cancel", 1)[1].split(
-            "@app.get('/api/taobao/publish/tasks", 1)[0]
-        self.assertIn("阶段边界", body)
+        self.assertIn("阶段边界", function_source("taobao_publish_cancel"))
 
 
 if __name__ == "__main__":
@@ -284,18 +259,12 @@ class TaobaoProductPayloadTest(unittest.TestCase):
     「标题为空」——**UI 收集的数据从来没有到达过发布流水线**。
     """
 
-    def setUp(self) -> None:
-        self.source = APP_PATH.read_text(encoding='utf-8')
-
-    def _start_body(self) -> str:
-        return self.source.split("def taobao_publish_start():", 1)[1].split(
-            "@app.get('/api/taobao/publish/status", 1)[0]
-
     def test_start_accepts_the_product_field(self) -> None:
-        body = self._start_body()
-        self.assertIn("'product'", body, "白名单里必须有 product")
+        body = function_source("taobao_publish_start")
         self.assertIn("data.get('product')", body)
-        self.assertIn("_taobao_product_request_payload(", body)
+        self.assertIn("service.product_request_payload(", body)
+        # 白名单在开关解析函数里：product 必须在其中
+        self.assertIn("'product'", function_source("_parse_taobao_publish_options"), "白名单里必须有 product")
 
     def test_translation_never_guesses_spec_values(self) -> None:
         """**规格值必须由调用方明确给出**，不许从 SKU 名字里拆。
@@ -304,8 +273,7 @@ class TaobaoProductPayloadTest(unittest.TestCase):
         从里面猜颜色/尺码是典型的「猜字段」——项目红线明确禁止。
         """
 
-        body = self.source.split("def _taobao_product_request_payload(", 1)[1].split(
-            "def _run_taobao_publish_task(", 1)[0]
+        body = function_source("product_request_payload")
         self.assertIn("spec_values", body, "说明里必须点明 spec_values 由调用方给出")
         # 不许出现任何「拆名字」的痕迹
         for forbidden in ("split('-')", 'split("-")', "split('+')", 'split("+")',
@@ -315,17 +283,14 @@ class TaobaoProductPayloadTest(unittest.TestCase):
     def test_translation_splits_category_path_on_gt(self) -> None:
         """`category_path` 用 `>` 分层；流水线要求**完整路径精确相等**。"""
 
-        body = self.source.split("def _taobao_product_request_payload(", 1)[1].split(
-            "def _run_taobao_publish_task(", 1)[0]
-        self.assertIn('split(">")', body)
+        self.assertIn('split(">")', function_source("product_request_payload"))
 
-    def test_translation_is_a_pure_function_near_the_worker(self) -> None:
-        """翻译函数要在工作线程函数附近，便于单测直接取出来跑。"""
+    def test_translation_lives_next_to_the_worker_in_the_service(self) -> None:
+        """翻译方法与工作线程方法在同一个服务模块里，翻译在前；测试直接构造服务对象就能调用它。"""
 
-        self.assertLess(
-            self.source.index("def _taobao_product_request_payload("),
-            self.source.index("def _run_taobao_publish_task("),
-        )
+        from sidecar_function_source import module_text
+        service = module_text("taobao_service.py")
+        self.assertLess(service.index("def product_request_payload("), service.index("def run_publish_task("))
 
 
 if __name__ == "__main__":

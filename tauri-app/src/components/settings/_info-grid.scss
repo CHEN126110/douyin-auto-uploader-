@@ -1,0 +1,85 @@
+// 「高级集成」与「关于」共用：信息网格（环境概览 / 版本）与提示条。
+// ========== MCP Tab - 环境概览网格 ==========
+.mcp-env-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mcp-env-item {
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid rgba(92, 124, 250, 0.12);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .env-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .env-value {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+
+    code {
+      flex: 1;
+      background: rgba(92, 124, 250, 0.06);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 12px;
+      color: var(--primary-color);
+    }
+
+    .env-state {
+      flex-shrink: 0;
+      font-size: 14px;
+
+      &.ok {
+        color: var(--success-color);
+      }
+
+      &.miss {
+        color: var(--danger-color);
+      }
+    }
+  }
+}
+
+.mcp-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(92, 124, 250, 0.05);
+  border-left: 3px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-top: 8px;
+
+  .el-icon {
+    color: var(--primary-color);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  &.warning {
+    background: rgba(255, 138, 128, 0.06);
+    border-left-color: var(--danger-color);
+
+    .el-icon {
+      color: var(--danger-color);
+    }
+  }
+}

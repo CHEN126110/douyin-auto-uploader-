@@ -88,6 +88,8 @@ _CATALOG_LIST: Sequence[ErrorSpec] = (
     _spec("FIELD_UNMAPPED", "映射", "字段没有可用的平台映射", "在 field_mapping.json 中补证据，或确认该字段可省略"),
     # --- 平台交互 ---
     _spec("IMAGE_UPLOAD_FAILED", "图片", "图片上传失败", "检查登录态与网络；确认图片格式与体积"),
+    _spec("IMAGE_SOURCE_MISMATCH", "图片", "主图与 SKU 规格图的来源目录混用",
+          "主图只使用主图目录素材，SKU 图片只进入对应规格；修正来源后重试"),
     _spec("MEDIA_SOURCE_CHANGED", "图片", "本地图片内容与任务快照不一致",
           "保留原图，本批文件尚未发送；确认修改后的图片再启动新任务"),
     _spec("MEDIA_IMAGE_MISSING", "图片", "图片空间未找到精确对应的素材",
@@ -116,6 +118,8 @@ _CATALOG_LIST: Sequence[ErrorSpec] = (
           "值必须是平台标准候选项里的原文；把当时可见的候选列出来比对"),
     _spec("FIELD_MISMATCH", "页面", "单个字段回读与写入不一致",
           "不要继续提交；先确认该字段的写入方式（React 受控组件需要原生 setter）"),
+    _spec("MULTI_SELECT_UNSUPPORTED", "页面", "当前主图不支持原生批量选择",
+          "继续使用逐张选图；不要重复上传已确认的素材"),
     _spec("SKU_SPEC_VALUE_MISSING", "规格", "已勾选的销售属性没有值",
           "分层展示模式下任一已勾选属性为空会让「确认创建」静默失败：要么补值，要么取消勾选"),
     _spec("SKU_CREATE_SILENT_FAILURE", "规格", "确认创建后 SKU 表格没有出现",

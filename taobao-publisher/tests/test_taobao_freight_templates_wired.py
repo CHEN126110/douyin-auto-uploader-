@@ -40,14 +40,13 @@ import unittest
 
 from tests.frontend_source_helper import code_only
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 if str(SUBPROJECT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 SHOP_SESSION = REPO_ROOT / "src" / "shop_session.py"
-APP = REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py"
-PANEL = REPO_ROOT / "tauri-app" / "src" / "components" / "SettingsPanel.vue"
 TYPES = REPO_ROOT / "tauri-app" / "src" / "types" / "index.ts"
 
 
@@ -110,10 +109,7 @@ class EndpointForwardsCurrentTest(unittest.TestCase):
     def test_current_is_in_the_forwarded_payload(self) -> None:
         """上游给了 `current`，接口不转发的话界面永远看不到。"""
 
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def shop_freight_templates()")
-        end = source.index("\n@app.", start)
-        body = source[start:end]
+        body = sidecar.function_source("shop_freight_templates")
         self.assertIn("'current'", body)
 
 
@@ -121,10 +117,9 @@ class FrontendRequestsTaobaoTest(unittest.TestCase):
     """⚠️ 前端原先对淘宝**直接 return**，后端修好也看不到。"""
 
     def setUp(self) -> None:
-        self.source = PANEL.read_text(encoding="utf-8")
-        start = self.source.index("async function loadFreightTemplates(")
-        end = self.source.index("\n}", start)
-        self.body = self.source[start:end]
+        # 设置页 2026-10-19 起拆成外壳 + 各 Tab + composable，这个函数现在在 composables/settings/ 里（缩进的嵌套函数）
+        self.source = sidecar.settings_panel_text()
+        self.body = sidecar.js_function_source(self.source, "async function loadFreightTemplates(")
 
     def test_taobao_is_not_short_circuited(self) -> None:
         self.assertNotIn('account?.platform !== "douyin")\n', self.body,
@@ -172,8 +167,7 @@ class PipelineBlockerPointsAtAWorkingEndpointTest(unittest.TestCase):
                       "阶段里的指引必须指向真实存在的接口")
 
     def test_that_endpoint_exists_in_the_sidecar(self) -> None:
-        source = APP.read_text(encoding="utf-8")
-        self.assertIn("/api/shop/freight-templates", source)
+        self.assertIn("/api/shop/freight-templates", sidecar.text())
 
 
 if __name__ == "__main__":

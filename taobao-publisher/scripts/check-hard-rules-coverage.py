@@ -56,9 +56,13 @@ def main() -> int:
         sources[path.name] = strip_comments(path.read_text(encoding="utf-8"))
 
     # 也把前端与 sidecar 算上：规则可能在那里被使用
-    for extra in (SUBPROJECT.parent / "tauri-app" / "python-sidecar" / "app.py",):
+    # app.py 已按业务域拆进 src/sidecar/，规则的使用点可能在任何一个模块里
+    sidecar_root = SUBPROJECT.parent / "tauri-app" / "python-sidecar" / "app.py"
+    extras = [sidecar_root] + sorted((SUBPROJECT.parent / "src" / "sidecar").rglob("*.py"))
+    for extra in extras:
         if extra.is_file():
-            sources["sidecar/app.py"] = strip_comments(extra.read_text(encoding="utf-8"))
+            key = "sidecar/app.py" if extra == sidecar_root else "sidecar/" + extra.relative_to(SUBPROJECT.parent / "src" / "sidecar").as_posix()
+            sources[key] = strip_comments(extra.read_text(encoding="utf-8"))
 
     hard = {name: spec for name, spec in rules.items()
             if isinstance(spec, dict) and spec.get("hard") is True}

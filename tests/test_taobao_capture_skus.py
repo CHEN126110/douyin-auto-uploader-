@@ -186,13 +186,13 @@ def test_import_repeats_preserve_record_identity_and_ignore_unmapped_files(stora
 
 
 def test_failed_import_does_not_copy_main_image_or_modify_existing_record(storage):
-    before = storage.ns['_import_capture_product_record'](storage.product)
+    before = storage.service.import_capture_product_record(storage.product)
     original = storage.Record.get_by_id(before['record_id']).__data__.copy()
     storage.product['sku_info'][0]['name'] = '没有匹配文件的规格'
     main = Path(storage.product['download_path'])/'主图'
     main.mkdir()
     (main/'主图.jpg').write_bytes(b'main')
     with pytest.raises(ValueError, match='无法唯一对应'):
-        storage.ns['_import_capture_product_record'](storage.product)
+        storage.service.import_capture_product_record(storage.product)
     assert storage.Record.get_by_id(before['record_id']).__data__ == original
     assert len(list(Path(storage.product['download_path'], 'SKU').iterdir())) == 1

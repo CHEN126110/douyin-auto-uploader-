@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Python Sidecar 依赖
 # 用于 Tauri v4.0 后端服务
 

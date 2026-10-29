@@ -286,7 +286,7 @@ def read_dropdown_options(client, label: str, *, wait: float = 1.2,
             params = {"type": event_type, "x": point["x"], "y": point["y"], "button": "left"}
             params.update(extra)
             client.send("Input.dispatchMouseEvent", params)
-            time.sleep(0.15)
+            time.sleep(0.05)
     finally:
         if suspended:
             try:
@@ -294,8 +294,7 @@ def read_dropdown_options(client, label: str, *, wait: float = 1.2,
                                 timeout=timeout)
             except Exception:  # noqa: BLE001 - 恢复失败不该掩盖主流程
                 pass
-    time.sleep(max(0.0, wait))
-    options = client.evaluate(r'''(() => {
+    expression = r'''(() => {
       const visible = el => {
         const r = el.getBoundingClientRect(), s = getComputedStyle(el);
         return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
@@ -311,7 +310,16 @@ def read_dropdown_options(client, label: str, *, wait: float = 1.2,
         }
       }
       return { menuCount: menus.length, options: [...new Set(items)].slice(0, 100) };
-    })()''', timeout=timeout)
+    })()'''
+    deadline = time.monotonic() + max(0.0, wait)
+    while True:
+        options = client.evaluate(expression, timeout=timeout)
+        if (isinstance(options, dict) and options.get('menuCount') == 1
+                and options.get('options')):
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
     if close:
         _close_dropdown(client)
     if not isinstance(options, dict) or options.get("menuCount") != 1:

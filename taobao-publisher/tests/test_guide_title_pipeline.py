@@ -24,6 +24,7 @@ import pathlib
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 if str(SUBPROJECT) not in sys.path:
@@ -97,9 +98,7 @@ class GuideTitlePipelineTest(unittest.TestCase):
         self.assertIn("导购标题", source, "回读核对要覆盖它")
 
     def test_sidecar_translation_passes_it(self) -> None:
-        source = SIDECAR.read_text(encoding="utf-8")
-        block = source.split("def _taobao_product_request_payload(", 1)[1].split(
-            "def _run_taobao_publish_task(", 1)[0]
+        block = sidecar.function_source("product_request_payload", "_taobao_product_request_payload")
         self.assertIn("guide_title", block)
 
     def test_frontend_sends_it(self) -> None:

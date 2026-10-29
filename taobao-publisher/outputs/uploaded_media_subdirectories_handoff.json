@@ -11,9 +11,9 @@
   "caption_is_sibling": true,
   "stage_summaries": [
     "主图已选入主图位并回读确认：5 张（本次新上传 5 张，空间里原有 0 张）；SKU 素材 6 张、详情素材 10 张已准备",
-    "自定义规格、对应图片及逐行售价库存已写入并回读",
+    "自定义规格、附加必填规格、对应图片及逐行售价库存已写入并回读",
     "详情图片按采集顺序写入并回读"
   ],
   "saved_draft_or_submitted": false,
-  "test_source_sha256": "9a21b6b8337d975a361c5562ed93c77ad63b4c8e958bc77aa66e8f9deba1fc8d"
+  "test_source_sha256": "844c5f8d5a55ca0574daaeecd4c070d2f31b5d0bd5a467315c762f8f625f92f6"
 }

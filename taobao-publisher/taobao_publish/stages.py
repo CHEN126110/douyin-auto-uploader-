@@ -956,17 +956,17 @@ def stage_select_category(ctx: PipelineContext) -> StageOutcome:
                 "PAGE_ERROR",
                 "当前不在类目搜索页（{}），请先回到 https://item.upload.taobao.com/sell/ai/category.htm".format(href[:80]))
 
-        # 2) 搜索发品
-        steps.append(page.search_category(client, keyword))
+        # 2) 搜索发品；候选就绪由下面的精确匹配轮询确认，不重复固定等待。
+        steps.append(page.search_category(client, keyword, wait=0))
 
         # 3) 切到「类目」tab
-        steps.append(page.switch_category_tab(client, "类目"))
+        steps.append(page.switch_category_tab(client, "类目", wait=0, timeout=3.0))
 
         # 4) 完整路径精确匹配；只有叶子名时必须从实际候选取唯一完整路径。
         if target_path:
-            candidate = page.find_exact_category_candidate(client, target_text)
+            candidate = page.find_exact_category_candidate(client, target_text, timeout=3.0)
         else:
-            candidate = page.find_leaf_category_candidate(client, keyword)
+            candidate = page.find_leaf_category_candidate(client, keyword, timeout=3.0)
             target_text = candidate["path_text"]
             target_path = tuple(candidate["path"])
 
@@ -994,7 +994,7 @@ def stage_select_category(ctx: PipelineContext) -> StageOutcome:
         brand_control = page.read_brand_control_state(client)
         next_state = page.read_confirm_button_state(client)
         if not brand_defaulted or brand_control['present'] or next_state.get('disabled') is not False:
-            picked = page.select_brand(client, requested_brand)
+            picked = page.select_brand(client, requested_brand, wait=0, candidate_timeout=3.0)
             brand = str(picked.get('picked') or '')
             if not brand:
                 raise page.PageError('品牌选项没有返回可核对的原文')
@@ -1165,8 +1165,8 @@ def expected_field_values(ctx: PipelineContext) -> List[Dict[str, Any]]:
         # 只是核对没用它。
         expected.append({
             "label": "SKU 规格值",
-            "value": _format_sku_specs(skus),
-            "source": "item.skus[].spec_values",
+            "value": _format_sku_specs(skus, primary_only=ctx.item.sku_mode == 'custom'),
+            "source": "item.skus[].spec_values；自定义模式的附加规格列单独回读",
             "kind": "sku_specs",
         })
         # ⚠️ **平台的硬判据：至少有一个 sku 的价格大于 0。**
@@ -1184,10 +1184,12 @@ def expected_field_values(ctx: PipelineContext) -> List[Dict[str, Any]]:
             "source": "平台原文「至少有一个sku的价格大于0，请先设置sku价格」",
             "kind": "sku_row_prices",
         })
+        from .sku_specs import primary_spec_value
         expected.append({
             "label": "SKU 逐行价格库存",
             "value": _format_sku_row_values([
-                {"specs": list(sku.spec_values.values()),
+                {"specs": ([primary_spec_value(sku)] if ctx.item.sku_mode == 'custom'
+                           else list(sku.spec_values.values())),
                  "price": sku.price, "stock": sku.stock}
                 for sku in skus
             ]),
@@ -1485,7 +1487,7 @@ def stage_set_listing(ctx: PipelineContext) -> StageOutcome:
     client = None
     try:
         client = _open_publish_page(ctx)
-        result = choose_radio_by_text(client, "上架时间", mode)
+        result = choose_radio_by_text(client, "上架时间", mode, wait=0)
         # 一次求值读回**三个选项**的选中情况，确认有且仅有目标那个被选中
         state = client.evaluate(
             page_build_radio_group_state("上架时间", LISTING_MODES), timeout=30.0)
@@ -1740,8 +1742,8 @@ def stage_fill_freight(ctx: PipelineContext) -> StageOutcome:
                     blockers=[Blocker(code="EVIDENCE_INSUFFICIENT", field="logistics.freight_template_id",
                                       detail="需要当前店铺真实已选模板或明确商品模板，不复用抖店模板",
                                       source="stages.stage_fill_freight")])
-        opened = page.open_freight_dropdown(client)
-        options = page.read_freight_options(client)
+        opened = page.open_freight_dropdown(client, wait=0)
+        options = page.read_freight_options(client, timeout=3.0)
         if not options:
             return StageOutcome.failed(
                 "EVIDENCE_INSUFFICIENT",
@@ -1764,7 +1766,7 @@ def stage_fill_freight(ctx: PipelineContext) -> StageOutcome:
             )
 
         picked = page.pick_freight_option(client, name)
-        after = page.wait_for_freight_value(client, name)
+        after = page.wait_for_freight_value(client, name, interval=0.1)
         if after != name:
             return StageOutcome.failed(
                 "READBACK_MISMATCH",
@@ -2106,8 +2108,13 @@ def _fill_sku_row_numbers(client, page, ctx: PipelineContext) -> List[Dict[str, 
         return []
 
     by_spec = {}
+    from .sku_specs import primary_spec_name, primary_spec_value
     for sku in (ctx.item.skus or []):
-        key = _sku_spec_key(getattr(sku, "spec_values", None))
+        spec_values = getattr(sku, "spec_values", None)
+        if ctx.item.sku_mode == 'custom':
+            # 自定义表格只用主规格标识行；附加列有独立填写与回读，不能拼进行身份。
+            spec_values = {primary_spec_name(sku): primary_spec_value(sku)}
+        key = _sku_spec_key(spec_values)
         if key:
             by_spec.setdefault(key, []).append(sku)
 
@@ -2147,12 +2154,30 @@ def _fill_sku_row_numbers(client, page, ctx: PipelineContext) -> List[Dict[str, 
     for index, sku, row_key in plan:
         price = "" if sku.price is None else _format_price(float(sku.price))
         stock = "" if sku.stock is None else str(int(sku.stock))
-        page.set_sku_row_numbers(client, index, price=price, stock=stock)
+        page.set_sku_row_numbers(client, index, price=price, stock=stock, wait=0)
         filled.append({"row": index + 1, "specs": row_key,
                        "price": price, "stock": stock})
 
-    # **回读确认**：「设了」不等于「设对了」。
-    after = list(page.read_sku_row_numbers(client))
+    # 总等待上限与原先逐行固定等待相同；全部行正确就立即继续。
+    def numbers_match(rows):
+        if len(rows) != len(plan):
+            return False
+        for index, sku, _row_key in plan:
+            actual = rows[index]
+            want_price = "" if sku.price is None else _format_price(float(sku.price))
+            want_stock = "" if sku.stock is None else str(int(sku.stock))
+            if _as_number(actual.get('price')) != _as_number(want_price):
+                return False
+            if _as_number(actual.get('stock')) != _as_number(want_stock):
+                return False
+        return True
+
+    deadline = time.monotonic() + max(0.6, len(plan) * 0.6)
+    while True:
+        after = list(page.read_sku_row_numbers(client))
+        if numbers_match(after) or time.monotonic() >= deadline:
+            break
+        time.sleep(0.1)
     if len(after) != len(plan):
         raise page.CandidateNotFound(
             "SKU 价格库存回读行数不完整：期望 {} 行，实际 {} 行".format(
@@ -2416,15 +2441,19 @@ def _stage_fill_custom_skus(ctx: PipelineContext) -> StageOutcome:
                                             ctx.scratch.get('prepared_media', {}))
         _mark_media_located(ctx, 'sku', ctx.scratch.get('prepared_media', {}).get('sku', []))
         _trace_timing(ctx, 'create_custom_skus', _t)
+        from .sku_auxiliary import fill_sku_auxiliary_values
+        auxiliary = fill_sku_auxiliary_values(client, ctx.item)
         _t = time.perf_counter()
         filled = _fill_sku_row_numbers(client, page, ctx)
         _trace_timing(ctx, 'fill_sku_row_numbers', _t)
         ctx.scratch.setdefault('bound_media', {})['sku'] = bindings
         ctx.scratch['fill_skus'] = {'row_count': len(ctx.item.skus), 'filled_rows': filled,
                                    'spec_rows': [r['specs'] for r in table['rows']],
+                                   'auxiliary': auxiliary,
                                    'runtime_control_checks': table.get('runtime_control_checks', {})}
-        return StageOutcome(summary='自定义规格、对应图片及逐行售价库存已写入并回读',
+        return StageOutcome(summary='自定义规格、附加必填规格、对应图片及逐行售价库存已写入并回读',
                             data={'row_count': len(ctx.item.skus), 'filled_rows': filled,
+                                  'auxiliary': auxiliary,
                                   'runtime_control_checks': table.get('runtime_control_checks', {})})
     except Exception as exc:
         return StageOutcome.failed(getattr(exc, 'code', 'PAGE_ERROR'),
@@ -2792,6 +2821,21 @@ def stage_upload_images(ctx: PipelineContext) -> StageOutcome:
             )],
         )
 
+    # 主图与 SKU 规格图必须像抖店一样分目录消费。即使调用方绕过预检，
+    # 也不能把 SKU / SKU_1x1 的图上传并选进主图位。
+    from .mapping import main_image_source_error
+    source_errors = [(index, main_image_source_error(path)) for index, path in enumerate(images)]
+    source_errors = [(index, error) for index, error in source_errors if error]
+    if source_errors:
+        return StageOutcome.failed(
+            "IMAGE_SOURCE_MISMATCH",
+            "主图来源目录错误；请使用主图目录，不能使用 SKU 规格图",
+            blockers=[Blocker(
+                code="IMAGE_SOURCE_MISMATCH", field="images.main[{}]".format(index),
+                detail=error, source="stages.stage_upload_images",
+            ) for index, error in source_errors],
+        )
+
     missing = [p for p in images if not os.path.isfile(p)]
     if missing:
         return StageOutcome.failed(
@@ -2880,21 +2924,40 @@ def stage_upload_images(ctx: PipelineContext) -> StageOutcome:
         in_space = [entry['name'] for entry in prepared['main'] if not entry['uploaded_now']]
         uploaded_now = [entry['path'] for entry in prepared['main'] if entry['uploaded_now']]
 
-        # 逐张选中。**点卡片里的 label 即回填**，没有确认按钮。
-        #
-        # ⚠️ **每张图都要重新打开弹层**：这个选择器的 iframe URL 带 ``max=1``
-        # ——一次只能选一张；弹层可能保持打开，需要明确关闭后进入下个空位。
-        # 复用同一次打开的弹层会导致后续图片没有填入新的空位。
-        #
-        # 已有图无法按文件身份核验时在前面停止；从空主图区按商品素材顺序逐张选入。
+        # 只有父页面原生以多选模式打开时，才同目录按 pictureId 一次勾选并确认。
+        # 当前单槽位主图只接收首项，不能靠改 iframe 参数硬凑；点击前安全回退逐张路径。
         selected: List[str] = []
         expected_urls: List[str] = []
+        batch_completed = False
+        try:
+            _t_batch = time.perf_counter()
+            report_media_activity(ctx, '检查主图原生多选能力：{} 张候选'.format(len(main_receipts)))
+            batch = page.select_main_images_batch(client, main_receipts, context_id=context_id)
+            expected_urls = batch['selected_urls']
+            selected = batch['selected']
+            context_id = batch['context_id']
+            slots = page.wait_for_main_image_slots(client, len(images), expected_urls=expected_urls)
+            actual_urls = [str(url) for url in (slots.get('images') or [])]
+            if (int(slots.get('filled') or 0) != len(images) or len(actual_urls) != len(expected_urls)
+                    or not all(page._images_match(actual, expected)
+                               for actual, expected in zip(actual_urls, expected_urls))):
+                raise page.FieldMismatchError('主图批量选入后的位数、素材身份或顺序不一致')
+            for main_receipt in main_receipts:
+                _mark_media_located(ctx, 'main', [main_receipt])
+            batch_completed = True
+            _trace_timing(ctx, 'select_image_batch', _t_batch)
+        except page.MainBatchUnsupportedError as multi_error:
+            # 不支持判定发生在选图前，且原生多选检查不改 URL；沿用当前弹层逐张连选。
+            report_media_activity(ctx, '主图多选不可用，使用逐张兼容路径：' + str(multi_error))
+
+        # 原生单选会在每次选择后推进到下一个主图位；保持弹层打开，逐张各点一次。
+        # 若平台某版本自己关闭弹层，下面的状态检查仍会按需重开，不强行假定它一直开着。
         for main_receipt in main_receipts:
+            if batch_completed:
+                break
             _t_image = time.perf_counter()
             name = main_receipt['name']
             report_media_activity(ctx, '选择主图：{}/{}，核对图片位置'.format(len(selected) + 1, len(names)))
-            if selected:
-                page.ensure_media_popup_closed(client)
             if not page.read_media_popup(client).get("open"):
                 page.open_media_popup(client)
                 context_id = page.media_iframe_context(client)
@@ -2951,13 +3014,13 @@ def stage_upload_images(ctx: PipelineContext) -> StageOutcome:
                     raise page.FieldMismatchError('选图没有返回对应素材的完整 URL')
             expected_urls.append(selected_url)
             slots = page.wait_for_main_image_slots(client, len(selected) + 1, expected_urls=expected_urls)
+            actual_urls = [str(url) for url in (slots.get('images') or [])]
             if int(slots.get("filled") or 0) != len(selected) + 1:
                 return StageOutcome.failed(
                     "READBACK_MISMATCH",
                     "主图 {!r} 选入后位数不符：期望 {}，实际 {}".format(
                         name, len(selected) + 1, slots.get("filled")),
                 )
-            actual_urls = [str(url) for url in (slots.get('images') or [])]
             # ⚠️ **不能逐字比 URL**：槽位回读的是转码地址（`…_320x320q80_.webp`），
             # 选图返回的是另一种形态（`…_320x320?t=…`）——同一张图，逐字比必然不等。
             # 判据用稳定资源标识（`O1CN…`）：数量与顺序都得对，身份也得对。
@@ -3061,19 +3124,25 @@ def _format_sku_row_values(rows) -> str:
     return json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
 
 
-def _format_sku_specs(skus) -> str:
+def _format_sku_specs(skus, *, primary_only=False) -> str:
     """把 `item.skus` 的规格值排成**可稳定比对**的一串。
 
     形如 ``1 行：M(37-41)`` / ``2 行：M(37-41)｜L(42-45)``。
 
     用 `｜` 分行、`、` 分同一行内的多个规格值——两个分隔符都与页面读回的
     `rows[].specs` 一致，这样期望值与实际值可以**逐字符比对**。
+    自定义 SKU 的动态附加列不属于行身份，由 ``sku_auxiliary`` 独立回读。
     """
 
     rows = []
+    if primary_only:
+        from .sku_specs import primary_spec_value
     for sku in skus:
-        values = sorted(str(v).strip() for v in (getattr(sku, "spec_values", None) or {}).values()
-                        if str(v).strip())
+        if primary_only:
+            values = [primary_spec_value(sku)] if primary_spec_value(sku) else []
+        else:
+            values = sorted(str(v).strip() for v in (getattr(sku, "spec_values", None) or {}).values()
+                            if str(v).strip())
         rows.append("、".join(values))
     return _format_sku_specs_from_rows(rows)
 

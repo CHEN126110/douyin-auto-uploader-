@@ -2,9 +2,9 @@
 """自定义材质支持的回归测试（2026-08-28）。
 
 原实现把材质锁死在 src/config.py 的 PLATFORM_MATERIAL_OPTIONS 白名单上，共三层：
-  1. 前端 SettingsPanel.vue：addMaterialComposition 拒绝非白名单项、
-     materialSettingsInvalid 把非白名单项判为无效；
-  2. 后端保存接口 app.py：`材质「x」不在平台面料选项内`；
+  1. 前端设置页（现分布在 SettingsPanel.vue、components/settings/、composables/settings/）：
+     addMaterialComposition 拒绝非白名单项、materialSettingsInvalid 把非白名单项判为无效；
+  2. 后端保存接口 src/sidecar/settings_routes.py（原在 app.py）：`材质「x」不在平台面料选项内`；
   3. src/config.py normalize_automation_config：**静默过滤**掉非白名单项
      （最隐蔽的一层——保存看似成功，实际配置里那条材质消失了）。
 
@@ -26,10 +26,25 @@ from src.config import (  # noqa: E402
     SettingsManager,
 )
 
-APP_PY = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
-PANEL_VUE = os.path.join(REPO_ROOT, 'tauri-app', 'src', 'components', 'SettingsPanel.vue')
+SETTINGS_ROUTES_PY = os.path.join(REPO_ROOT, 'src', 'sidecar', 'settings_routes.py')
+FRONTEND_SRC = os.path.join(REPO_ROOT, 'tauri-app', 'src')
 
 CUSTOM = '自定义纤维A'
+
+
+def _settings_frontend_source():
+    """设置页前端全部源码拼成的文本。
+
+    2026-10-19 起设置页按 Tab 拆开：外壳 `components/SettingsPanel.vue`、各 Tab / 区块
+    `components/settings/*.vue`、表单状态 `composables/settings/*.ts`。材质相关代码跨文件分布，
+    所以断言作用在这几处拼起来的全文上。「不应再出现」这类反向断言同样必须覆盖全部文件，
+    否则代码搬家后会因为只读到外壳而空转。目录读不到会直接抛错，不会悄悄变成空文本。
+    """
+    paths = [os.path.join(FRONTEND_SRC, 'components', 'SettingsPanel.vue')]
+    for folder, suffix in ((('components', 'settings'), '.vue'), (('composables', 'settings'), '.ts')):
+        directory = os.path.join(FRONTEND_SRC, *folder)
+        paths += sorted(os.path.join(directory, name) for name in os.listdir(directory) if name.endswith(suffix))
+    return '\n'.join(io.open(path, encoding='utf-8').read() for path in paths)
 
 
 def test_custom_material_survives_normalization():
@@ -71,7 +86,7 @@ def test_normalization_still_cleans_dirty_input():
 
 
 def test_backend_save_no_longer_rejects_custom_material():
-    source = io.open(APP_PY, encoding='utf-8').read()
+    source = io.open(SETTINGS_ROUTES_PY, encoding='utf-8').read()
     assert '不在平台面料选项内' not in source, \
         '保存接口不应再按内置白名单拒绝自定义材质'
     assert 'MATERIAL_NAME_MAX_LENGTH' in source, \
@@ -81,7 +96,7 @@ def test_backend_save_no_longer_rejects_custom_material():
 
 
 def test_frontend_allows_custom_material_input():
-    source = io.open(PANEL_VUE, encoding='utf-8').read()
+    source = _settings_frontend_source()
     assert '材质不在平台可选列表内' not in source, '前端不应再拒绝自定义材质'
     # 两处材质下拉都必须可输入（filterable + allow-create）
     assert source.count('allow-create') >= 3, '材质下拉需支持 allow-create 自定义输入'

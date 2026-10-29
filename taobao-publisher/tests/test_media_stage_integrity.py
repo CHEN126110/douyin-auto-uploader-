@@ -198,6 +198,21 @@ class MainImageIntegrityTest(unittest.TestCase):
         self.assertFalse(outcome.ok)
         self.assertNotIn("upload_images", ctx.scratch)
 
+    def test_sku_image_is_rejected_before_opening_the_publish_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image = pathlib.Path(directory) / "SKU" / "白色.jpg"
+            image.parent.mkdir()
+            image.write_bytes(self._image_bytes())
+            ctx = context()
+            ctx.item.images.main = [str(image)]
+            with mock.patch.object(stages, "_open_publish_page") as opener:
+                outcome = stages.stage_upload_images(ctx)
+        self.assertFalse(outcome.ok)
+        self.assertEqual(outcome.error_code, "IMAGE_SOURCE_MISMATCH")
+        self.assertIn("SKU", outcome.summary)
+        opener.assert_not_called()
+        self.assertNotIn("upload_images", ctx.scratch)
+
 
 if __name__ == "__main__":
     unittest.main()

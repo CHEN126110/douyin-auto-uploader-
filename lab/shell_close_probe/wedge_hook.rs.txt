@@ -1,0 +1,44 @@
+// ===== 实验专用，不要放进 tauri-app/src-tauri/src/main.rs =====
+//
+// 作用：在 setup 末尾起一个线程，N 秒后用 run_on_main_thread 把一个「永不返回的嵌套消息循环」
+// 放进 UI 线程的事件回调里。它模拟的是 webview2_com::wait_with_pump 那类调用卡住时的状态：
+//   - UI 线程仍在 GetMessage / DispatchMessage，窗口照常应答 WM_NULL（Process.Responding=True）；
+//   - 但 tao 认为自己还在回调里（EventLoopRunner::send_event 看到事件处理器已被取走），
+//     所有新事件（包括 CloseRequested）都被放进缓冲区，永远到不了 on_window_event；
+//   - 所以 PostMessage(WM_CLOSE) / SendMessageTimeout(SC_CLOSE) 都「成功」，日志里却没有 `window close requested`。
+// 这正是 2026-10-20 旧实例的症状；ui_watchdog 对它的检测与调用栈也是用这个钩子验证的。
+//
+// 用法：
+//   1. 把 tauri-app/src-tauri 的 Cargo.toml / Cargo.lock / build.rs / src / capabilities / icons 复制到一个临时目录
+//      （把 ../dist 一并复制；tauri.conf.json 里去掉 bundle.resources，bundle.active 设为 false）。
+//   2. 在复制出来的 main.rs 的 `log_runtime(&app.handle(), "setup completed");` 之后、`Ok(())` 之前粘贴下面这段。
+//   3. CARGO_TARGET_DIR 指到临时目录，`cargo build --release`；把 exe（和同名 .pdb）放进一个没有 python-backend.exe 的目录。
+//   4. 设置环境变量 WEDGE_TEST=1（可选 WEDGE_DELAY=秒数，默认 6），再用 run_scenario.ps1 启动并发关闭请求。
+
+            if std::env::var_os("WEDGE_TEST").is_some() {
+                let h = app.handle().clone();
+                let delay: u64 = std::env::var("WEDGE_DELAY").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(delay));
+                    let h2 = h.clone();
+                    let _ = h.run_on_main_thread(move || {
+                        log_runtime(&h2, "WEDGE_TEST: entering nested message pump inside a tao callback");
+                        #[repr(C)]
+                        struct Msg { hwnd: isize, message: u32, wparam: usize, lparam: isize, time: u32, pt_x: i32, pt_y: i32 }
+                        #[link(name = "user32")]
+                        extern "system" {
+                            fn GetMessageA(m: *mut Msg, h: isize, a: u32, b: u32) -> i32;
+                            fn TranslateMessage(m: *const Msg) -> i32;
+                            fn DispatchMessageA(m: *const Msg) -> isize;
+                        }
+                        unsafe {
+                            let mut msg: Msg = std::mem::zeroed();
+                            while GetMessageA(&mut msg, 0, 0, 0) > 0 {
+                                TranslateMessage(&msg);
+                                DispatchMessageA(&msg);
+                            }
+                        }
+                        log_runtime(&h2, "WEDGE_TEST: nested message pump exited");
+                    });
+                });
+            }

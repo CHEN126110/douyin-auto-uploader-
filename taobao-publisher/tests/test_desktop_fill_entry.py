@@ -1,29 +1,40 @@
 # -*- coding: utf-8 -*-
-"""真实HTTP处理函数的隔离验证：填写动作、来源、任务与提交锁。"""
+"""真实HTTP处理函数的隔离验证：填写动作、来源、任务与提交锁。
+
+2026-10-20 起淘宝接口来自真实的 ``src/sidecar/taobao_routes.py`` / ``taobao_service.py``，账户门禁与店铺会话服务也是真对象
+（``shop_accounts.py`` / ``shop_service.py``）；以前是按名字从 app.py 里抽函数再 exec。只有商品表、浏览器、后台线程和
+流水线是替身。「有没有发布任务在跑」那个问句仍由 app.py 里的 ``_publish_tasks_running`` 回答，从源码里抽出来用。
+"""
 import ast
 import json
 import math
-import os
+import sys
 import threading
-from datetime import datetime
-from functools import wraps
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from flask import Flask, jsonify, request
+from flask import Flask
 
-from taobao_publish import desktop, mapping
-from taobao_publish.authorization import WriteAuthorization
-from taobao_publish.models import LocalProduct
-from taobao_publish.folder_import import MATERIAL_CENTER_URL
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+APP_PATH = REPO_ROOT / 'tauri-app/python-sidecar/app.py'
 
-APP_PATH = Path(__file__).resolve().parents[2] / 'tauri-app/python-sidecar/app.py'
+from src.sidecar import taobao_routes  # noqa: E402
+from src.sidecar.shop_accounts import ShopAccountGuard  # noqa: E402
+from src.sidecar.shop_service import ShopBrowserPort, ShopSessionService  # noqa: E402
+from src.sidecar.taobao_routes import create_taobao_blueprint  # noqa: E402
+from src.sidecar.taobao_service import TaobaoPublishService  # noqa: E402
+from taobao_publish import mapping  # noqa: E402
+from taobao_publish.authorization import WriteAuthorization  # noqa: E402
+from taobao_publish.models import LocalProduct  # noqa: E402
+from taobao_publish.folder_import import MATERIAL_CENTER_URL  # noqa: E402
 
 
 @pytest.fixture
-def entry(tmp_path):
+def entry(tmp_path, monkeypatch):
     app = Flask(__name__)
     image = tmp_path / 'SKU' / '白色.jpg'
     image.parent.mkdir()
@@ -31,7 +42,6 @@ def entry(tmp_path):
     row = {'id': 1, 'name': '商品一', 'path': str(tmp_path),
            'content': json.dumps([{'path': str(image), 'name': '白色', 'price': 12}])}
     calls = []
-    tasks = {}
     gui = SimpleNamespace(page=None)
     browser = Mock(return_value=SimpleNamespace(address='127.0.0.1:9501'))
 
@@ -52,46 +62,57 @@ def entry(tmp_path):
             # 不启动线程，不调用流水线或浏览器。
             pass
 
-    namespace = {
-        'app': app, 'request': request, 'jsonify': jsonify, 'json': json, 'os': os,
-        'datetime': datetime, 'Record': Record,
-        'wraps': wraps, '_shop_account_lock': threading.RLock(),
-        'threading': SimpleNamespace(Thread=Worker),
-        '_with_shop_account_lock': lambda fn: fn,
-        '_require_publish_platform': lambda *args: None,
-        '_active_shop_account': lambda: {'profile_name': 'taobao-test', 'platform': 'taobao'},
-        'gui': gui, 'get_page': browser,
-        'shop_session': SimpleNamespace(profile_dir=lambda name: str(tmp_path / name)),
-        '_set_browser_debug_instance': Mock(),
-        '_get_gui_page_debug_address': lambda: getattr(gui.page, 'address', ''),
-        '_normalize_debug_address': lambda address: str(address or '').replace('localhost', '127.0.0.1'),
-        '_TAOBAO_SHOP_LOGIN_URL': 'https://item.upload.taobao.com/sell/ai/category.htm',
-        '_SHOP_LOGIN_URL': 'https://fxg.jinritemai.com/',
-        '_taobao_cdp_list_url': Mock(return_value='http://127.0.0.1:9501/json/list'),
-        '_load_taobao_desktop': lambda: desktop,
-        '_load_taobao_pipeline': Mock(),
-        '_taobao_tasks': tasks, '_taobao_tasks_lock': threading.RLock(),
-        '_upload_tasks': {}, '_upload_tasks_lock': threading.RLock(),
-        'api_ok': lambda msg='', data=None: jsonify(success=True, msg=msg, data=data),
-        'api_error': lambda msg='', data=None: (jsonify(success=False, msg=msg, data=data), 503),
-        'traceback': SimpleNamespace(print_exc=lambda: None),
-    }
+    # 账户注册表假件：只有一个当前账户（淘宝 taobao-test）；其余都是真实的门禁 / 店铺会话服务在用
+    registry = {'active_profile': 'taobao-test',
+                'profiles': {'taobao-test': {'platform': 'taobao', 'label': '测试淘宝账户'}}}
+    shop_session = SimpleNamespace(
+        DEFAULT_PROFILE_NAME='upload-browser-profile',
+        load_registry=lambda: registry,
+        slugify_profile_name=lambda name: name,
+        normalize_platform=lambda value: value,
+        profile_dir=lambda name: str(tmp_path / name),
+    )
+
+    def normalize_address(address):
+        return str(address or '').replace('localhost', '127.0.0.1')
+
+    # 「有没有发布任务在跑」由 app.py 里的 _publish_tasks_running 回答（任务字典分属上传 / 淘宝两个域，留在入口）
+    ns = {'upload_service': SimpleNamespace(tasks={}, lock=threading.RLock())}
+    guard = ShopAccountGuard(shop_session=shop_session, has_running_publish_tasks=lambda: ns['_publish_tasks_running']())
+    shop_service = ShopSessionService(
+        accounts=guard,
+        browser=ShopBrowserPort(
+            page_state=lambda: gui,
+            open_page=browser,
+            normalize_address=normalize_address,
+            gui_page_debug_address=lambda: getattr(gui.page, 'address', ''),
+            find_browser_process=lambda _address: {},
+            find_reusable_browser=lambda **_kwargs: {},
+            set_debug_browser_instance=Mock(),
+            host='127.0.0.1', shop_port_start=9500, shop_port_end=9599,
+        ),
+        shop_session=shop_session,
+    )
+    service = TaobaoPublishService(
+        record_model=Record, repo_root=str(REPO_ROOT), accounts=guard, shop_service=shop_service,
+        normalize_debug_address=normalize_address, resolve_data_file=lambda name: tmp_path / name,
+        bootstrap_log=lambda message: None,
+    )
+    ns['taobao_service'] = service
     tree = ast.parse(APP_PATH.read_text(encoding='utf-8'))
-    names = {'_taobao_product_request_payload', '_run_taobao_publish_task', 'taobao_publish_start',
-             '_with_shop_account_lock', '_activate_shop_profile', '_ensure_taobao_fill_browser',
-             '_account_change_blocked',
-             # ⚠️ 参数解析的**纯函数**：`taobao_publish_start` 会调它，不在名单里就
-             # 撞 `NameError` → 500，测试只报"状态码不对"，看不到真因。
-             '_parse_taobao_publish_options'}
-    module = ast.Module(body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names], type_ignores=[])
-    # 允许值常量只有一份（在 app.py 里），校验必须用真正那份。
-    constants = [node for node in tree.body
-                 if isinstance(node, ast.Assign)
-                 and any(getattr(t, 'id', None) == 'TAOBAO_LISTING_MODES' for t in node.targets)]
-    assert len(constants) == 1, 'app.py 里应当只有一份 TAOBAO_LISTING_MODES'
-    module.body = constants + module.body
-    exec(compile(ast.fix_missing_locations(module), str(APP_PATH), 'exec'), namespace)
-    return SimpleNamespace(client=app.test_client(), ns=namespace, calls=calls, tasks=tasks,
+    running = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_publish_tasks_running']
+    assert len(running) == 1
+    exec(compile(ast.Module(body=running, type_ignores=[]), str(APP_PATH), 'exec'), ns)
+
+    # 本夹具没有浏览器：「当前账户的调试地址」换成固定值，流水线加载器换成可控的替身
+    service.cdp_list_url = Mock(return_value='http://127.0.0.1:9501/json/list')
+    service.load_pipeline = Mock()
+    monkeypatch.setattr(taobao_routes, 'threading', SimpleNamespace(Thread=Worker))
+    app.register_blueprint(create_taobao_blueprint(
+        service=service, accounts=guard, record_model=Record, resolve_data_file=lambda name: tmp_path / name,
+        require_product_revision=Mock(side_effect=AssertionError('本文件的请求不带 expected_record_revision')),
+    ))
+    return SimpleNamespace(client=app.test_client(), ns=ns, service=service, calls=calls, tasks=service.tasks,
                            row=row, image=image, root=tmp_path, browser=browser, gui=gui, app=app)
 
 
@@ -133,7 +154,7 @@ def test_fill_scope_cannot_relax_submit_or_skip_writes(entry, changed):
     response = entry.client.post('/api/taobao/publish/start', json=body)
     assert response.status_code == 400
     assert entry.calls == [] and entry.tasks == {}
-    entry.ns['_taobao_cdp_list_url'].assert_not_called()
+    entry.service.cdp_list_url.assert_not_called()
     entry.browser.assert_not_called()
 
 
@@ -191,7 +212,7 @@ def test_bad_explicit_category_id_fails_before_browser_resolution(entry, categor
     body['product']['category_id'] = category_id
     response = entry.client.post('/api/taobao/publish/start', json=body)
     assert response.status_code == 400
-    entry.ns['_taobao_cdp_list_url'].assert_not_called()
+    entry.service.cdp_list_url.assert_not_called()
     entry.browser.assert_not_called()
 
 
@@ -203,7 +224,7 @@ def test_bad_sku_numbers_fail_before_browser_resolution(entry, field, value):
     response = entry.client.post('/api/taobao/publish/start', json=body)
     assert response.status_code == 400 and not response.json['success']
     assert entry.calls == []
-    entry.ns['_taobao_cdp_list_url'].assert_not_called()
+    entry.service.cdp_list_url.assert_not_called()
     entry.browser.assert_not_called()
 
 
@@ -215,7 +236,7 @@ def test_sku_image_must_be_registered_for_this_product(entry):
     response = entry.client.post('/api/taobao/publish/start', json=body)
     assert response.status_code == 400 and '来源不匹配' in response.json['msg']
     assert entry.calls == []
-    entry.ns['_taobao_cdp_list_url'].assert_not_called()
+    entry.service.cdp_list_url.assert_not_called()
     entry.browser.assert_not_called()
 
 
@@ -229,7 +250,7 @@ def test_existing_browser_is_reused_through_the_same_account_lifecycle(entry):
     entry.browser.assert_called_once_with(
         MATERIAL_CENTER_URL, profile_name='taobao-test')
     # 不在启动前另跑账户身份读取或遍历其它调试浏览器。
-    entry.ns['_taobao_cdp_list_url'].assert_not_called()
+    entry.service.cdp_list_url.assert_not_called()
 
 
 @pytest.mark.parametrize('problem', ['Chrome启动失败', '没有调试地址'])
@@ -247,7 +268,7 @@ def test_browser_start_failure_does_not_create_a_fake_task(entry, problem):
 @pytest.mark.parametrize('platform', ['taobao', 'douyin'])
 @pytest.mark.parametrize('status', ['pending', 'running'])
 def test_in_flight_upload_blocks_browser_navigation_before_it_happens(entry, platform, status):
-    tasks = entry.tasks if platform == 'taobao' else entry.ns['_upload_tasks']
+    tasks = entry.tasks if platform == 'taobao' else entry.ns['upload_service'].tasks
     tasks['existing'] = {'status': status, 'platform': platform}
     response = entry.client.post('/api/taobao/publish/start', json=payload(entry))
     assert response.status_code == 409 and response.json['success'] is False
@@ -296,11 +317,11 @@ def test_worker_uses_scoped_grant_and_truthful_stop_result(entry):
     intent = {'title': '棉袜'}
     fake_pipeline = SimpleNamespace(run_from_record=Mock(return_value=SimpleNamespace(
         to_dict=lambda: {'success': True, 'stopped_before_submit': True, 'steps': []})))
-    entry.ns['_load_taobao_pipeline'] = lambda: fake_pipeline
+    entry.service.load_pipeline = lambda: fake_pipeline
     entry.tasks['t'] = {'status': 'pending', 'steps': []}
-    entry.ns['_run_taobao_publish_task']('t', entry.row, intent,
-                                      {'fill_only': True, 'dry_run': False,
-                                       'stop_before_submit': True, 'cdp_list_url': 'mock'})
+    entry.service.run_publish_task('t', entry.row, intent,
+                                   {'fill_only': True, 'dry_run': False,
+                                    'stop_before_submit': True, 'cdp_list_url': 'mock'})
     kwargs = fake_pipeline.run_from_record.call_args.kwargs
     assert kwargs['authorization'].source == 'desktop_form_filling'
     assert kwargs['authorization'].submit_unlocked is False
@@ -311,8 +332,8 @@ def test_worker_uses_scoped_grant_and_truthful_stop_result(entry):
 
 
 def test_pipeline_import_failure_finishes_task_as_failed(entry):
-    entry.ns['_load_taobao_pipeline'] = Mock(side_effect=ImportError('missing module'))
+    entry.service.load_pipeline = Mock(side_effect=ImportError('missing module'))
     entry.tasks['t'] = {'status': 'pending', 'steps': []}
-    entry.ns['_run_taobao_publish_task']('t', entry.row, {}, {'fill_only': True})
+    entry.service.run_publish_task('t', entry.row, {}, {'fill_only': True})
     assert entry.tasks['t']['status'] == 'failed'
     assert entry.tasks['t']['error'] == 'missing module'

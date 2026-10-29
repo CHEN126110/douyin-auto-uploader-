@@ -9,7 +9,7 @@
 旧实现滚动后只等 `scrollTop` 数值到位就去读行——该判据在赋值瞬间即成立，
 等于没等，于是读到的仍是上一屏的旧行，整轮扫描无进展并最终抛错。
 
-本测试不依赖浏览器：用 AST 把 app.py 里的 `_fill_price_stock_and_delivery`
+本测试不依赖浏览器：用 AST 把 src/sidecar/upload_steps.py 里的 `_fill_price_stock_and_delivery`
 真实源码取出来，在一份模拟 rc-virtual-list 行为（渲染窗口 + 异步提交 + 句柄失效）
 的假 DOM 上执行。
 """
@@ -28,7 +28,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-APP_PY = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
+UPLOAD_STEPS_PY = os.path.join(REPO_ROOT, 'src', 'sidecar', 'upload_steps.py')
 
 
 class StaleElementError(RuntimeError):
@@ -300,8 +300,8 @@ class FakeTab:
 
 
 def _load_fill_function(table):
-    """把 app.py 中的目标函数源码取出来，在桩环境里执行（测的是真实代码）。"""
-    source = io.open(APP_PY, encoding='utf-8').read()
+    """把 upload_steps.py 中的目标函数源码取出来，在桩环境里执行（测的是真实代码）。"""
+    source = io.open(UPLOAD_STEPS_PY, encoding='utf-8').read()
     tree = ast.parse(source)
     wanted = {'_fill_price_stock_and_delivery', '_normalize_upload_numeric_text'}
     # 模块级常量也要一并取出，否则函数内引用会 NameError 并被静默降级到慢路径
@@ -316,7 +316,7 @@ def _load_fill_function(table):
                 if isinstance(target, ast.Name) and target.id in wanted_consts:
                     segments.insert(0, ast.get_source_segment(source, node))
                     found_consts.add(target.id)
-    assert len(segments) == len(wanted) + len(wanted_consts), f'未能从 app.py 提取到 {wanted | wanted_consts}'
+    assert len(segments) == len(wanted) + len(wanted_consts), f'未能从 upload_steps.py 提取到 {wanted | wanted_consts}'
     assert found_consts == wanted_consts, f'缺少模块级常量：{wanted_consts - found_consts}'
 
     from decimal import Decimal, InvalidOperation

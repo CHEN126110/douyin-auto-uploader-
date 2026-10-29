@@ -36,10 +36,9 @@ def test_aggregate_covers_capture_both_platforms_and_image_jobs():
     file = ROOT / 'tauri-app/python-sidecar/app.py'
     node = next(node for node in ast.parse(file.read_text(encoding='utf-8')).body
                 if isinstance(node, ast.FunctionDef) and node.name == '_active_update_tasks')
-    namespace = {'_upload_tasks_lock': threading.Lock(), '_taobao_tasks_lock': threading.Lock(),
-                 '_capture_lock': threading.Lock(), '_capture_running_task_id': 'test',
-                 '_upload_tasks': {'a': {'status': 'running'}, 'b': {'status': 'success'}},
-                 '_taobao_tasks': {'c': {'status': 'pending'}},
+    namespace = {'upload_service': SimpleNamespace(lock=threading.Lock(), tasks={'a': {'status': 'running'}, 'b': {'status': 'success'}}),
+                 'capture_service': SimpleNamespace(lock=threading.Lock(), running_task_id='test'),
+                 'taobao_service': SimpleNamespace(lock=threading.Lock(), tasks={'c': {'status': 'pending'}}),
                  'whitebg_service': SimpleNamespace(active_task_count=lambda: 2)}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(file), 'exec'), namespace)
     assert namespace['_active_update_tasks']() == {'capture': 1, 'douyin_publish': 1, 'taobao_publish': 1, 'image_processing': 2}

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sidecar_function_source import upload_text  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-APP_PATH = PROJECT_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 class UploadPriceStockLocatorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.source = APP_PATH.read_text(encoding="utf-8")
+        # 发布流程分散在 app.py 和 src/sidecar/upload_*.py 里：读全文，按函数名切片的断言才不会找不到
+        cls.source = upload_text()
 
     def test_price_stock_root_supports_new_publish_container(self) -> None:
         self.assertIn("def _find_price_stock_root", self.source)

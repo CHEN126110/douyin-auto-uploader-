@@ -90,15 +90,3 @@ pytest-cache-files-*/
 /.acl_repair/
 /aclprobe-*/
 /tauri-app/python-sidecar/.source-manifest.json
-
-# 与本机绑定的探测残留与回执缓存（2026-10-17 加）
-#   taobao-publisher/aclprobe-<hash>/   ACL 修复探针残留（根目录那份由上面的 /aclprobe-*/ 覆盖）
-#   taobao_folder_import_receipts/      淘宝文件夹导入的本机回执，换机器无意义
-taobao-publisher/aclprobe-*/
-taobao_folder_import_receipts/
-
-# 构建自动生成物（2026-10-17 加）
-#   gen/schemas/ 由 tauri build 自动重建；手写的 capabilities/default.json 不在此列
-/tauri-app/src-tauri/gen/schemas/
-# 只打 nsis（Windows），macOS 图标用不到，白占 1.08 MB
-/tauri-app/src-tauri/icons/icon.icns

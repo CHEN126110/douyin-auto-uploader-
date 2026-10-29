@@ -6,7 +6,7 @@ const targetUrlContains = process.env.TARGET_HINT || "fxg.jinritemai.com";
 
 // Selectors taken verbatim from app.py / src/utils.py publish flow.
 const CODE_XPATHS = {
-  // _PUBLISH_STEP2_SELECTORS (app.py:4884)
+  // _PUBLISH_STEP2_SELECTORS (src/sidecar/upload_steps.py)
   "step2/价格与库存": '//div[@attr-field-id="价格与库存"]',
   "step2/goodsEditScrollContainer-价格库存": '//div[@id="goodsEditScrollContainer-价格库存"]',
   "step2/售卖价": '//div[@attr-field-id="售卖价"]',

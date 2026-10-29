@@ -1,21 +1,6 @@
-# 电商产品发布工具 依赖（仓库根这份比 Sidecar 子集更全）
-Flask==2.3.3
-flask-cors==4.0.0
-playwright==1.40.0
-aiohttp==3.9.1
-requests==2.31.0
-lxml==4.9.3
-Pillow==10.0.1
-python-dateutil==2.8.2
-psutil==5.9.8
-
-# 白底图语义抠图（src/whitebg）。装上才有「生成白底图」功能；
-# 不装 sidecar 照样启动，接口会返回「缺少运行依赖」而不是崩掉。
-# 代价：onnxruntime + scipy + numpy 打进安装包大约多 280MB，
-# 模型（birefnet-general 927MB + CLIP 147MB）不打包，运行时从数据目录读，
-# 路径规则见 src/whitebg/paths.py。
-rembg>=2.0.80              # 只用它的 new_session/remove，本体 0.3MB，不带 opencv
-onnxruntime>=1.17.0        # matte 与 CLIP 推理
-tokenizers>=0.15.0         # CLIP 文本侧分词（只在首次生成 embedding 缓存时用到）
-scipy>=1.11.0              # 连通域标记、距离变换、box filter
-numpy>=1.26.0
+# -*- coding: utf-8 -*-
+# 后端依赖只维护一份：tauri-app/python-sidecar/requirements.txt（CI 与打包都用它）。
+# 这里只转发，避免两份清单再次分叉。原内容是 v1.0 淘宝采集系统的遗留：
+# 缺 peewee / DrissionPage / Flask-JWT-Extended / ruamel.yaml 等 sidecar 启动必需的依赖，
+# 却多出没有任何代码使用的 lxml / python-dateutil。
+-r tauri-app/python-sidecar/requirements.txt

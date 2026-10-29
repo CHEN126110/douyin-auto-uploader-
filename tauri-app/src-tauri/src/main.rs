@@ -11,10 +11,14 @@ use std::fs::File;
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
+
+#[cfg(windows)]
+mod event_target_guard;
+mod ui_watchdog;
 
 #[cfg(all(target_os = "windows", not(debug_assertions)))]
 use std::os::windows::process::CommandExt;
@@ -130,6 +134,50 @@ fn runtime_log_path(app: &tauri::AppHandle) -> PathBuf {
 
 fn log_runtime(app: &tauri::AppHandle, message: &str) {
     append_log_line(&runtime_log_path(app), message);
+}
+
+#[cfg(windows)]
+fn current_thread_id() -> u32 {
+    unsafe { windows::Win32::System::Threading::GetCurrentThreadId() }
+}
+
+#[cfg(not(windows))]
+fn current_thread_id() -> u32 {
+    0
+}
+
+// ui_watchdog 面包屑里的事件名。WindowEvent / RunEvent 都是 non_exhaustive，没列到的归入 other。
+fn window_event_name(event: &tauri::WindowEvent) -> &'static str {
+    use tauri::{DragDropEvent, WindowEvent};
+    match event {
+        WindowEvent::Resized(_) => "WindowEvent::Resized",
+        WindowEvent::Moved(_) => "WindowEvent::Moved",
+        WindowEvent::CloseRequested { .. } => "WindowEvent::CloseRequested",
+        WindowEvent::Destroyed => "WindowEvent::Destroyed",
+        WindowEvent::Focused(true) => "WindowEvent::Focused(true)",
+        WindowEvent::Focused(false) => "WindowEvent::Focused(false)",
+        WindowEvent::ScaleFactorChanged { .. } => "WindowEvent::ScaleFactorChanged",
+        WindowEvent::DragDrop(DragDropEvent::Enter { .. }) => "WindowEvent::DragDrop(Enter)",
+        WindowEvent::DragDrop(DragDropEvent::Over { .. }) => "WindowEvent::DragDrop(Over)",
+        WindowEvent::DragDrop(DragDropEvent::Drop { .. }) => "WindowEvent::DragDrop(Drop)",
+        WindowEvent::DragDrop(DragDropEvent::Leave) => "WindowEvent::DragDrop(Leave)",
+        WindowEvent::ThemeChanged(_) => "WindowEvent::ThemeChanged",
+        _ => "WindowEvent::other",
+    }
+}
+
+fn run_event_name(event: &tauri::RunEvent) -> &'static str {
+    use tauri::RunEvent;
+    match event {
+        RunEvent::Ready => "RunEvent::Ready",
+        RunEvent::Resumed => "RunEvent::Resumed",
+        RunEvent::MainEventsCleared => "RunEvent::MainEventsCleared",
+        RunEvent::ExitRequested { .. } => "RunEvent::ExitRequested",
+        RunEvent::Exit => "RunEvent::Exit",
+        RunEvent::WindowEvent { event, .. } => window_event_name(event),
+        RunEvent::WebviewEvent { .. } => "RunEvent::WebviewEvent",
+        _ => "RunEvent::other",
+    }
 }
 
 #[cfg(not(debug_assertions))]
@@ -437,6 +485,12 @@ async fn check_backend_status() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+fn write_clipboard_text(text: String) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+    clipboard.set_text(text).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -677,6 +731,7 @@ fn main() {
             stop_python_backend,
             check_backend_status,
             open_folder,
+            write_clipboard_text,
             get_app_info
         ])
         .setup(|app| {
@@ -706,6 +761,33 @@ fn main() {
             let window = app.get_webview_window("main").unwrap();
             window.show().unwrap();
             log_runtime(&app.handle(), "main window shown");
+
+            // 保护 tao 的内部事件窗口不被外部 WM_CLOSE 销毁：主窗口最小化后 Process.MainWindowHandle /
+            // CloseMainWindow() 会指向它，销毁它之后应用再也退不出去；原因见 event_target_guard.rs 顶部说明。
+            #[cfg(windows)]
+            {
+                let guard_log_path = runtime_log_path(&app.handle());
+                event_target_guard::install(Arc::new(move |message| {
+                    append_log_line(&guard_log_path, message)
+                }));
+            }
+
+            // 界面事件循环存活监测：只写证据日志，不改变任何流程；原因见 ui_watchdog.rs 顶部说明。
+            // setup 跑在 UI 线程上，所以这里取到的线程 ID / 窗口句柄就是事件循环线程的。
+            #[cfg(windows)]
+            let watchdog_window_handle = window.hwnd().map(|hwnd| hwnd.0 as isize).unwrap_or(0);
+            #[cfg(not(windows))]
+            let watchdog_window_handle = 0isize;
+            let watchdog_log_path = runtime_log_path(&app.handle());
+            let watchdog_app = app.handle().clone();
+            ui_watchdog::start(ui_watchdog::Config {
+                log: Arc::new(move |message| append_log_line(&watchdog_log_path, message)),
+                post_to_ui_thread: Box::new(move |task| {
+                    watchdog_app.run_on_main_thread(task).is_ok()
+                }),
+                window_handle: watchdog_window_handle,
+                ui_thread_id: current_thread_id(),
+            });
 
             #[cfg(debug_assertions)]
             {
@@ -829,13 +911,17 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            ui_watchdog::note(run_event_name(&event));
             match event {
                 tauri::RunEvent::ExitRequested { .. } => {
+                    // 退出清理会阻塞 UI 线程数秒，不能被当成事件循环停摆。
+                    ui_watchdog::stop();
                     println!("Application exit requested, cleaning up resources...");
                     log_runtime(&app_handle, "run event exit requested received");
                     cleanup_python_process(&app_handle, "run event exit requested");
                 }
                 tauri::RunEvent::Exit => {
+                    ui_watchdog::stop();
                     println!("Application exiting, final cleanup...");
                     log_runtime(&app_handle, "run event exit received");
                     cleanup_python_process(&app_handle, "run event exit");

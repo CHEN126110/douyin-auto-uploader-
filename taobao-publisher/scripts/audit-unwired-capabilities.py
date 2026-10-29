@@ -30,11 +30,14 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import sidecar_source as sidecar  # noqa: E402  —— 路由分散在 app.py 和 src/sidecar/ 里，统一经它读取
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO / "tauri-app" / "src"
 API_TS = SRC / "services" / "api.ts"
-APP = REPO / "tauri-app" / "python-sidecar" / "app.py"
 
 #: 定义体里会出现的普通单词，别当成方法名。
 NOT_NAMES = {"async", "if", "return", "const", "let", "export", "import",
@@ -136,11 +139,7 @@ print("=" * 78)
 print("反方向：Sidecar 的淘宝/店铺路由，前端调过吗？")
 print("=" * 78)
 
-app_source = APP.read_text(encoding="utf-8")
-routes = []
-for match in re.finditer(r"@app\.(?:route|get|post)\('(/api/(?:taobao|shop)[^']*)'",
-                         app_source):
-    routes.append(match.group(1))
+routes = sidecar.route_paths(r"^/api/(?:taobao|shop)")
 
 frontend_text = "\n".join(corpus.values()) + api_source
 

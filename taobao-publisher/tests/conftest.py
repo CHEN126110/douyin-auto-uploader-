@@ -13,6 +13,10 @@ from pathlib import Path
 SUBPROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(SUBPROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(SUBPROJECT_ROOT))
+# scripts/sidecar_source.py：统一读取 Sidecar（app.py + src/sidecar/）与前端拆分后的源码，见该文件的说明
+SCRIPTS_DIR = SUBPROJECT_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 import ipaddress

@@ -1,9 +1,9 @@
-# 抖音袜子发布工具 v4.0 - 开发环境配置脚本 (PowerShell)
+# 电商产品发布工具 v4.0 - 开发环境配置脚本 (PowerShell)
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================"
-Write-Host "  抖音袜子发布工具 v4.0 开发环境配置"
+Write-Host "  电商产品发布工具 v4.0 开发环境配置"
 Write-Host "========================================"
 Write-Host ""
 

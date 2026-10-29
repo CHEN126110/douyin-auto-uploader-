@@ -734,6 +734,54 @@ class ExpectedFieldValuesTest(unittest.TestCase):
             page.pick_freight_option(client, "同名模板")
 
 
+class ReadyPollingTest(unittest.TestCase):
+    def test_form_waits_for_a_stable_nonzero_row_count(self):
+        client = FakeClient([{"visible": 1}, {"visible": 2}, {"visible": 2}])
+        with mock.patch("taobao_publish.page.time.sleep"):
+            self.assertEqual(page.wait_for_publish_form(client, timeout=1), 2)
+        self.assertEqual(len(client.expressions), 3)
+
+    def test_exact_category_candidate_polls_until_unique(self):
+        client = FakeClient([
+            {"target": "甲", "hitCount": 0, "candidates": []},
+            {"target": "甲", "hitCount": 1, "candidates": ["甲"]},
+        ])
+        with mock.patch("taobao_publish.page.time.sleep"):
+            result = page.find_exact_category_candidate(client, "甲", timeout=1)
+        self.assertEqual(result["hitCount"], 1)
+        self.assertEqual(len(client.expressions), 2)
+
+    def test_category_tab_waits_until_the_unique_tab_is_rendered(self):
+        client = FakeClient([
+            {"ok": False, "reason": "no_match", "tabs": ["中筒袜"]},
+            {"ok": True, "tab": "类目"},
+        ])
+        with mock.patch("taobao_publish.page.time.sleep"):
+            result = page.switch_category_tab(client, "类目", wait=0, timeout=1)
+        self.assertEqual(result["tab"], "类目")
+        self.assertEqual(len(client.expressions), 2)
+
+    def test_brand_candidate_polls_without_repeating_the_search(self):
+        client = FakeClient([
+            {"ok": True}, {"ok": True, "typed": "B"},
+            {"ok": False, "reason": "no_match", "shown": []},
+            {"ok": True, "picked": "B"},
+        ])
+        with mock.patch("taobao_publish.page.time.sleep"):
+            result = page.select_brand(client, "B", wait=0, candidate_timeout=1)
+        self.assertEqual(result["picked"], "B")
+        self.assertEqual(len(client.expressions), 4)
+
+    def test_freight_options_poll_until_the_list_is_rendered(self):
+        client = FakeClient([
+            {"ok": True, "options": []},
+            {"ok": True, "options": [{"text": "极兔快递"}]},
+        ])
+        with mock.patch("taobao_publish.page.time.sleep"):
+            self.assertEqual(page.read_freight_options(client, timeout=1), ["极兔快递"])
+        self.assertEqual(len(client.expressions), 2)
+
+
 class StageFillFreightTest(unittest.TestCase):
     def _ctx(self, name=""):
         item = PublishItem(record_id=1, record_name="x", title="标题", freight_template_name=name)
@@ -767,7 +815,8 @@ class StageFillFreightTest(unittest.TestCase):
             {"ok": True, "current": "极兔快递"},
             {"ok": False, "reason": "no_visible_dropdown"},
         ])
-        with mock.patch.object(stages, "_open_publish_page", return_value=client):
+        with mock.patch.object(stages, "_open_publish_page", return_value=client), \
+                mock.patch.object(page, "read_freight_options", return_value=[]):
             outcome = stages.stage_fill_freight(self._ctx("极兔快递"))
         self.assertFalse(outcome.ok)
         self.assertEqual(outcome.error_code, "EVIDENCE_INSUFFICIENT")

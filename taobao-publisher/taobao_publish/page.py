@@ -40,7 +40,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import locating
 from .constants import PUBLISH_FORM_URL, PUBLISH_FORM_CATEGORY_PARAM
@@ -827,29 +827,35 @@ def build_search_in_brand_dropdown_expression(text: str) -> str:
     )
 
 
-def select_brand(client: "PageClient", brand_name: str, *, wait: float = 1.5) -> Dict[str, Any]:
-    """在下拉里选中品牌。
-
-    流程：展开 → （可选）在搜索框输入 → 点中文本精确等于品牌名的选项。
-
-    **精确匹配**：品牌选错会直接导致商品挂错品牌，属于「发出去才发现」的错误。
-    命中 0 或多数都拒绝，不做「最接近」的妥协。
-    """
+def select_brand(client: "PageClient", brand_name: str, *, wait: float = 1.5,
+                 candidate_timeout: float = 0.0) -> Dict[str, Any]:
+    """精确选择品牌；可轮询搜索框和候选就绪，但不重复点击候选。"""
 
     opened = client.evaluate(build_select_brand_expression(brand_name))
     if not isinstance(opened, dict) or not opened.get("ok"):
         raise CandidateNotFound(
             "展开品牌下拉失败：{}".format(json.dumps(opened, ensure_ascii=False)[:160]))
 
-    time.sleep(wait)
-    client.evaluate(build_search_in_brand_dropdown_expression(brand_name))
-    time.sleep(wait)
+    time.sleep(max(0.0, wait))
+    deadline = time.monotonic() + max(0.0, candidate_timeout)
+    while True:
+        searched = client.evaluate(build_search_in_brand_dropdown_expression(brand_name))
+        if (isinstance(searched, dict) and searched.get('ok')) or time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
+    if candidate_timeout > 0 and (not isinstance(searched, dict) or not searched.get('ok')):
+        raise CandidateNotFound('品牌 {!r} 的搜索框在限定时间内未就绪'.format(brand_name))
+    time.sleep(max(0.0, wait))
 
-    picked = client.evaluate(build_pick_brand_option_expression(brand_name))
-    if not isinstance(picked, dict):
-        raise PageError("选择品牌 {!r} 时页面没有返回可解析的结果".format(brand_name))
+    while True:
+        picked = client.evaluate(build_pick_brand_option_expression(brand_name))
+        if not isinstance(picked, dict):
+            raise PageError("选择品牌 {!r} 时页面没有返回可解析的结果".format(brand_name))
+        retryable = picked.get('reason') in ('no_match', 'options_root_not_unique')
+        if picked.get('ok') or not retryable or time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
     if not picked.get("ok"):
-        # 搜过还是没命中，报出当时可见的选项，便于判断是名字不对还是列表没刷新
         raise CandidateNotFound(
             "品牌 {!r} 未在下拉中精确命中（{}）；当时可见：{}".format(
                 brand_name, picked.get("reason"),
@@ -897,7 +903,7 @@ def build_search_category_expression(keyword: str) -> str:
 """.format(keyword=_value_literal(keyword), input_sel=json.dumps(CATEGORY_SEARCH_INPUT))
 
 
-def search_category(client: "PageClient", keyword: str) -> Dict[str, Any]:
+def search_category(client: "PageClient", keyword: str, *, wait: float = 3.0) -> Dict[str, Any]:
     """在「搜索发品」框里输入关键词并点「搜索」。"""
 
     expression = build_search_category_expression(keyword)
@@ -906,7 +912,7 @@ def search_category(client: "PageClient", keyword: str) -> Dict[str, Any]:
     if not isinstance(payload, dict) or not payload.get("ok"):
         raise PageError("搜索发品失败：{}".format(
             json.dumps(payload, ensure_ascii=False)[:160] if payload else "无返回"))
-    time.sleep(3.0)
+    time.sleep(max(0.0, wait))
     return {"step": "search", "keyword": keyword}
 
 
@@ -934,16 +940,23 @@ return {{ ok: false, reason: hits.length === 0 ? 'no_match' : 'ambiguous',
 """.format(name=_value_literal(tab_name))
 
 
-def switch_category_tab(client: "PageClient", tab_name: str) -> Dict[str, Any]:
-    """切到类目页的结果 tab（全部 / 类目 / 我的商品）。"""
+def switch_category_tab(client: "PageClient", tab_name: str, *, wait: float = 3.0,
+                        timeout: float = 0.0) -> Dict[str, Any]:
+    """等待唯一结果页签出现后点击一次；多命中仍立即拒绝。"""
 
     expression = build_switch_category_tab_expression(tab_name)
-
-    payload = client.evaluate(expression)
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        payload = client.evaluate(expression)
+        retryable = isinstance(payload, dict) and payload.get('reason') == 'no_match'
+        if ((isinstance(payload, dict) and payload.get('ok')) or not retryable
+                or time.monotonic() >= deadline):
+            break
+        time.sleep(0.05)
     if not isinstance(payload, dict) or not payload.get("ok"):
         raise PageError("切换 tab {!r} 失败：{}".format(
             tab_name, json.dumps(payload, ensure_ascii=False)[:160] if payload else "无返回"))
-    time.sleep(3.0)
+    time.sleep(max(0.0, wait))
     return {"step": "switch_tab", "tab": tab_name}
 
 
@@ -967,54 +980,57 @@ def build_find_exact_candidate_expression(path_text: str) -> str:
 """.format(target=_value_literal(path_text), path_sel=json.dumps(CATEGORY_CANDIDATE_PATH_SELECTOR))
 
 
-def find_exact_category_candidate(client: "PageClient", path_text: str) -> Dict[str, Any]:
-    """在候选里找**完整路径精确相等**的那一个。命中 0 或多个都抛错。
-
-    为什么必须精确：实测「一次性袜子」同时是
-    ``户外/登山/野营/旅行用品>…>一次性袜子`` 与
-    ``女士内衣/男士内衣/家居服>…>一次性袜子`` 的结尾，
-    用包含匹配会随机命中其中一个——**发错类目**。
-    """
+def find_exact_category_candidate(client: "PageClient", path_text: str, *,
+                                  timeout: float = 0.0, interval: float = 0.1) -> Dict[str, Any]:
+    """按完整路径精确匹配；等待也只认唯一候选，不按列表顺序猜。"""
 
     expression = build_find_exact_candidate_expression(path_text)
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        payload = client.evaluate(expression)
+        if not isinstance(payload, dict):
+            raise PageError("读取类目候选失败")
+        if payload.get("hitCount") == 1:
+            return payload
+        if time.monotonic() >= deadline:
+            candidates = payload.get("candidates") or []
+            raise CandidateNotFound(
+                "目标类目 {!r} 在候选里精确命中 {} 个；当前候选项 {} 个：{}".format(
+                    path_text, payload.get("hitCount"), len(candidates),
+                    "；".join(candidates[:9]) or "（空）"))
+        time.sleep(max(0.01, interval))
 
-    payload = client.evaluate(expression)
-    if not isinstance(payload, dict):
-        raise PageError("读取类目候选失败")
-    if payload.get("hitCount") != 1:
-        candidates = payload.get("candidates") or []
-        raise CandidateNotFound(
-            "目标类目 {!r} 在候选里精确命中 {} 个；当前候选项 {} 个：{}".format(
-                path_text, payload.get("hitCount"), len(candidates),
-                "；".join(candidates[:9]) or "（空）"))
-    return payload
 
-
-def find_leaf_category_candidate(client: "PageClient", leaf_name: str) -> Dict[str, Any]:
-    """从实际搜索候选中按末级名称唯一匹配，完整路径只取页面原文。"""
+def find_leaf_category_candidate(client: "PageClient", leaf_name: str, *,
+                                 timeout: float = 0.0, interval: float = 0.1) -> Dict[str, Any]:
+    """等待末级名称在实际候选中唯一出现，完整路径只取页面原文。"""
 
     leaf_name = str(leaf_name or "").strip()
     if not leaf_name:
         raise CandidateNotFound("没有明确的末级类目名称，无法选择候选")
-    # 与完整路径查询使用同一来源；读取候选不会点击或替用户推断上级类目。
-    payload = client.evaluate(build_find_exact_candidate_expression(leaf_name))
-    if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
-        raise PageError("读取类目候选失败")
-    candidates = payload["candidates"]
-    if any(not isinstance(text, str) for text in candidates):
-        raise PageError("类目候选不是有效路径文本")
-    hits = []
-    for text in candidates:
-        path = [segment.strip() for segment in text.split(">")]
-        if path[-1] == leaf_name:
-            if any(not segment for segment in path):
-                raise PageError("匹配到的类目候选包含空路径段，无法确认完整路径")
-            hits.append({"path_text": text, "path": path})
-    if len(hits) != 1:
-        raise CandidateNotFound(
-            "末级类目 {!r} 在候选里精确命中 {} 个；需要唯一完整路径，当前候选：{}".format(
-                leaf_name, len(hits), "；".join(candidates[:9]) or "（空）"))
-    return dict(hits[0], target=leaf_name, hitCount=1, candidates=candidates)
+    expression = build_find_exact_candidate_expression(leaf_name)
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        payload = client.evaluate(expression)
+        if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
+            raise PageError("读取类目候选失败")
+        candidates = payload["candidates"]
+        if any(not isinstance(text, str) for text in candidates):
+            raise PageError("类目候选不是有效路径文本")
+        hits = []
+        for text in candidates:
+            path = [segment.strip() for segment in text.split(">")]
+            if path[-1] == leaf_name:
+                if any(not segment for segment in path):
+                    raise PageError("匹配到的类目候选包含空路径段，无法确认完整路径")
+                hits.append({"path_text": text, "path": path})
+        if len(hits) == 1:
+            return dict(hits[0], target=leaf_name, hitCount=1, candidates=candidates)
+        if time.monotonic() >= deadline:
+            raise CandidateNotFound(
+                "末级类目 {!r} 在候选里精确命中 {} 个；需要唯一完整路径，当前候选：{}".format(
+                    leaf_name, len(hits), "；".join(candidates[:9]) or "（空）"))
+        time.sleep(max(0.01, interval))
 
 
 def read_selected_category(client: "PageClient") -> List[str]:
@@ -1400,17 +1416,23 @@ def open_freight_dropdown(client: "PageClient", *, wait: float = 1.5) -> Dict[st
         raise CandidateNotFound(
             "展开运费模板下拉失败：{}".format(
                 json.dumps(payload, ensure_ascii=False)[:160] if payload else "无返回"))
-    time.sleep(wait)
+    time.sleep(max(0.0, wait))
     return payload
 
 
-def read_freight_options(client: "PageClient") -> List[str]:
-    """读下拉里的全部模板名。读不到返回空列表（调用方据此报错）。"""
+def read_freight_options(client: "PageClient", *, timeout: float = 0.0,
+                         interval: float = 0.05) -> List[str]:
+    """读取模板名；等待时以真实候选出现为就绪信号。"""
 
-    payload = client.evaluate(build_read_freight_options_expression())
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        return []
-    return [str(o["text"]) for o in (payload.get("options") or []) if o.get("text")]
+    expression = build_read_freight_options_expression()
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        payload = client.evaluate(expression)
+        options = ([str(o["text"]) for o in (payload.get("options") or []) if o.get("text")]
+                   if isinstance(payload, dict) and payload.get("ok") else [])
+        if options or time.monotonic() >= deadline:
+            return options
+        time.sleep(max(0.01, interval))
 
 
 def pick_freight_option(client: "PageClient", name: str) -> Dict[str, Any]:
@@ -2186,13 +2208,17 @@ def read_sku_drawer_state(client: "PageClient") -> Dict[str, Any]:
 
 
 def open_sku_drawer(client: "PageClient", *, wait: float = 3.0) -> Dict[str, Any]:
-    """点「+ 创建规格」展开抽屉。**只展开，不创建。**"""
+    """点「+ 创建规格」展开抽屉。**只展开，不创建。**
+
+    抽屉 DOM 出现不等于交互已初始化；提前填写会让首次失焦退回标准模式。
+    因此这里保留初始化等待，后续规格值、图片与表格仍按真实状态回读。
+    """
 
     payload = client.evaluate(build_open_sku_drawer_expression())
     if not isinstance(payload, dict) or not payload.get("ok"):
         raise CandidateNotFound("展开销售规格抽屉失败：{}".format(
             json.dumps(payload, ensure_ascii=False)[:160] if payload else "无返回"))
-    time.sleep(wait)
+    time.sleep(max(0.0, wait))
     return payload
 
 
@@ -2707,25 +2733,24 @@ def build_count_publish_rows_expression() -> str:
 
 
 def wait_for_publish_form(client: "PageClient", *, timeout: float = 30.0,
-                          interval: float = 1.0) -> int:
-    """等**填写页真正渲染出来**，返回可见的填写行数。
+                          interval: float = 0.1) -> int:
+    """等填写行出现且数量稳定，返回可见行数；不在每个阶段重复固定等待。
 
-    为什么需要它：`select_category` 选中类目后会**导航到填写页**，
-    而紧接着的阶段可能在页面还没渲染完时就开始找元素——
-    实测 46 毫秒后就去找主图区，报 `no_area`（而页面几秒后完全正常）。
+    首次导航仍由本函数等待；具体属性、图片和 SKU 另有各自的就绪与回读守卫。
+    连续两次读到相同的非零行数才返回，避免把渲染中的第一行当完整表单。
     """
 
-    deadline = time.time() + max(3.0, timeout)
+    deadline = time.monotonic() + max(0.0, timeout)
     last = 0
-    while time.time() < deadline:
+    while True:
         payload = client.evaluate(build_count_publish_rows_expression())
-        last = int((payload or {}).get("visible") or 0)
-        if last > 0:
-            # 再多给一拍，让主图区这类靠后渲染的区块也出来
-            time.sleep(1.5)
-            return last
-        time.sleep(interval)
-    return last
+        current = int((payload or {}).get("visible") or 0)
+        if current > 0 and current == last:
+            return current
+        last = current
+        if time.monotonic() >= deadline:
+            return 0
+        time.sleep(max(0.01, interval))
 
 
 def build_open_media_popup_expression(image_kind: str = "1:1主图") -> str:
@@ -2953,6 +2978,101 @@ def open_media_popup(client: "PageClient", *, image_kind: str = "1:1主图",
             json.dumps(payload, ensure_ascii=False)[:160] if payload else "无返回"))
     time.sleep(wait)
     return payload
+
+
+class MainBatchUnsupportedError(PageError):
+    """仅在尚未选图时，允许回退到逐张路径的主图多选不支持。"""
+    code = 'MULTI_SELECT_UNSUPPORTED'
+
+
+def configure_main_image_multi_select(client: "PageClient", max_images: int) -> Dict[str, Any]:
+    """确认父页面**原生**打开的是主图多选实例，最多 5 张。
+
+    不能只改 iframe 的 ``max`` / ``realtime``：父组件的单槽位配置仍会只接收
+    第一项（2026-10-29 真机：选图器传出 5 张，主图只进 1 张）。因此这里不改
+    URL、不改父组件内部配置；当前原生单选页面直接报不支持，由调用方安全回退。
+    """
+    if type(max_images) is not int or not 1 <= max_images <= 5:
+        raise MainBatchUnsupportedError('主图多选数量必须是 1 到 5 张')
+    original = client.evaluate(
+        '(()=>{const frame=Array.from(document.querySelectorAll("iframe")).find(el=>'
+        'String(el.src||"").includes("sucai-selector-ng"));return frame?frame.src:"";})()')
+    if not isinstance(original, str) or 'sucai-selector-ng' not in original:
+        raise MainBatchUnsupportedError('当前主图选图器不是支持的多选实例')
+    query = dict(parse_qsl(urlsplit(original).query, keep_blank_values=True))
+    try:
+        native_capacity = int(query.get('max') or '1')
+    except (TypeError, ValueError):
+        native_capacity = 0
+    native_multi = (native_capacity >= max_images
+                    and query.get('realtime', '').lower() == 'false'
+                    and query.get('realTimeSelect', '').lower() == 'false')
+    if not native_multi:
+        raise MainBatchUnsupportedError('当前主图是原生单槽位选图，保留逐张兼容路径')
+    context_id = media_iframe_context(client)
+    deadline = time.time() + 6.0
+    while True:
+        try:
+            ready = client.evaluate(
+                'Array.from(document.querySelectorAll("button")).some(button=>'
+                'button.className.includes("Footer_selectOk")&&(button.innerText||"").trim().startsWith("确定")'
+                '&&button.getBoundingClientRect().height>0&&button.disabled!==true)',
+                context_id=context_id,
+            )
+            if ready is True:
+                return {'context_id': context_id, 'changed': False,
+                        'original_src': original, 'multi_src': original}
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            raise MainBatchUnsupportedError('当前主图选图器没有提供批量确认入口')
+        time.sleep(0.1)
+
+
+def select_main_images_batch(client: "PageClient", main_receipts, *, context_id: int) -> Dict[str, Any]:
+    """在同一目录按 pictureId 批量勾选主图，点一次确定并返回顺序化 URL。
+
+    缺 ID 或目录不一致时，在任何点击前抛出 ``MainBatchUnsupportedError``，让调用方
+    安全回退逐张路径。开始选图后的缺图、身份不符、确认失败都不降级，不掩盖问题。
+    """
+    receipts = list(main_receipts or [])
+    if not receipts or len(receipts) > 5:
+        raise MainBatchUnsupportedError('主图多选只支持 1 到 5 张')
+    picture_ids = [str(receipt.get('picture_id') or '') for receipt in receipts]
+    if any(not picture_id for picture_id in picture_ids) or len(set(picture_ids)) != len(picture_ids):
+        raise MainBatchUnsupportedError('全部主图都必须具有唯一 pictureId 才能多选')
+    folders = {tuple(receipt.get('folder_path') or []) for receipt in receipts}
+    if len(folders) != 1 or not next(iter(folders)):
+        raise MainBatchUnsupportedError('只有同一目录下的主图才能一次多选')
+
+    from .media_library import open_directory, pick_media_by_id_with_requery
+    configured = configure_main_image_multi_select(client, len(receipts))
+    context_id = configured['context_id']
+    folder = list(next(iter(folders)))
+    actual_folder = open_directory(client, folder, context_id=context_id, expected_images=receipts)
+    for receipt in receipts:
+        receipt['folder_path'] = list(actual_folder)
+    expected_urls = {str(receipt['picture_id']): receipt['url'] for receipt in receipts}
+    picked = pick_media_by_id_with_requery(
+        client, picture_ids, context_id=context_id, select=True, wait=10.0,
+        stage='upload_images', expected_urls=expected_urls,
+    )
+    selected = picked.get('selected') or []
+    if len(selected) != len(receipts) or any(not entry.get('checked') for entry in selected):
+        raise FieldMismatchError('主图多选后仍有未勾选项，未点击确定')
+    confirmation = confirm_media_selection(
+        client, context_id=context_id, stage='upload_images', target=_picture_id_target(picture_ids),
+    )
+    selected_urls = [str(entry.get('url') or '') for entry in selected]
+    if len(selected_urls) != len(receipts) or any(not url for url in selected_urls):
+        raise FieldMismatchError('主图多选没有返回完整的素材 URL 列表')
+    return {
+        'selected': [receipt['name'] for receipt in receipts],
+        'selected_urls': selected_urls,
+        'context_id': context_id,
+        'confirmation': confirmation,
+        'picked': picked,
+    }
 
 
 def read_media_popup(client: "PageClient") -> Dict[str, Any]:
@@ -4941,12 +5061,7 @@ def choose_radio_by_text(client: "PageClient", label: str, option_text: str, *,
                 point = again["point"]
         if not point:
             raise PageError("选中 {!r} 的 {!r} 失败：没有拿到落点".format(label, option_text))
-        for event_type, extra in (("mouseMoved", {}), ("mousePressed", {"clickCount": 1}),
-                                  ("mouseReleased", {"clickCount": 1})):
-            params = {"type": event_type, "x": point["x"], "y": point["y"], "button": "left"}
-            params.update(extra)
-            client.send("Input.dispatchMouseEvent", params)
-            time.sleep(0.15)
+        _click_point(client, point, settle=0, event_interval=0.05)
     finally:
         if suspended:
             try:
@@ -4965,7 +5080,7 @@ def choose_radio_by_text(client: "PageClient", label: str, option_text: str, *,
             actual = bool(state.get("checked"))
             if actual:
                 break
-        time.sleep(0.5)
+        time.sleep(0.1)
     if actual is not True:
         raise FieldMismatchError(
             "{!r} 的 {!r} 回读仍不是选中状态（实际 checked={}）".format(label, option_text, actual))
@@ -4973,8 +5088,9 @@ def choose_radio_by_text(client: "PageClient", label: str, option_text: str, *,
             "options": located.get("options")}
 
 
-def _click_point(client: "PageClient", point, *, settle: float = 0.6) -> None:
-    """在页面坐标处发一次**真实鼠标**点击（移动 → 按下 → 抬起）。"""
+def _click_point(client: "PageClient", point, *, settle: float = 0.6,
+                 event_interval: float = 0.12) -> None:
+    """真实鼠标点击；事件间隔可配置，默认时序保持原兼容路径。"""
 
     if not isinstance(point, dict) or "x" not in point:
         raise PageError("缺少可点击的坐标")
@@ -4984,7 +5100,7 @@ def _click_point(client: "PageClient", point, *, settle: float = 0.6) -> None:
         params = {"type": event_type, "x": point["x"], "y": point["y"], "button": "left"}
         params.update(extra)
         client.send("Input.dispatchMouseEvent", params)
-        time.sleep(0.12)
+        time.sleep(max(0.0, event_interval))
     time.sleep(max(0.0, settle))
 
 
@@ -5069,10 +5185,16 @@ def open_sku_image_picker(client: "PageClient", spec_name: str, *, wait: float =
                 time.sleep(0.3)
                 points = client.evaluate(build_sku_row_points_expression(spec_name),
                                          timeout=timeout)
-            _click_point(client, points.get("input"))            # 聚焦
+            # 规格名称的聚焦/失焦保留实测可用的鼠标时序，不能为提速改变模式状态。
+            _click_point(client, points.get("input"))
             if points.get("blank"):
-                _click_point(client, points["blank"])             # 失焦（平台据此"认下"这一行）
-            _click_point(client, points.get("slot"), settle=1.0)  # 点图片落点
+                _click_point(client, points["blank"])
+                # 失焦会让 React 重绘行；重新取落点，不能用重绘前的旧坐标点击。
+                refreshed = client.evaluate(build_sku_row_points_expression(spec_name), timeout=timeout)
+                if not isinstance(refreshed, dict) or refreshed.get('ok') is not True:
+                    raise PageError('规格名称失焦后无法重新确认图片落点：' + str(refreshed))
+                points = refreshed
+            _click_point(client, points.get("slot"), settle=1.0)
         finally:
             if suspended:
                 try:
@@ -5464,7 +5586,7 @@ def ensure_media_popup_closed(client, *, timeout=3.0):
 
 def wait_for_main_image_slots(client: "PageClient", expected_filled: int, *,
                               image_kind: str = "1:1主图", timeout: float = 20.0,
-                              interval: float = 1.0,
+                              interval: float = 0.1,
                               expected_urls: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     """等主图区的**已填位数**达到期望值。
 

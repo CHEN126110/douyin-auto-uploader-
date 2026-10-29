@@ -6,10 +6,10 @@ import sys
 import unittest
 from pathlib import Path
 
-SIDECAR_DIR = Path(__file__).resolve().parents[1] / "tauri-app" / "python-sidecar"
-sys.path.insert(0, str(SIDECAR_DIR))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
-from capture_url_utils import (  # noqa: E402
+from src.capture_url_utils import (  # noqa: E402
     capture_url_host,
     extract_first_capture_url,
     is_supported_capture_host,

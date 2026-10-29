@@ -6,10 +6,9 @@
  * 切换、添加、刷新收在原有下拉菜单中。
  */
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import axios from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, Check, Close, Plus, Refresh } from "@element-plus/icons-vue";
-import { api } from "@/services/api";
+import { api, apiErrorMessage, apiErrorStatus } from "@/services/api";
 import type { ApiResponse, ShopProfile, ShopSessionState, ShopSwitchResult, TargetPublishPlatform } from "@/types";
 
 const session = ref<ShopSessionState | null>(null);
@@ -18,6 +17,7 @@ const session = ref<ShopSessionState | null>(null);
 const checked = ref(false);
 const profiles = ref<ShopProfile[]>([]);
 const loading = ref(false);
+const restoring = ref(false);
 const switching = ref(false);
 const sessionError = ref("");
 const profileError = ref("");
@@ -107,17 +107,11 @@ function isCurrentAccountAction(version: number) {
   return componentActive && version === accountActionVersion;
 }
 
-function actionError(error: unknown): string {
-  if (axios.isAxiosError<ApiResponse>(error)) {
-    return error.response?.data?.message || error.response?.data?.msg || error.message;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
 const statusText = computed(() => {
   const pending = pendingAccountAction.value;
   const state = session.value;
   if (switching.value) return "正在处理账户…";
+  if (restoring.value) return "正在恢复账户浏览器…";
   // 刚添加/切换完还在登录，这行字就是用户此刻唯一需要知道的事。
   if (pending?.phase === "awaiting_login") return "等待登录…";
   if (!state) return checked.value ? "读不到账户状态" : "检查账户…";
@@ -125,10 +119,12 @@ const statusText = computed(() => {
     case "logged_in":
       return state.shop_name || (state.platform === "taobao" ? `淘宝账户 ${state.shop_id}` : state.platform === "xiaohongshu" ? "小红书千帆账户（未读到店铺名）" : `店铺 ${state.shop_id}`);
     case "logged_out":
+      return `${state.active_profile_label} · 未登录`;
+    case "no_browser":
+      return `${state.active_profile_label} · 浏览器未启动`;
     case "no_fxg_tab":
     case "no_taobao_tab": case "no_xhs_tab":
-    case "no_browser":
-      return `${state.active_profile_label} · 未登录`;
+      return `${state.active_profile_label} · 待确认登录`;
     case "conflict":
       return "登录状态异常";
     default:
@@ -161,7 +157,10 @@ const hintText = computed(() => {
   if (state.status === "logged_in") {
     return state.platform === "taobao" ? taobaoIdentityNote(state) : state.platform === "xiaohongshu" ? "小红书：店铺名读自页面元素（候选级证据）；读不到就显示「未读到」，不会拿本地备注冒充。" : state.shop_id ? `店铺 ID ${state.shop_id}` : "";
   }
-  if (["no_browser", "logged_out", "no_fxg_tab", "no_taobao_tab", "no_xhs_tab"].includes(state.status)) {
+  if (state.status === "no_browser") {
+    return "启动时会自动恢复当前账户的浏览器并重新验证登录；也可从账户菜单手动打开。";
+  }
+  if (["logged_out", "no_fxg_tab", "no_taobao_tab", "no_xhs_tab"].includes(state.status)) {
     return `打开账户菜单并选择${state.platform === "taobao" ? "淘宝" : state.platform === "xiaohongshu" ? "小红书千帆" : "抖音"}账户，即可打开登录页；登录成功后自动确认，不用再点一次。`;
   }
   return state.error || "";
@@ -248,7 +247,7 @@ async function refresh(silent = true, force = false) {
       session.value = null;
       emit("changed", null);
     }
-    sessionError.value = actionError(error);
+    sessionError.value = apiErrorMessage(error);
     if (!silent) ElMessage.error(`读取账户状态失败：${sessionError.value}`);
     return null;
   } finally {
@@ -335,7 +334,7 @@ async function loadProfiles() {
   } catch (error) {
     if (version !== profileQueryVersion) return null;
     profiles.value = [];
-    profileError.value = `账户列表读取失败：${actionError(error)}`;
+    profileError.value = `账户列表读取失败：${apiErrorMessage(error)}`;
     return null;
   }
 }
@@ -484,8 +483,8 @@ async function runShopAction(
     return false;
   } catch (error) {
     if (!isCurrentAccountAction(version)) return false;
-    const reason = actionError(error);
-    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const reason = apiErrorMessage(error);
+    const status = apiErrorStatus(error);
     if (status && status >= 400 && status < 500 && status !== 408) {
       // 被明确拒绝 = 后端没有改变任何东西，可以安全地再点一次。
       ElMessage.error(`${failMessage}，请求已被拒绝：${reason}`);
@@ -578,7 +577,7 @@ async function refreshPendingAction() {
     return true;
   } catch (error) {
     if (isCurrentAccountAction(version)) {
-      pendingFeedback.value = `回读确认失败：${actionError(error)}。待确认结果已保留，请重新读取。`;
+      pendingFeedback.value = `回读确认失败：${apiErrorMessage(error)}。待确认结果已保留，请重新读取。`;
     }
     return false;
   } finally {
@@ -667,7 +666,7 @@ async function forgetShop(profile: ShopProfile) {
     }
     await refresh(true, true);
   } catch (error) {
-    ElMessage.error(`删除账户失败：${actionError(error)}`);
+    ElMessage.error(`删除账户失败：${apiErrorMessage(error)}`);
   } finally {
     switching.value = false;
   }
@@ -686,8 +685,20 @@ function handleCommand(command: string) {
 }
 
 onMounted(async () => {
+  // 只在启动时恢复一次；后续 15 秒轮询仍然只读，不会反复打开浏览器。
+  if (!props.paused) {
+    restoring.value = true;
+    try {
+      await api.restoreShopSession();
+    } catch (error) {
+      sessionError.value = `恢复店铺浏览器失败：${apiErrorMessage(error)}`;
+    } finally {
+      restoring.value = false;
+    }
+  }
   await refresh(true);
   if (!componentActive) return;
+  if (!props.paused && session.value?.status !== "logged_in") startLoginWatch();
   refreshTimer = window.setInterval(() => {
     if (document.visibilityState !== "hidden") {
       void refresh(true);
@@ -742,7 +753,7 @@ defineExpose({ refresh, session });
             </span>
             <span class="item-platform">{{ platformName(profile.platform) }}</span>
             <span class="item-name">{{ profile.label }}</span>
-            <span v-if="!profile.shop_id" class="item-state">未验证登录</span>
+            <span v-if="profile.identity_source !== 'registry_last_seen'" class="item-state">未验证登录</span>
             <button
               type="button"
               :disabled="accountActionsDisabled || !profile.removable"

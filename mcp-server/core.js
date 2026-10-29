@@ -935,6 +935,8 @@ function mergeSkuUpdates(currentSkus, skuUpdates = []) {
       ...sku,
       name: hasOwn(update, "name") && update.name != null ? update.name : sku.name,
       price: hasOwn(update, "price") && update.price != null ? update.price : sku.price,
+      // 未传 sku.remark 时保留该 SKU 原备注；不允许用商品级 remark 顶替。
+      remark: hasOwn(update, "remark") && update.remark != null ? update.remark : sku.remark,
     };
   });
 
@@ -962,6 +964,7 @@ function buildSavePayload(recordId, detail, updates, mergedSkus) {
     payload[`attr_path_${number}`] = sku.path;
     payload[`attr_name_${number}`] = sku.name;
     payload[`attr_price_${number}`] = sku.price ?? "";
+    payload[`attr_remark_${number}`] = sku.remark ?? "";
   });
 
   return payload;
@@ -1150,6 +1153,9 @@ async function listSkuAssets(recordId, options = {}) {
       file_name: sku?.file_name ?? "",
       dir_name: sku?.dir_name ?? "",
       price: sku?.price ?? "",
+      stock: sku?.stock ?? null,
+      // 仅这一条 SKU 的备注；不从商品级 remark 复制，缺失时明确为 null。
+      remark: sku?.remark ?? null,
       absolute_path: absolutePath,
       relative_path:
         rootPath && absolutePath ? safeRelativePath(rootPath, absolutePath) : null,
@@ -1943,6 +1949,20 @@ function registerResources(server) {
     "douyin://upload/tasks",
     "Current upload task list and browser automation state.",
     "/api/upload/tasks"
+  );
+  registerJsonResource(
+    server,
+    "shop-session",
+    "douyin://shop/session",
+    "Current measured account identity and browser state. no_browser is not proof of logout.",
+    "/api/shop/current"
+  );
+  registerJsonResource(
+    server,
+    "taobao-publish-tasks",
+    "douyin://taobao/publish/tasks",
+    "Current Taobao publish task list.",
+    "/api/taobao/publish/tasks"
   );
 }
 
@@ -3749,7 +3769,8 @@ function registerCoreTools(server) {
     server,
     "get_product_detail",
     {
-      description: "Load a product with SKU details. Keep loadImages=false unless images are explicitly needed.",
+      description:
+        "Load a product with product-level remark and full SKU rows. Each SKU may have its own optional remark; never treat the product remark as a SKU remark. Keep loadImages=false unless images are needed.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         recordId: z.number().int().positive().describe("Product record ID."),
@@ -3983,7 +4004,7 @@ function registerCoreTools(server) {
     "update_product_info",
     {
       description:
-        "Update product title, remark, category, repo, or selected SKU names/prices. This tool hides the legacy save_info payload shape.",
+        "Update product title, product-level remark, category, repo, or selected SKU names/prices/remarks. SKU remarks are independent and are not copied from the product remark.",
       inputSchema: {
         recordId: z.number().int().positive().describe("Product record ID."),
         title: z.string().optional().describe("New product title."),
@@ -4003,6 +4024,7 @@ function registerCoreTools(server) {
               path: z.string().min(1).describe("Exact SKU path."),
               name: z.string().optional().describe("Updated SKU display name."),
               price: z.number().nonnegative().optional().describe("Updated SKU price."),
+              remark: z.string().optional().describe("Optional remark for this SKU only, not the product-level remark."),
             })
           )
           .optional()
@@ -4376,6 +4398,50 @@ function registerCoreTools(server) {
 
   registerTool(
     server,
+    "get_shop_session",
+    {
+      description:
+        "Read the current measured shop identity. no_browser means no inspection browser, not proof of logout.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => backendRequest("/api/shop/current")
+  );
+
+  registerTool(
+    server,
+    "restore_shop_session",
+    {
+      description:
+        "Restore the current account browser when it is missing, then re-check identity. May open a browser; does not start an upload.",
+    },
+    async () => backendRequest("/api/shop/restore", { method: "POST" })
+  );
+
+  registerTool(
+    server,
+    "list_taobao_publish_tasks",
+    {
+      description: "List Taobao publish tasks and their current status.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => backendRequest("/api/taobao/publish/tasks")
+  );
+
+  registerTool(
+    server,
+    "get_taobao_publish_status",
+    {
+      description: "Read one Taobao publish task by ID.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        taskId: z.string().min(1).describe("Taobao publish task ID."),
+      },
+    },
+    async ({ taskId }) => backendRequest(`/api/taobao/publish/status/${taskId}`)
+  );
+
+  registerTool(
+    server,
     "ensure_upload_browser",
     {
       description:
@@ -4425,7 +4491,7 @@ function registerCoreTools(server) {
 export function createDouyinPublisherServer() {
   const server = new McpServer({
     name: "douyin-publisher",
-    version: "1.3.0",
+    version: "1.4.0",
   });
 
   registerCoreTools(server);

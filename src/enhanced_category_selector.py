@@ -94,13 +94,17 @@ class EnhancedCategorySelector:
         for attempt in range(max_retries):
             try:
                 # ========== 快速路径1: 检查默认选中的类目 ==========
-                if self._is_current_category(category_name):
+                timer_record('类目翻页诊断', '开始默认类目检查', 0, _time_module.time() - func_start, True)
+                current_category_matched = self._is_current_category(category_name)
+                timer_record('类目翻页诊断', '默认类目检查完成', 0, _time_module.time() - func_start, True)
+                if current_category_matched:
                     logger.info(f"[FAST] 默认类目匹配，直接下一步")
                     if self._click_next_step():
                         timer_record('类目选择', f'{category_name}(默认匹配)', 0, _time_module.time() - func_start, True)
                         return True
-                    timer_record('类目选择', f'{category_name}(默认匹配)', 0, _time_module.time() - func_start, True)
-                    return True
+                    logger.error('[FAIL] 默认类目已匹配，但未进入第二页')
+                    timer_record('类目选择', f'{category_name}(默认匹配)', 0, _time_module.time() - func_start, False)
+                    return False
 
                 # ========== 快速路径2: 从推荐列表中选择 ==========
                 if self._select_from_recommendations(category_name):
@@ -108,8 +112,9 @@ class EnhancedCategorySelector:
                     if self._click_next_step():
                         timer_record('类目选择', f'{category_name}(推荐列表)', 0, _time_module.time() - func_start, True)
                         return True
-                    timer_record('类目选择', f'{category_name}(推荐列表)', 0, _time_module.time() - func_start, True)
-                    return True
+                    logger.error('[FAIL] 推荐类目已选择，但未进入第二页')
+                    timer_record('类目选择', f'{category_name}(推荐列表)', 0, _time_module.time() - func_start, False)
+                    return False
 
                 # ========== 扩展搜索: 点击更多推荐 ==========
                 self._click_more_recommend(1)
@@ -118,8 +123,9 @@ class EnhancedCategorySelector:
                     if self._click_next_step():
                         timer_record('类目选择', f'{category_name}(更多推荐)', 0, _time_module.time() - func_start, True)
                         return True
-                    timer_record('类目选择', f'{category_name}(更多推荐)', 0, _time_module.time() - func_start, True)
-                    return True
+                    logger.error('[FAIL] 更多推荐后已选择类目，但未进入第二页')
+                    timer_record('类目选择', f'{category_name}(更多推荐)', 0, _time_module.time() - func_start, False)
+                    return False
 
                 # 再次点击更多推荐
                 self._click_more_recommend(1)
@@ -128,8 +134,9 @@ class EnhancedCategorySelector:
                     if self._click_next_step():
                         timer_record('类目选择', f'{category_name}(更多推荐x2)', 0, _time_module.time() - func_start, True)
                         return True
-                    timer_record('类目选择', f'{category_name}(更多推荐x2)', 0, _time_module.time() - func_start, True)
-                    return True
+                    logger.error('[FAIL] 第二次更多推荐后已选择类目，但未进入第二页')
+                    timer_record('类目选择', f'{category_name}(更多推荐x2)', 0, _time_module.time() - func_start, False)
+                    return False
 
                 if self._recommendations_exhausted() and not self._is_manual_select_visible():
                     logger.error(f"[FAIL] 推荐类目已全部展示，但未出现 {category_name} 或手动选择入口")
@@ -241,7 +248,7 @@ class EnhancedCategorySelector:
                 'xpath://span[text()="更多推荐"]',
             ]
             
-            for selector in precise_selectors:
+            for selector in self._probe_ordered_selectors(precise_selectors):
                 try:
                     btn = self.tab.ele(selector, timeout=0.8)
                     if btn and btn.states.is_displayed:
@@ -279,7 +286,7 @@ class EnhancedCategorySelector:
                 f'xpath://div[contains(@class,"categorySelectorV2")]//div[contains(text(),"{category_name}") and not(contains(@class,"disable"))]',
             ]
             
-            for selector in precise_selectors:
+            for selector in self._probe_ordered_selectors(precise_selectors):
                 try:
                     el = self.tab.ele(selector, timeout=0.5)  # 快速超时
                     if el and el.states.is_displayed:
@@ -339,7 +346,7 @@ class EnhancedCategorySelector:
                 'xpath://div[contains(@class,"recommendContainer")]//div[contains(@class,"itemSelected")]',
             ]
             
-            for selector in selected_selectors:
+            for selector in self._probe_ordered_selectors(selected_selectors):
                 try:
                     el = self.tab.ele(selector, timeout=0.5)  # 减少超时时间
                     if el and el.states.is_displayed:
@@ -363,7 +370,7 @@ class EnhancedCategorySelector:
             'xpath://span[text()="手动选择"]/..',
             'xpath://button[contains(@class,"ecom-g-btn-link")]//span[text()="手动选择"]/..',
         ]
-        for selector in manual_select_selectors:
+        for selector in self._probe_ordered_selectors(manual_select_selectors):
             try:
                 element = self.tab.ele(selector, timeout=1)
                 if element and element.states.is_displayed:
@@ -695,69 +702,61 @@ class EnhancedCategorySelector:
         解决：多种点击方式 + 验证页面是否真正跳转
         """
         logger.info("点击下一步按钮")
+        click_start = _time_module.time()
+        if self._is_on_second_page():
+            logger.info("已在第二页，无需查找或点击翻页按钮")
+            return True
+        timer_record('类目翻页诊断', '第二页入口状态检查完成', 0, _time_module.time() - click_start, True)
         
-        # 所有可能的选择器
+        # 先用一条合并 XPath 兼容两种按钮，避免 JS 不可用时在新版文案前串行空等。
+        # 后续旧版与新版候选全部保留，供结构差异和 React 重渲染时回退。
         all_selectors = [
+            'xpath://button[contains(@class,"nextStep") or contains(@class,"aiPublishButton") or .//span[text()="下一步" or text()="确认信息，继续生成"]]',
             'xpath://button[contains(@class,"nextStep")]',
             'xpath://button[contains(@class,"style_nextStep")]',
             'xpath://div[contains(@class,"nextStepWrapper")]//button',
             'xpath://button[contains(@class,"ecom-g-btn-primary")]//span[text()="下一步"]/..',
             'xpath://span[text()="下一步"]/..',
             'xpath://button[.//span[text()="下一步"]]',
-            # 抖店「商品创建组件 UI 改版」灰度把「下一步」换成了「确认信息，继续生成」，
-            # 该实验臂上既没有「下一步」也没有「返回旧版」，只有这一个主 CTA。
-            # 2026-10-17 实测：与经典臂同一个组件、同一个 data-btm，仅文案与类名不同。
-            # 放在经典选择器之后，保证两页并存时优先点经典「下一步」。
-            'xpath://button[contains(@class,"style_aiPublishButton")]',
             'xpath://button[.//span[normalize-space(text())="确认信息，继续生成"]]',
             'xpath://span[normalize-space(text())="确认信息，继续生成"]/..',
+            'xpath://button[contains(@class,"aiPublishButton")]',
         ]
         
         next_btn = None
-        for selector in all_selectors:
+        matched_selector = None
+        for selector in self._probe_ordered_selectors(all_selectors):
             try:
                 element = self.tab.ele(selector, timeout=0.5)
                 if element and element.states.is_displayed:
                     next_btn = element
+                    matched_selector = selector
                     logger.info(f"[OK] 找到下一步按钮")
                     break
             except:
                 continue
         
         if not next_btn:
-            logger.error("[ERROR] 未找到下一步按钮（既无「下一步」也无「确认信息，继续生成」）")
+            logger.error("[ERROR] 未找到下一步按钮")
             return False
-        
-        # AI 卡片臂的 CTA 初始带 disabled：平台要求先有主图与商品标题才允许继续。
-        # 对着禁用按钮把三种点击方式各试一遍、每种还白等 5s，等于空转 15s 且毫无意义，
-        # 所以先等它就绪；超时则明确失败，交给上层报错。
-        try:
-            if next_btn.attr('disabled') is not None:
-                logger.info("按钮当前为禁用态（AI 卡片臂要求先有主图与标题），等待其可点...")
-                for _ in range(60):
-                    time.sleep(0.5)
-                    try:
-                        if next_btn.attr('disabled') is None:
-                            logger.info("[OK] 按钮已可点")
-                            break
-                    except Exception:
-                        break
-                else:
-                    logger.error("[ERROR] 按钮 30s 内仍为禁用态（主图或标题未就绪）")
-                    return False
-        except Exception:
-            pass
+        timer_record('类目翻页诊断', '定位翻页按钮完成', 0, _time_module.time() - click_start, True)
         
         # 先滚动到按钮可见位置
         next_btn.scroll.to_center()
         time.sleep(0.2)
+        timer_record('类目翻页诊断', '滚动翻页按钮完成', 0, _time_module.time() - click_start, True)
         
-        # 尝试多种点击方式
-        click_methods = [
-            ('普通点击', lambda: next_btn.click()),
-            ('JS点击', lambda: next_btn.click(by_js=True)),
-            ('模拟点击', lambda: self.tab.actions.click(next_btn)),
-        ]
+        # 点击方式保持原优先级；AI 转场慢时给首次点击更长的出现窗口，避免过早重复点击。
+        ordinary_click = ('普通点击', lambda: next_btn.click())
+        js_click = ('JS点击', lambda: next_btn.click(by_js=True))
+        pointer_click = ('模拟点击', lambda: self.tab.actions.click(next_btn))
+        button_identity = matched_selector or ''
+        try:
+            button_identity = f'{next_btn.text or ""} {next_btn.attr("class") or ""}'
+        except Exception:
+            pass
+        is_ai_button = '确认信息，继续生成' in button_identity or 'aiPublishButton' in button_identity
+        click_methods = [ordinary_click, js_click, pointer_click]
         
         for method_name, click_func in click_methods:
             # 每种点击方式之前先确认还没跳转：上一种方式可能已经生效，
@@ -766,12 +765,18 @@ class EnhancedCategorySelector:
                 logger.info("已进入第二页，无需再次点击下一步")
                 return True
             try:
+                timer_record('类目翻页诊断', f'{method_name}开始', 0, _time_module.time() - click_start, True)
                 logger.info(f"[尝试] {method_name}...")
                 click_func()
+                timer_record('类目翻页诊断', f'{method_name}完成', 0, _time_module.time() - click_start, True)
                 time.sleep(0.12)
                 self._handle_post_click_popup()
-                # 验证是否真正跳转到第二页
-                if self._wait_for_second_page(max_wait=5.0):
+                # AI 面板可能在点击十余秒后出现；旧版仍保留 5 秒预算。
+                wait_budget = 15.0 if is_ai_button and method_name == '普通点击' else 5.0
+                timer_record('类目翻页诊断', f'{method_name}开始等待第二页', 0, _time_module.time() - click_start, True)
+                second_page_ready = self._wait_for_second_page(max_wait=wait_budget)
+                timer_record('类目翻页诊断', f'{method_name}等待第二页完成', 0, _time_module.time() - click_start, True)
+                if second_page_ready:
                     logger.info(f"[OK] {method_name}成功，第二页已加载")
                     return True
                 else:
@@ -789,7 +794,7 @@ class EnhancedCategorySelector:
             return True
         try:
             logger.info("[尝试] 强制JS执行点击...")
-            self.tab.run_js('document.querySelector("button[class*=nextStep]")?.click()')
+            self.tab.run_js('document.querySelector("button[class*=nextStep],button[class*=aiPublishButton]")?.click()')
             time.sleep(0.12)
             self._handle_post_click_popup()
             if self._wait_for_second_page(max_wait=5.0):
@@ -875,6 +880,9 @@ class EnhancedCategorySelector:
         'xpath://span[text()="主图视频"]',
         'xpath://div[contains(@class,"formBlockNewUI")]//span[text()="修改"]',
         'xpath://div[contains(text(),"类目属性")]',
+        # AI 转场时传统字段可能尚未挂载；面板出现即说明已进入第二页，
+        # 后续由 AI 完成等待接管，避免把转场误判为翻页失败并重复点击。
+        'xpath://aside[contains(@class,"index-module_assistant__")]',
     ]
 
     def _is_on_second_page(self) -> bool:
@@ -919,6 +927,21 @@ class EnhancedCategorySelector:
             return selectors[index]
         return None
 
+    def _probe_ordered_selectors(self, selectors):
+        """先用一次 JS 排除空候选，再按原优先级取元素。
+
+        JS 明确无命中时返回空列表，调用方不再承受 N 次串行 timeout；
+        JS 不可用时返回完整旧列表，保留原有回退。命中项排第一，其余仍保留，
+        防止 React 重渲染造成「探针命中、句柄已失效」时没有恢复路径。
+        """
+        ordered = list(selectors)
+        probed = self._probe_visible_xpath(ordered)
+        if probed is _PROBE_UNAVAILABLE:
+            return ordered
+        if probed is None:
+            return []
+        return [probed] + [selector for selector in ordered if selector != probed]
+
     def _handle_post_click_popup(self):
         """处理点击下一步后可能出现的弹窗"""
         popup_selectors = [
@@ -935,7 +958,8 @@ class EnhancedCategorySelector:
         try:
             for popup_selector in candidates:
                 try:
-                    popup = self.tab.ele(popup_selector, timeout=0.5)
+                    # 导航中的 JS 上下文失效会走这里；短探测后继续轮询，不空等 1.5s。
+                    popup = self.tab.ele(popup_selector, timeout=0.05)
                     if popup and popup.states.is_displayed:
                         popup.click()
                         logger.info("处理了下一步后的弹窗")

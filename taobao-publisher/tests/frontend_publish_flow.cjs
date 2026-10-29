@@ -18,7 +18,7 @@ function task(extra={}) {return {task_id:'tao-task',platform:'taobao',account_pr
 function fixture() {
   const calls = [], notices = [], alerts = [], timers = new Map(); let counter=0;
   const store = vue.reactive({
-    currentProductId:7,currentProduct:{id:7,name:'ID-7',title:'真实商品标题',remark:'',repo:100,clazz:2,content:[{name:'黑白组合',path:'SKU/black.jpg',price:29.8},{name:'粉色套装',path:'SKU/pink.jpg',price:32.8}]},
+    currentProductId:7,currentProduct:{id:7,name:'ID-7',title:'真实商品标题',remark:'',repo:100,clazz:2,content:[{name:'黑白组合',path:'SKU/black.jpg',price:29.8,spec_values:{双数:'1'}},{name:'粉色套装',path:'SKU/pink.jpg',price:32.8,spec_values:{双数:'2'}}]},
     currentShopSession:{platform:'taobao',active_profile:'tao-account'},targetPublishPlatform:'taobao',detailLoading:false,backendStatus:'offline',products:[],
     lastActionError:null,
     saveProduct:async(data,options)=>{calls.push(['save',JSON.parse(JSON.stringify(data)),options]);return {id:options.recordId,update_time:'2026-10-04 01:00',record_revision:'a'.repeat(64)}},
@@ -79,7 +79,7 @@ async function test(name,fn){await fn();tests.push(name);}
   await test('淘宝点击直接启动真实填写，携带完整资料快照且不检查、不跳设置',async()=>{
     const f=fixture();f.s.formData.value.price=0.01;await f.s.handlePublishByAccount();await flush();
     const start=f.calls.find(c=>c[0]==='taobao-start');assert(start);assert.equal(start[1],7);assert.equal(start[3],'tao-account');
-    assert.deepEqual(start[2],{title:'真实商品标题',category_keyword:'中筒袜',outer_id:'ID-7',sku_mode:'custom',skus:[{spec_values:{颜色分类:'黑白组合'},price:29.8,stock:100,image_path:'SKU/black.jpg'},{spec_values:{颜色分类:'粉色套装'},price:32.8,stock:100,image_path:'SKU/pink.jpg'}]});
+    assert.deepEqual(start[2],{title:'真实商品标题',category_keyword:'中筒袜',outer_id:'ID-7',sku_mode:'custom',skus:[{spec_values:{双数:'1',颜色分类:'黑白组合'},price:29.8,stock:100,image_path:'SKU/black.jpg'},{spec_values:{双数:'2',颜色分类:'粉色套装'},price:32.8,stock:100,image_path:'SKU/pink.jpg'}]});
     assert.equal(f.s.activeUploadTaskPlatform.value,'taobao');assert.equal(f.s.uploadProgress.value,40);assert(!f.calls.some(c=>c[0]==='navigate'||c[0]==='douyin-start'));assert(!source.includes('TaobaoPreflightSummary'));
   });
   await test('重复点击不重复启动',async()=>{const f=fixture();await f.s.handlePublishByAccount();await flush();await f.s.handlePublishByAccount();assert.equal(f.calls.filter(c=>c[0]==='taobao-start').length,1)});

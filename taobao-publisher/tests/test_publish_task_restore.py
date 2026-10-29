@@ -42,11 +42,11 @@ import re
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 PANEL = REPO_ROOT / "tauri-app" / "src" / "components" / "TaobaoPublishPanel.vue"
 API_TS = REPO_ROOT / "tauri-app" / "src" / "services" / "api.ts"
-APP = REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 def code_only(text: str) -> str:
@@ -112,15 +112,12 @@ class RestoreIsWiredTest(unittest.TestCase):
 
 class SidecarProvidesTheListTest(unittest.TestCase):
     def test_the_endpoint_exists(self) -> None:
-        self.assertIn("/api/taobao/publish/tasks", APP.read_text(encoding="utf-8"))
+        self.assertIn("/api/taobao/publish/tasks", sidecar.text())
 
     def test_it_passes_the_tasks_through_unchanged(self) -> None:
         """列表接口**原样透传**任务对象——所以字段取决于任务是怎么建的。"""
 
-        source = APP.read_text(encoding="utf-8")
-        start = source.index("def taobao_publish_tasks")
-        end = source.index("\n@app.", start)
-        body = source[start:end]
+        body = sidecar.function_source("taobao_publish_tasks")
         self.assertIn("dict(item)", body, "应当原样透传，不做裁剪")
 
     def test_the_task_object_carries_the_fields_the_filter_needs(self) -> None:
@@ -131,18 +128,12 @@ class SidecarProvidesTheListTest(unittest.TestCase):
         **只有查创建处才拦得住**。）
         """
 
-        source = APP.read_text(encoding="utf-8")
-
         # `record_id` 在**路由注册任务时**放进去（工作线程只更新不新建）。
-        route_start = source.index("def taobao_publish_start")
-        route_end = source.index("\n@app.", route_start)
-        self.assertIn("'record_id'", source[route_start:route_end],
+        self.assertIn("'record_id'", sidecar.function_source("taobao_publish_start"),
                       "注册任务时要带 record_id——界面靠它筛「是不是本商品的」")
 
         # `status` 由**工作线程**写（pending → running → 终态）。
-        run_start = source.index("def _run_taobao_publish_task")
-        run_end = source.index("\ndef ", run_start + 10)
-        run_body = source[run_start:run_end]
+        run_body = sidecar.function_source("run_publish_task", "_run_taobao_publish_task")
         self.assertIn("'status'", run_body,
                       "工作线程要写 status——界面靠它筛「还在不在跑」")
 

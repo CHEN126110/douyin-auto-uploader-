@@ -1,0 +1,22 @@
+# 独立的小 crate：只引入 tauri-app/src-tauri/src/backend_process.rs（不依赖 Tauri），
+# 用替身后端（../fixtures/stub_backend.rs）在真实进程上测进程认领 / 先礼后兵 / 启动前端口处理。
+# 不要把它并进 src-tauri 的构建。跑法见 README.md。
+[package]
+name = "backend_process_tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# 只列 backend_process.rs 用到的特性；src-tauri/Cargo.toml 的特性清单是它的超集。
+[dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+] }
+
+# 替身后端：二进制名必须是 python-backend（与真实后端同名，backend_process 按名字认领后代）。
+[[bin]]
+name = "python-backend"
+path = "../fixtures/stub_backend.rs"

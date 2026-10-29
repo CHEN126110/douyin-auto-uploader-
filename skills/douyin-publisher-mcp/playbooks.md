@@ -107,6 +107,12 @@ This loop is local and Codex-only. Do not use OpenAI, Ollama, DeepSeek, Claude, 
 
 Keep browser debug tools as a troubleshooting path, not the normal operating flow.
 
+## Playbook 10: Agent Reads Current State
+
+1. Call `health_check`, then `get_shop_session`. `no_browser` means the inspection browser is missing, not that login expired; call `restore_shop_session` only when browser recovery is wanted.
+2. Call `list_products` for discovery and `get_product_detail` for title, category, stock, and full SKU rows. Product-level `remark` is not a SKU remark; use only each row's own optional `remark` for SKU-specific notes. Use `list_sku_assets` for stock, per-SKU remark, image paths, or image payloads.
+3. Call `list_upload_tasks` for Douyin, `list_taobao_publish_tasks` for Taobao, then `get_upload_status` or `get_taobao_publish_status` for one task. Do not start a duplicate task just to read progress.
+
 ## Guardrails Summary
 
 - Start with `health_check` for every new workflow.

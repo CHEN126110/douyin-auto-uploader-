@@ -1,56 +1,57 @@
 # -*- coding: utf-8 -*-
-"""采集浏览器的端口归属、Windows 占用检查和真实连接错误回归。"""
+"""采集浏览器的端口归属、Windows 占用检查和真实连接错误回归。
+
+2026-10-20 起：端口选择是 ``CaptureService.select_capture_browser_port``（依赖由构造函数注入，直接用假件）；
+失败原因归类 / 恢复提示是 ``capture_helpers`` 里的纯函数；只有 ``_is_local_port_available`` 仍留在 ``app.py``
+（调试浏览器服务也在用它），所以这一项继续按名字从 ``app.py`` 抽出来真实执行。
+"""
 
 from __future__ import annotations
 
 import ast
 import os
-import re
 import socket
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+from capture_test_support import capture_helpers, capture_service, make_service
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "tauri-app" / "python-sidecar" / "app.py"
-HELPERS = {
-    "_is_local_port_available",
-    "_select_capture_browser_port",
-    "_capture_failure_details",
-    "_capture_task_recovery_info",
-}
 
 
-def load_helpers():
+def load_port_probe():
     # 避免导入 Flask 应用时初始化真实数据库、账号配置和后台线程。
     tree = ast.parse(APP_PATH.read_text(encoding="utf-8"))
-    definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in HELPERS]
-    assert {node.name for node in definitions} == HELPERS
-    namespace = {"os": os, "re": re, "socket": socket}
+    definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_is_local_port_available"]
+    assert len(definitions) == 1
+    namespace = {"socket": socket}
     exec(compile(ast.Module(body=definitions, type_ignores=[]), str(APP_PATH), "exec"), namespace)
-    return namespace
+    return namespace["_is_local_port_available"]
 
 
 class CaptureBrowserPortTest(unittest.TestCase):
     def setUp(self):
-        self.helpers = load_helpers()
         self.profile = str(Path("runtime") / "采集资料")
         self.verify = Mock(return_value={"ok": True})
         self.available = Mock(return_value=True)
         self.discover = Mock(return_value=[])
-        self.helpers.update({
-            "_CAPTURE_BROWSER_PORT_START": 9400,
-            "_CAPTURE_BROWSER_PORT_END": 9402,
-            "_DEBUG_BROWSER_HOST": "127.0.0.1",
-            "_get_capture_browser_user_data_path": lambda: self.profile,
-            "_normalize_debug_address": lambda address: address.replace("localhost", "127.0.0.1"),
-            "discover_debuggable_browsers": self.discover,
-            "_verify_debug_browser": self.verify,
-            "_is_local_port_available": self.available,
-        })
+        patcher = patch.object(capture_service, "_get_capture_browser_user_data_path", lambda: self.profile)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.service = make_service(
+            discover_browsers=self.discover,
+            verify_debug_browser=self.verify,
+            is_local_port_available=self.available,
+            normalize_debug_address=lambda address: address.replace("localhost", "127.0.0.1"),
+            debug_host="127.0.0.1",
+            capture_port_start=9400,
+            capture_port_end=9402,
+        )
 
     def select(self):
-        return self.helpers["_select_capture_browser_port"]()
+        return self.service.select_capture_browser_port()
 
     def browser(self, port, profile=None):
         return {"debug_address": f"127.0.0.1:{port}", "user_data_dir": profile or self.profile}
@@ -93,7 +94,7 @@ class CaptureBrowserPortTest(unittest.TestCase):
 
 class LocalPortAvailabilityTest(unittest.TestCase):
     def test_bound_socket_is_not_considered_available(self):
-        is_available = load_helpers()["_is_local_port_available"]
+        is_available = load_port_probe()
         # 不设置 SO_EXCLUSIVEADDRUSE，才能暴露 Windows 上 SO_REUSEADDR 的误判。
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
             listener.bind(("127.0.0.1", 0))
@@ -105,8 +106,7 @@ class LocalPortAvailabilityTest(unittest.TestCase):
 
 class CaptureFailureDetailsTest(unittest.TestCase):
     def setUp(self):
-        self.helpers = load_helpers()
-        self.describe = self.helpers["_capture_failure_details"]
+        self.describe = capture_helpers._capture_failure_details
 
     def test_unwraps_hidden_socket_error_from_browser_exception_chain(self):
         socket_error = OSError("address in use")
@@ -144,7 +144,7 @@ class CaptureFailureDetailsTest(unittest.TestCase):
 
     def test_recovery_hint_keeps_the_actual_error_visible(self):
         task = {"status": "failed", **self.describe(OSError("[WinError 10048] address in use"))}
-        result = self.helpers["_capture_task_recovery_info"](task)
+        result = capture_helpers._capture_task_recovery_info(task)
         self.assertTrue(result["can_retry"])
         self.assertTrue(result["user_action_required"])
         self.assertEqual(result["action_hint"], task["message"])

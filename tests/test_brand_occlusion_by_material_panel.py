@@ -36,7 +36,7 @@ class FakeTab:
         self.shortcut_clicked = False
 
     def run_js(self, script, *args):
-        if 'aurora' in script and 'select-open' in script:
+        if 'aurora' in script and ('select-open' in script or 'option-pane' in script):
             return self.open_states.pop(0) if self.open_states else False
         if 'Escape' in script and 'mousedown' in script:
             self.dismiss_calls += 1

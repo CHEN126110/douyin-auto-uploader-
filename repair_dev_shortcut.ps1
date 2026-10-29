@@ -15,7 +15,7 @@ if ($iconBytes.Length -lt 6 -or [BitConverter]::ToString($iconBytes[0..3]) -ne '
 }
 
 $desktop = [Environment]::GetFolderPath('DesktopDirectory')
-$shortcutPath = Join-Path $desktop '抖音袜子发布工具.lnk'
+$shortcutPath = Join-Path $desktop '电商产品发布工具.lnk'
 if (Test-Path -LiteralPath $shortcutPath) {
     $backupDir = Join-Path $PSScriptRoot ('.tmp\shortcut-backups\' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
     New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
@@ -35,7 +35,7 @@ $shortcut.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
 $shortcut.Arguments = '"' + $launcher + '"'
 $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.IconLocation = $iconPath + ',0'
-$shortcut.Description = '抖音袜子发布工具（开发版）'
+$shortcut.Description = '电商产品发布工具（开发版）'
 $shortcut.WindowStyle = 1
 $shortcut.Save()
 Write-Output "已修复桌面快捷方式：$shortcutPath"

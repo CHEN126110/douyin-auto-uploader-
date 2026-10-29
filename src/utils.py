@@ -290,7 +290,7 @@ def infer_sock_height_value(category_text: str, fallback=None) -> str:
 
 
 # 在「字段区域」元素内部批量判定哪条候选选择器命中可见且未 disabled 的元素。
-# 语义与 app.py 的 _VISIBLE_SELECTOR_PROBE_JS 一致，区别是这个探针以 area 为
+# 语义与 src/sidecar/upload_steps.py 的 _VISIBLE_SELECTOR_PROBE_JS 一致，区别是这个探针以 area 为
 # 上下文节点求值（候选选择器都是 .// 开头的相对路径）。
 _FIELD_ACTION_PROBE_JS = r'''
 const selectors = arguments[0] || [];
@@ -509,75 +509,425 @@ _AURORA_OPTION_SELECTORS = [
 ]
 
 
-def _click_aurora_create_material(new_tab, name: str) -> bool:
-    """下拉里搜不到该材质时，点平台自带的「新建材质」入口。
+_AURORA_CLOSE_TAG_XPATH = (
+    'xpath:.//span[contains(@class,"aurora-select-selection-tag")]'
+    '//span[@role="img" and contains(@class,"close")]'
+    ' | .//span[contains(@class,"aurora-select-selection-item-remove")]'
+    '//span[@role="img" and contains(@class,"close")]'
+    ' | .//span[contains(@class,"styles_del__")]'
+)
 
-    用户实测：面料材质的搜索框支持**新建材质** —— 输入的名字不在平台候选列表里时，
-    平台会给出新建入口。原实现只认候选选项，搜不到就只记一条日志后跳过，
-    于是配置里的多项只落了部分（2026-10-17 实盘：3 项只落了 1 项）。
 
-    只在**下拉行内**、文本同时包含材料名与「新建 / 新增 / 创建」、且自身文本很短时才点击：
-    宁可点不到（由上层明确失败），也不能误点容器或别的选项把字段写脏。
-    """
-    selectors = [
-        'xpath://*[contains(@class,"aurora-select-item") or contains(@class,"option") or self::li]'
-        '[contains(normalize-space(.),"{name}")'
-        ' and (contains(normalize-space(.),"新建") or contains(normalize-space(.),"新增")'
-        ' or contains(normalize-space(.),"创建"))'
-        ' and string-length(normalize-space(.)) < 40]',
-        'xpath://*[contains(@class,"create") or contains(@class,"Create")]'
-        '[contains(normalize-space(.),"{name}")'
-        ' and string-length(normalize-space(.)) < 40]',
-    ]
-    for template in selectors:
-        selector = template.format(name=name)
+def _visible_aurora_close_buttons(area):
+    try:
+        buttons = area.eles(_AURORA_CLOSE_TAG_XPATH, timeout=0.08) or []
+    except Exception:
+        return []
+    visible = []
+    for button in buttons:
         try:
-            node = new_tab.ele(selector, timeout=0.25)
-        except Exception:
-            node = None
-        if not node:
-            continue
-        try:
-            node.click(by_js=True)
+            if button and button.states.is_displayed:
+                visible.append(button)
         except Exception:
             continue
-        # 新建出的标签需要一点时间渲染进已选列表
-        _time.sleep(0.3)
-        return True
+    return visible
+
+
+def _aurora_selected_count(new_tab):
+    try:
+        text = new_tab.run_js(
+            'var el=document.querySelector(".aurora-dorami-composition-select-selected-title");'
+            'return el?String(el.textContent||""):"";'
+        )
+        matched = re.search(r'已选\s*[（(]\s*(\d+)\s*[）)]', str(text or ''))
+        return int(matched.group(1)) if matched else None
+    except Exception:
+        return None
+
+
+def _clear_aurora_composition_tags(area):
+    """旧版逐个清空材质标签；JS 点击未生效时再用原生点击，并读回确认。"""
+    for _ in range(32):
+        visible = _visible_aurora_close_buttons(area)
+        if not visible:
+            return True
+        before_count = len(visible)
+        try:
+            visible[0].click(by_js=True)
+        except Exception:
+            pass
+        if _wait_until(
+            lambda: len(_visible_aurora_close_buttons(area)) < before_count,
+            timeout=0.8,
+            interval=0.05,
+        ):
+            continue
+        try:
+            visible[0].click()
+        except Exception:
+            return False
+        if not _wait_until(
+            lambda: len(_visible_aurora_close_buttons(area)) < before_count,
+            timeout=0.8,
+            interval=0.05,
+        ):
+            logger.info('aurora-select: 旧材质标签删除未生效，停止继续叠加')
+            return False
     return False
 
 
-#: 快路径：一次 JS 往返完成「写搜索词 → 等选项 → 点中目标」。
-#: 返回 `ok:<title>` / `miss` / `noinput`。用原生 value setter + input 事件，
-#: 才能让 React 的受控输入真正更新；`elem.click()` 会冒泡到根节点，React 的委托能收到。
-_AURORA_SEARCH_AND_PICK_JS = r'''
-(function (name) {
-  const inp = document.querySelector('input.aurora-dorami-composition-select-search')
-      || document.querySelector('input[placeholder="搜索材质"]');
-  if (!inp) return 'noinput';
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  setter.call(inp, String(name));
-  inp.dispatchEvent(new Event('input', { bubbles: true }));
-  const deadline = Date.now() + 1500;
-  while (Date.now() < deadline) {
-    const opts = document.querySelectorAll('.aurora-select-item-option[title]');
-    for (let i = 0; i < opts.length; i++) {
-      const t = String(opts[i].getAttribute('title') || '').trim();
-      if (!t) continue;
-      if (t === name || t.indexOf(name) === 0) {
-        opts[i].click();
-        return 'ok:' + t;
-      }
-    }
-  }
-  return 'miss';
-})(arguments[0])
-'''
+def _clear_aurora_composition_selection(new_tab, area):
+    """新版优先用面板“清空”一次复位；无此入口时走旧版逐个删除。"""
+    try:
+        buttons = new_tab.eles(
+            'xpath://button[contains(@class,"aurora-dorami-composition-select-clear") and normalize-space(.)="清空"]',
+            timeout=0.1,
+        ) or []
+    except Exception:
+        buttons = []
+    for button in buttons:
+        try:
+            if not button.states.is_displayed:
+                continue
+        except Exception:
+            continue
+
+        def cleared():
+            return not _visible_aurora_close_buttons(area) and _aurora_selected_count(new_tab) in (None, 0)
+
+        try:
+            button.click(by_js=True)
+        except Exception:
+            pass
+        if _wait_until(cleared, timeout=1.0, interval=0.05):
+            return True
+        try:
+            button.click()
+        except Exception:
+            continue
+        if _wait_until(cleared, timeout=1.0, interval=0.05):
+            return True
+    return _clear_aurora_composition_tags(area)
 
 
-#: 上一次「面料材质」多选里**没选中**的材质名。上层把它拼进失败消息 —— 因为
-#: 这个模块的 logger 没有落盘（sidecar 的 stdout 也没被捕获），只靠日志拿不到证据。
-_AURORA_LAST_MISSING: list = []
+_MATERIAL_NAME_ALIAS_GROUPS = (
+    frozenset(('氨纶', '聚氨酯弹性纤维（氨纶）')),
+    frozenset(('羊毛', '绵羊毛')),
+    frozenset(('涤纶', '聚酯纤维')),
+    frozenset(('锦纶', '聚酰胺纤维（锦纶）', '聚酰胺纤维（锦纶/尼龙）')),
+    frozenset(('腈纶', '聚丙烯腈纤维（腈纶）')),
+    frozenset(('粘纤', '粘胶纤维')),
+)
+
+
+def _normalize_material_option_name(name):
+    return re.sub(r'\s+', '', str(name or '')).replace('(', '（').replace(')', '）').casefold()
+
+
+def _material_name_parts(name):
+    normalized = _normalize_material_option_name(name)
+    matched = re.fullmatch(r'(.*?)(?:（([^（）]*)）)?', normalized)
+    base = matched.group(1) if matched else normalized
+    aliases = frozenset(filter(None, re.split(r'[/／、,，]', matched.group(2) or ''))) if matched else frozenset()
+    return base, aliases
+
+
+def _material_names_equivalent(wanted, candidate):
+    """识别明确的平台同义名称；不做包含、模糊或近似材质匹配。"""
+    wanted_normalized = _normalize_material_option_name(wanted)
+    candidate_normalized = _normalize_material_option_name(candidate)
+    if wanted_normalized == candidate_normalized:
+        return True
+    for group in _MATERIAL_NAME_ALIAS_GROUPS:
+        normalized_group = {_normalize_material_option_name(name) for name in group}
+        if wanted_normalized in normalized_group and candidate_normalized in normalized_group:
+            return True
+    wanted_base, wanted_aliases = _material_name_parts(wanted)
+    candidate_base, candidate_aliases = _material_name_parts(candidate)
+    return bool(
+        wanted_base == candidate_base and wanted_aliases and candidate_aliases
+        and (wanted_aliases <= candidate_aliases or candidate_aliases <= wanted_aliases)
+    )
+
+
+def _material_indexes_for_targets(actual_names, materials):
+    """把每个目标材质映射到真实选项；缺项、重项或歧义匹配都返回 None。"""
+    remaining = list(enumerate(actual_names))
+    indexes = []
+    for name, _ratio in materials:
+        exact = [item for item in remaining
+                 if _normalize_material_option_name(item[1]) == _normalize_material_option_name(name)]
+        matches = exact or [item for item in remaining if _material_names_equivalent(name, item[1])]
+        if len(matches) != 1:
+            return None
+        indexes.append(matches[0][0])
+        remaining.remove(matches[0])
+    return indexes if not remaining else None
+
+
+def _material_selected_titles(new_tab):
+    try:
+        titles = new_tab.run_js(r'''
+const wrapper = document.querySelector('.aurora-dorami-composition-select-wrapper');
+if (!wrapper) return [];
+const out = [];
+const seen = new Set();
+const add = title => {
+    title = String(title || '').trim();
+    if (title && !seen.has(title)) { seen.add(title); out.push(title); }
+};
+// 完整已选行挂在页面外层，不在 wrapper 内；收起后再用已选选项和顶部标签补充。
+document.querySelectorAll(
+    '.aurora-dorami-composition-select-selected-row .aurora-dorami-composition-select-selected-label[title]'
+).forEach(el => add(el.getAttribute('title')));
+document.querySelectorAll(
+    '.aurora-dorami-composition-select-option-pane .aurora-select-item-option-selected[title]'
+).forEach(el => add(el.getAttribute('title')));
+wrapper.querySelectorAll('.aurora-select-selection-item[title]')
+    .forEach(el => add(el.getAttribute('title')));
+return out;
+''')
+    except Exception:
+        return []
+    return list(titles) if isinstance(titles, list) else []
+
+
+def _visible_material_option_titles(new_tab):
+    try:
+        titles = new_tab.run_js(r'''
+return Array.from(document.querySelectorAll(
+    '.aurora-dorami-composition-select-option-pane .aurora-select-item-option[title]'
+)).filter(el => el.offsetParent || el.getClientRects().length)
+ .map(el => el.getAttribute('title') || '').filter(Boolean);
+''')
+    except Exception:
+        return []
+    return list(dict.fromkeys(titles)) if isinstance(titles, list) else []
+
+
+def _material_search_terms(name):
+    terms = [str(name).strip()]
+    normalized = _normalize_material_option_name(name)
+    base, _aliases = _material_name_parts(name)
+    if base and base != normalized:
+        terms.append(base)
+    for group in _MATERIAL_NAME_ALIAS_GROUPS:
+        if normalized in {_normalize_material_option_name(item) for item in group}:
+            for alias in group:
+                terms.append(alias)
+                alias_base, _ = _material_name_parts(alias)
+                if alias_base != _normalize_material_option_name(alias):
+                    terms.append(alias_base)
+    return list(dict.fromkeys(term for term in terms if term))
+
+
+def _set_aurora_material_search_text(new_tab, name):
+    """别名回退搜索使用同一个真实搜索框，并核对 React 实际接收的值。"""
+    try:
+        value = new_tab.run_js(
+            'var el=document.querySelector(".aurora-dorami-composition-select-option-pane '
+            'input[placeholder=\\"搜索材质\\"]");'
+            'if(!el)return null;el.focus();'
+            'var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;'
+            'setter.call(el,"");el.dispatchEvent(new Event("input",{bubbles:true}));'
+            'setter.call(el,' + repr(name) + ');'
+            'el.dispatchEvent(new Event("input",{bubbles:true}));'
+            'el.dispatchEvent(new Event("change",{bubbles:true}));return el.value;'
+        )
+    except Exception:
+        value = None
+    if value != name:
+        try:
+            search = new_tab.ele(
+                'xpath://div[contains(@class,"aurora-dorami-composition-select-option-pane")]//input[@placeholder="搜索材质"]',
+                timeout=0.3,
+            )
+            search.clear()
+            search.input(name)
+            value = search.attr('value')
+        except Exception:
+            return False
+    _time.sleep(0.45)
+    return value == name
+
+
+def _click_aurora_material_option(new_tab, title):
+    selector = ('xpath://div[contains(@class,"aurora-dorami-composition-select-option-pane")]'
+                '//div[contains(@class,"aurora-select-item-option") and @title='
+                + _xpath_literal(title) + ']')
+    try:
+        option = new_tab.ele(selector, timeout=0.3)
+        if not option:
+            return False
+        option.click(by_js=True)
+    except Exception:
+        return False
+    expected = _normalize_material_option_name(title)
+    return _wait_until(
+        lambda: expected in {_normalize_material_option_name(item) for item in _material_selected_titles(new_tab)},
+        timeout=0.8,
+        interval=0.05,
+    )
+
+
+def _select_aurora_visible_material(new_tab, name):
+    titles = _visible_material_option_titles(new_tab)
+    exact = [title for title in titles
+             if _normalize_material_option_name(title) == _normalize_material_option_name(name)]
+    candidates = exact or [title for title in titles if _material_names_equivalent(name, title)]
+    if not candidates:
+        return 'missing'
+    if len(candidates) != 1:
+        logger.info(f'aurora-select: 材质[{name}]存在多个等价选项，拒绝盲选: {candidates}')
+        return 'error'
+    actual_name = candidates[0]
+    if _click_aurora_material_option(new_tab, actual_name):
+        if actual_name != name:
+            logger.info(f'aurora-select: 材质[{name}]使用平台等价选项[{actual_name}]')
+        return 'selected'
+    logger.info(f'aurora-select: 材质[{name}]点击后未能读回确认')
+    return 'error'
+
+
+def _create_aurora_material(new_tab, name):
+    """通过平台内联“新建材质”表单创建；创建后必须读回真实选中项。"""
+    input_selector = ('xpath://div[contains(@class,"aurora-dorami-composition-select-option-pane")]'
+                      '//input[@placeholder="请输入材质"]')
+    try:
+        name_input = new_tab.ele(input_selector, timeout=0.1)
+    except Exception:
+        name_input = None
+    if not name_input:
+        try:
+            create = new_tab.ele(
+                'xpath://div[contains(@class,"aurora-dorami-composition-select-create")]'
+                '//span[contains(@class,"styles_newSKU__") and normalize-space(.)="新建材质"]',
+                timeout=0.2,
+            )
+            if not create:
+                logger.info(f'aurora-select: 材质[{name}]不存在且页面没有新建入口')
+                return False
+            create.click(by_js=True)
+            name_input = new_tab.ele(input_selector, timeout=0.6)
+        except Exception:
+            name_input = None
+    if not name_input:
+        return False
+    try:
+        name_input.click()
+        name_input.clear()
+        name_input.input(name)
+        if str(name_input.attr('value') or '').strip() != name:
+            logger.info(f'aurora-select: 新建材质名称输入未生效[{name}]')
+            return False
+        confirm = new_tab.ele(
+            'xpath://div[contains(@class,"aurora-dorami-composition-select-create")]//span[@alt="确认"]',
+            timeout=0.2,
+        )
+        if not confirm:
+            return False
+        confirm.click(by_js=True)
+    except Exception as exc:
+        logger.info(f'aurora-select: 新建材质[{name}]操作失败: {exc}')
+        return False
+
+    expected = _normalize_material_option_name(name)
+    if _wait_until(
+        lambda: expected in {_normalize_material_option_name(item) for item in _material_selected_titles(new_tab)},
+        timeout=1.2,
+        interval=0.05,
+    ):
+        logger.info(f'aurora-select: 已新建并选中材质[{name}]')
+        return True
+    # 某些页面版本只创建选项、不自动选中；只能再点这个精确名称，不能回车选首项。
+    if _wait_until(
+        lambda: expected in {_normalize_material_option_name(item) for item in _visible_material_option_titles(new_tab)},
+        timeout=0.8,
+        interval=0.05,
+    ):
+        return _click_aurora_material_option(new_tab, name)
+    logger.info(f'aurora-select: 新建材质[{name}]后未读回选项或选中状态')
+    return False
+
+
+def _fill_aurora_material_ratio(new_tab, actual_name, ratio):
+    """比例只写入这个材质自己的 selected-row，绝不按配置索引错位填写。"""
+    selector = (
+        'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-row")]'
+        '[.//div[contains(@class,"aurora-dorami-composition-select-selected-label") and @title='
+        + _xpath_literal(actual_name) + ']]'
+        '//input[contains(@class,"aurora-input-number-input")]'
+    )
+    try:
+        ratio_input = new_tab.ele(selector, timeout=0.4)
+        if not ratio_input:
+            logger.info(f'aurora-select: 材质[{actual_name}]没有找到对应比例输入框')
+            return False
+        ratio_input.clear()
+        ratio_input.input(str(ratio))
+        return _wait_until(
+            lambda: str(ratio_input.attr('value') or '').strip() == str(ratio).strip(),
+            timeout=0.8,
+            interval=0.05,
+        )
+    except Exception as exc:
+        logger.info(f'aurora-select: 材质[{actual_name}]比例填写失败: {exc}')
+        return False
+
+
+def _aurora_material_selection_matches(area, materials):
+    """按完整 selected-row 读回名称、占比和数量；折叠的 +N 标签不能当实际材质。"""
+    expected = [(str(name).strip(), str(ratio).strip()) for name, ratio in materials if str(name).strip()]
+    if not expected:
+        return True
+    try:
+        raw_labels = area.run_js(r'''
+const doc = this.ownerDocument || document;
+const rows = doc.querySelectorAll('.aurora-dorami-composition-select-selected-row');
+const out = [];
+for (let i = 0; i < rows.length; i++) {
+    const label = rows[i].querySelector('.aurora-dorami-composition-select-selected-label[title]');
+    const input = rows[i].querySelector('input.aurora-input-number-input');
+    if (label) out.push((label.getAttribute('title') || '') + ' ' + (input ? input.value : '') + '%');
+}
+if (rows.length) return out;
+const nodes = this.querySelectorAll('.aurora-select-selection-item-content');
+for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (!(node.offsetParent || node.getClientRects().length)) continue;
+    out.push(String(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim());
+}
+return out;
+''')
+    except Exception:
+        return False
+    if not isinstance(raw_labels, list):
+        return False
+    remaining = [' '.join(str(label or '').split()).strip() for label in raw_labels]
+    if len(remaining) != len(expected):
+        return False
+
+    for name, ratio in expected:
+        matched_index = None
+        for index, label in enumerate(remaining):
+            ratio_match = re.search(r'(\d+(?:\.\d+)?)\s*%?\s*$', label)
+            material_name = label[:ratio_match.start()].strip() if ratio_match else label
+            if not _material_names_equivalent(name, material_name):
+                continue
+            if ratio:
+                if not ratio_match:
+                    continue
+                try:
+                    if abs(float(ratio_match.group(1)) - float(ratio)) > 0.000001:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            matched_index = index
+            break
+        if matched_index is None:
+            return False
+        remaining.pop(matched_index)
+    return not remaining
 
 
 def _fill_aurora_composition_select(new_tab, area, materials, field_id):
@@ -586,7 +936,6 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
     新版抖店发布页面料材质字段使用单一 combobox 的多选组件，不再需要"添加材质"
     按钮。流程：逐个选择材质 → 选择后动态出现的占比输入框填写百分比。
     """
-    _AURORA_LAST_MISSING.clear()
     # 平台材质列表采集：只在本次填写的第一个材质、下拉刚打开时采一次
     harvested_options = False
     try:
@@ -612,28 +961,11 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
     except Exception:
         pass
 
-    # 清除已有材质标签（aurora-select 的 tag 关闭按钮）
-    try:
-        close_btns = area.eles(
-            'xpath:.//span[contains(@class,"aurora-select-selection-tag")]'
-            '//span[@role="img" and contains(@class,"close")]'
-            ' | .//span[contains(@class,"styles_del__")]',
-            timeout=0.2,
-        ) or []
-        for btn in close_btns:
-            try:
-                btn.click(by_js=True)
-                _time.sleep(0.05)
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # 新版优先使用面板“清空”，旧版逐个删除；都必须读回确认。
+    if not _clear_aurora_composition_selection(new_tab, area):
+        logger.info('aurora-select: 清空已有材质失败')
+        return False
 
-    selected_count = 0
-    # 期望选中的材质（去掉空名字）。用于判定「是否全部选中」——
-    # 部分选中绝不能算成功：占比是按选中顺序回填的，缺项会让占比配到错误的材质上。
-    expected_names = [str(m[0]).strip() for m in materials if str(m[0]).strip()]
-    expected_count = len(expected_names)
     for idx, (material_name, _ratio) in enumerate(materials):
         name = str(material_name).strip()
         if not name:
@@ -856,230 +1188,78 @@ def _fill_aurora_composition_select(new_tab, area, materials, field_id):
                 except Exception as e:
                     logger.info(f'aurora-select: 两步 setter 失败[{idx}] {name}: {e}')
 
-        # 快路径：一次 JS 往返完成「写入搜索词 → 等选项渲染 → 点中目标」。
-        # 旧实现是「Python 侧 sleep 0.5s + 3 个选择器逐个 0.3s 超时轮询」，每项要几百毫秒；
-        # 6 项材质光这里就能吃掉 3~5 秒，而且中间还有一堆诊断 dump。
-        option_clicked = False
-        try:
-            picked = str(new_tab.run_js(_AURORA_SEARCH_AND_PICK_JS, name) or '')
-        except Exception:
-            picked = ''
-        if picked.startswith('ok'):
-            option_clicked = True
-            logger.info(f'aurora-select: 快路径命中[{idx}] {name} -> {picked}')
-        elif picked == 'noinput':
-            option_clicked = False
+        # 先精确选择，再尝试明确等价名称；任何点击都必须读回选中状态。
+        # 不再用回车选第一项，避免搜索无结果时误选相似材质。
+        _time.sleep(0.5)
+        selection_state = _select_aurora_visible_material(new_tab, name)
+        if selection_state == 'missing':
+            for search_term in _material_search_terms(name)[1:]:
+                if not _set_aurora_material_search_text(new_tab, search_term):
+                    continue
+                selection_state = _select_aurora_visible_material(new_tab, name)
+                if selection_state != 'missing':
+                    break
+        if selection_state == 'missing':
+            # 精确名称和等价选项都不存在时，才使用平台的内联新建表单。
+            if not _create_aurora_material(new_tab, name):
+                logger.info(f'aurora-select: 材质[{idx}] {name} 无法选择或新建')
+                close_aurora_composition_panel(new_tab)
+                return False
+        elif selection_state == 'error':
+            close_aurora_composition_panel(new_tab)
+            return False
         else:
-            # 快路径没命中（选项可能因为虚拟列表还没渲染出来），退回原来的逐选择器轮询。
-            _time.sleep(0.2)
-        if not option_clicked:
-            for selector_template in _AURORA_OPTION_SELECTORS:
-                selector = selector_template.format(name=name)
-                try:
-                    opt = new_tab.ele(selector, timeout=0.3)
-                except Exception:
-                    opt = None
-                if not opt:
-                    continue
-                try:
-                    opt.click(by_js=True)
-                    option_clicked = True
-                    break
-                except Exception:
-                    continue
-
-        if not option_clicked:
-            # 虚拟列表：选中几项后已选面板变高、选项区变矮，目标项可能根本没渲染进 DOM。
-            # 先把下拉的选项容器滚到底再找一遍 —— 2026-10-17 实盘 6 项只进 3 项，
-            # 且这 6 个名字在平台材质清单（892 条）里**都存在**，说明不是搜不到，是没渲染。
-            try:
-                new_tab.run_js(
-                    'var cs=document.querySelectorAll(".aurora-select-dropdown .rc-virtual-list-holder,'
-                    '.aurora-select-dropdown .aurora-select-item-option,'
-                    'div[class*="dropdown"] div[class*="virtual-list-holder"]);'
-                    'for(var i=0;i<cs.length;i++){cs[i].scrollTop=cs[i].scrollHeight;}return cs.length;'
-                )
-                _time.sleep(0.4)
-            except Exception:
-                pass
-            for selector_template in _AURORA_OPTION_SELECTORS:
-                selector = selector_template.format(name=name)
-                try:
-                    opt = new_tab.ele(selector, timeout=0.3)
-                except Exception:
-                    opt = None
-                if not opt:
-                    continue
-                try:
-                    opt.click(by_js=True)
-                    option_clicked = True
-                    logger.info(f'aurora-select: 滚动后命中[{idx}] {name}')
-                    break
-                except Exception:
-                    continue
-
-        if not option_clicked:
-            # 搜索没命中时，先试平台自带的「新建材质」入口 —— 文本框里输入的名字
-            # 未必存在于平台候选列表（清单里没有的名字只能新建）。
-            option_clicked = _click_aurora_create_material(new_tab, name)
-            if option_clicked:
-                logger.info(f'aurora-select: 搜索未命中，已走「新建材质」[{idx}] {name}')
-
-        if not option_clicked:
-            # 回车确认（搜索过滤后第一项可能是目标）；锁定下拉内搜索框
-            try:
-                fallback_search = new_tab.ele('xpath://input[contains(@class,"aurora-dorami-composition-select-search")]', timeout=0.1)
-                if fallback_search:
-                    fallback_search.input('\n')
-            except Exception:
-                pass
-            _time.sleep(0.3)
-            for selector_template in _AURORA_OPTION_SELECTORS:
-                selector = selector_template.format(name=name)
-                try:
-                    opt = new_tab.ele(selector, timeout=0.2)
-                except Exception:
-                    opt = None
-                if opt:
-                    try:
-                        opt.click(by_js=True)
-                        option_clicked = True
-                        break
-                    except Exception:
-                        continue
-
-        if not option_clicked:
-            option_clicked = _click_aurora_create_material(new_tab, name)
-            if option_clicked:
-                logger.info(f'aurora-select: 回车后仍未命中，已走「新建材质」[{idx}] {name}')
-
-        # 诊断：仍未点击时，dump 当前可见选项的 title，便于定位是搜索未生效还是选项缺失
-        if not option_clicked:
-            try:
-                visible_titles = new_tab.run_js(
-                    'var opts=document.querySelectorAll(".aurora-select-item-option[title]");'
-                    'var arr=[];for(var i=0;i<opts.length;i++){arr.push(opts[i].getAttribute("title"));}'
-                    'var inp=document.querySelector("input.aurora-dorami-composition-select-search")'
-                    '||document.querySelector("input[placeholder=\\"搜索材质\\"]");'
-                    'return JSON.stringify({count:opts.length,titles:arr,searchValue:inp?inp.value:null});'
-                )
-                logger.info(f'aurora-select: 诊断[{idx}] {name} 未命中。可见选项: {visible_titles}')
-            except Exception:
-                pass
-
-        if option_clicked:
-            selected_count += 1
             logger.info(f'aurora-select: 已选择材质[{idx}] {name}')
-        else:
-            _AURORA_LAST_MISSING.append(name)
-            logger.info(f'aurora-select: 未能选择材质[{idx}] {name}（下拉选项未找到）')
-        # 每项之间只需让 React 把已选面板刷一帧；0.15s 纯属保守。
-        _time.sleep(0.05)
+        _time.sleep(0.1)
 
-    if selected_count != expected_count:
-        # 部分选中绝不能继续往下走。占比是按「配置顺序」回填到第 idx 个占比输入框的，
-        # 缺项会让「配置第 i 项的占比」落到「实际第 i 个标签」上，产出错误成分：
-        # 2026-10-17 实盘就是 3 项只选中 1 项，第 0 项（粘纤 50）的占比被填给了
-        # 唯一存在的标签，页面成了单项「涤纶 50%」，提交被
-        # 「所填写的材质含量总和需为100%」拦下。这里明确失败，由上层报错。
-        logger.info(
-            f'aurora-select: 材质未全部选中（成功 {selected_count}/{expected_count}），'
-            f'按失败返回且不写占比；未选中: {_AURORA_LAST_MISSING}'
-        )
+    # 比例行在面板收起时可能卸载；填写和最终核对前必须重新展开完整面板。
+    if not _is_aurora_panel_open(new_tab):
+        try:
+            select_container.click()
+        except Exception:
+            select_container.click(by_js=True)
+    if not _wait_until(lambda: _is_aurora_panel_open(new_tab), timeout=1.0, interval=0.05):
+        logger.info('aurora-select: 无法展开材质比例面板')
+        return False
+    _time.sleep(0.2)
+
+    # 硬约束：全部材质都已选中且能一一对应，才允许填写比例。
+    # 缺项时继续按原索引写比例，会把后续材质的比例全部写串（2026-10-28 实盘）。
+    expected_materials = [(str(name).strip(), str(ratio).strip()) for name, ratio in materials if str(name).strip()]
+    selected_titles = _material_selected_titles(new_tab)
+    selected_indexes = _material_indexes_for_targets(selected_titles, expected_materials)
+    if selected_indexes is None:
+        logger.info(f'aurora-select: 材质选择不完整或存在歧义，停止比例填写。目标={expected_materials}，实际={selected_titles}')
         close_aurora_composition_panel(new_tab)
         return False
+    resolved_materials = [(selected_titles[index], ratio) for index, (_name, ratio) in zip(selected_indexes, expected_materials)]
+    for actual_name, ratio in resolved_materials:
+        if ratio and not _fill_aurora_material_ratio(new_tab, actual_name, ratio):
+            logger.info(f'aurora-select: 材质[{actual_name}]比例未能按名称写入并读回')
+            close_aurora_composition_panel(new_tab)
+            return False
+        logger.info(f'aurora-select: 已按名称填写材质[{actual_name}]={ratio}')
 
-    # 填写占比：选择材质后占比输入框动态出现（在 aurora-select-content 的 tag 内）
-    _time.sleep(0.5)
-    # 占比输入框在 aurora-dorami-composition-select-selected-list 内（已选材质列表），
-    # 该容器在 aurora-dorami-composition-select-wrapper 下，与 attr-field-id 区域同级或
-    # 外层，不在 area 范围内，必须用全局定位。
-    # 诊断：dump composition-select-wrapper 内所有 input 元素
-    try:
-        inputs_diag = new_tab.run_js(
-            'var w=document.querySelector(".aurora-dorami-composition-select-wrapper");'
-            'if(!w){return JSON.stringify({error:"wrapper not found"});}'
-            'var inps=w.querySelectorAll("input");'
-            'var arr=[];for(var i=0;i<inps.length;i++){'
-            'arr.push({i:i,type:inps[i].type,role:inps[i].getAttribute("role")||"",'
-            'cls:inps[i].className,ph:inps[i].placeholder||"",'
-            'val:inps[i].value||"",vis:inps[i].offsetParent!==null});}'
-            'var selList=document.querySelector(".aurora-dorami-composition-select-selected-list");'
-            'return JSON.stringify({inputs:arr,selectedListHTML:selList?selList.innerHTML.substring(0,800):"none"});'
-        )
-        logger.info(f'aurora-select: 占比诊断 wrapper内input: {inputs_diag}')
-    except Exception as _diag_e:
-        logger.info(f'aurora-select: 占比诊断异常: {_diag_e}')
-
-    ratio_filled = 0
-    for idx, (material_name, ratio) in enumerate(materials):
-        name = str(material_name).strip()
-        ratio_val = '' if (len(materials[idx]) < 2 or not ratio) else str(ratio).strip()
-        if not ratio_val:
-            continue
-        # 占比输入框在 selected-list 内（全局定位），排除 combobox/搜索框。
-        # 多个选择器兜底：优先 selected-list 内的 text input，再扩展到 wrapper 内。
-        ratio_selectors = [
-            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[not(@role="combobox") and not(contains(@class,"aurora-select-input")) and not(contains(@class,"search"))]',
-            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[@type="text"]',
-            'xpath://div[contains(@class,"aurora-dorami-composition-select-wrapper")]//input[not(@role="combobox") and not(contains(@class,"aurora-select-input")) and not(contains(@class,"search"))]',
-            'xpath://div[contains(@class,"aurora-dorami-composition-select-selected-list")]//input[not(@role="combobox")]',
-        ]
-        ratio_inputs = []
-        for rs in ratio_selectors:
-            try:
-                ratio_inputs = new_tab.eles(rs, timeout=0.4) or []
-            except Exception:
-                ratio_inputs = []
-            if ratio_inputs:
-                break
-        logger.info(f'aurora-select: 占比输入框搜索[{idx}] 找到{len(ratio_inputs)}个')
-        if idx < len(ratio_inputs):
-            try:
-                ratio_inputs[idx].clear()
-                ratio_inputs[idx].input(ratio_val)
-                _wait_until(
-                    lambda i=idx: str(ratio_inputs[i].attr('value') or '').strip() == ratio_val,
-                    timeout=0.5, interval=0.05,
-                )
-                ratio_filled += 1
-                logger.info(f'aurora-select: 已填写占比[{idx}] {name}={ratio_val}')
-            except Exception as e:
-                logger.info(f'aurora-select: 填写占比[{idx}] {name} 失败: {e}')
-        else:
-            logger.info(f'aurora-select: 占比输入框[{idx}]未找到（共{len(ratio_inputs)}个）')
-
-    expected_ratio_count = len([m for m in materials if len(m) > 1 and str(m[1]).strip()])
-    if expected_ratio_count and ratio_filled != expected_ratio_count:
-        # 占比没填全同样不能算成功：平台以「所填写的材质含量总和需为100%」校验，
-        # 缺一个占比就必然被拦下，而旧实现只在 ratio_filled == 0 时打一条日志。
-        logger.info(
-            f'aurora-select: 占比未全部填写（{ratio_filled}/{expected_ratio_count}），按失败返回'
-        )
-        close_aurora_composition_panel(new_tab)
-        return False
-
-    # 收起下拉面板：它是覆盖面很大的浮层，留着会压住品牌、适用性别等相邻字段，
-    # 使随后的 select_text 点击落到面板上，表现为「品牌未能设置为无品牌」。
+    # 在完整比例行仍挂载时核对，再收起面板，避免把折叠的 +N 当成实际数量。
+    verified = _aurora_material_selection_matches(area, materials)
     close_aurora_composition_panel(new_tab)
-
-    # 走到这里说明 expected_count 项全部选中，且占比按同序回填完毕。
+    if not verified:
+        logger.info('aurora-select: 最终材质标签与目标名称/占比/数量不一致')
+        return False
     return True
 
 
 _AURORA_PANEL_OPEN_JS = r"""
-const wrapper = document.querySelector('.aurora-dorami-composition-select-wrapper');
-const openInWrapper = wrapper && wrapper.querySelector('[class*="select-open"]');
-const dropdowns = Array.prototype.slice.call(
-    document.querySelectorAll('[class*="aurora"][class*="dropdown"], [class*="aurora"][class*="popup"]')
+// 以真实可见的材质面板为准；品牌、SKU 下拉和残留的 open 类名都不算。
+const panes = Array.prototype.slice.call(
+    document.querySelectorAll('.aurora-dorami-composition-select-option-pane')
 );
-const visible = dropdowns.filter(function (node) {
-    if (/hidden/.test(node.className || '')) return false;
+const visible = panes.filter(function (node) {
     if (!(node.offsetParent || node.getClientRects().length > 0)) return false;
     const rect = node.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
 });
-return !!(openInWrapper || visible.length > 0);
+return visible.length > 0;
 """
 
 _AURORA_PANEL_DISMISS_JS = r"""
@@ -3191,13 +3371,31 @@ def caizhi_select(new_tab, key, value, index, field_id="面料材质", area=None
     timer_record('属性设置', f'材质-{key}', 0, _time.time() - func_start, True)
 
 
+_SELECT_FIELD_VALUE_PROBE_JS = r'''
+const key = arguments[0];
+const field = document.querySelector('[attr-field-id="' + key + '"]');
+if (!field) return { found: false, value: '' };
+const item = field.querySelector('[class*="select-selection-item"]');
+return {
+    found: true,
+    value: item ? String(item.getAttribute('title') || item.innerText || '').replace(/\s+/g, ' ').trim() : ''
+};
+'''
+
+
 def get_select_field_value(new_tab, key):
     """读取 ecom-g Select 字段当前选中的显示值。
 
-    该组件把选中值放在 .ecom-g-select-selection-item 上，
-    而 //div[@attr-field-id="{key}"]//input 命中的是搜索框（其 value 恒为空串）。
-    因此校验是否选中成功必须读 selection-item，读 input.value 永远为空。
+    优先用一次 JS 读取 attr-field-id 与 selection-item，避免在成功判据轮询中
+    反复串行查询。字段不存在或 JS 不可用时保留旧的 XPath 回退；仍不读取搜索框 value。
     """
+    try:
+        state = new_tab.run_js(_SELECT_FIELD_VALUE_PROBE_JS, key)
+    except Exception:
+        state = None
+    if isinstance(state, dict) and state.get('found'):
+        return ' '.join(str(state.get('value') or '').split()).strip()
+
     for selector in (
         f'xpath://div[@attr-field-id="{key}"]//*[contains(@class,"select-selection-item")]',
         f'xpath://span[text()="{key}"]/ancestor::div[contains(@class,"ecom-g-form-item")][1]'
@@ -3345,14 +3543,21 @@ def select_text(new_tab, key, value, extra=None):
         那会把失败判成成功（品牌漏填就是这么发生的）。
         """
         _run_interaction_recovery(new_tab, f'select_text:{context}')
-        try:
-            option.click()
-        except Exception:
+        deadline = _time.time() + 1.2
+        # 普通点击未写入时，在同一选项内尽早换 JS，不先跑完整条搜索回退链。
+        # 两种方式共享原来的 1.2s 总预算；最终仍以字段读回值为准。
+        for index, action in enumerate((lambda: option.click(), lambda: option.click(by_js=True))):
             try:
-                option.click(by_js=True)
+                action()
             except Exception:
-                return False
-        return _wait_until(_value_ok, timeout=1.2, interval=0.05)
+                continue
+            remaining = deadline - _time.time()
+            if remaining <= 0:
+                break
+            confirm_timeout = min(remaining, 0.25) if index == 0 else remaining
+            if _wait_until(_value_ok, timeout=confirm_timeout, interval=0.05):
+                return True
+        return False
 
     def _search_and_pick(keyword):
         """在搜索框输入关键词过滤后再选，用于选项需异步加载的长列表。"""
@@ -3720,7 +3925,7 @@ def handle_white_bg_ai_tool_upload(new_tab, timeout: float = 0.3) -> bool:
         panel_now = _find_ai_material_tool_panel(new_tab, timeout=0.05)
         if not panel_now:
             return False
-        clicked_text = _click_ai_material_footer_upload(panel_now) or _click_text_button(panel_now, ('上传', '全部上传'))
+        clicked_text = _click_ai_material_footer_upload(panel_now) or _click_text_button(panel_now, ('上传', '全部上传', '确认'))
         return bool(clicked_text)
 
     if not _click_white_bg_upload_once():
@@ -3766,8 +3971,8 @@ def _click_white_bg_cutout_apply(panel) -> bool:
 
 def _click_ai_material_footer_upload(panel) -> str:
     selectors = (
-        'xpath:.//*[contains(@class,"footerWrapper") or contains(@class,"actionsWrapper")]//button[.//span[normalize-space(.)="上传"] or normalize-space(.)="上传"]',
-        'xpath:.//button[.//span[normalize-space(.)="上传"] or normalize-space(.)="上传"]',
+        'xpath:.//*[contains(@class,"footerWrapper") or contains(@class,"actionsWrapper")]//button[.//span[normalize-space(.)="上传" or normalize-space(.)="确认"] or normalize-space(.)="上传" or normalize-space(.)="确认"]',
+        'xpath:.//button[.//span[normalize-space(.)="上传" or normalize-space(.)="确认"] or normalize-space(.)="上传" or normalize-space(.)="确认"]',
     )
     for selector in selectors:
         try:
@@ -3780,11 +3985,11 @@ def _click_ai_material_footer_upload(panel) -> str:
                 if not btn.states.is_displayed or 'disabled' in btn_class or btn.attr('disabled') is not None:
                     continue
                 btn.click(by_js=True)
-                return '上传'
+                return '确认' if '确认' in selector else '上传'
             except Exception:
                 try:
                     btn.click()
-                    return '上传'
+                    return '确认' if '确认' in selector else '上传'
                 except Exception:
                     continue
     return ''
@@ -3816,19 +4021,34 @@ return (() => {
     .map(el => String(el.innerText || el.textContent || '').trim())
     .filter(Boolean);
 
-  const compare = panel.querySelector('[class*="compareWrapper"]');
   const normalize = (src) => String(src || '').replace(/^\/\//, 'https://').split('~tplv')[0].split('?')[0];
-  const images = compare
-    ? [...compare.querySelectorAll('img')]
+  const collectImages = (root) => root
+    ? [...root.querySelectorAll('img')]
         .map(img => normalize(img.currentSrc || img.src || img.getAttribute('src') || img.getAttribute('srcset') || ''))
         .filter(src => src.includes('ecom-shop-material'))
     : [];
-  const distinct = [...new Set(images)].filter(Boolean);
-  const original = distinct[0] || '';
-  const effect = distinct.find((src, index) => index > 0 && src !== original) || '';
+  const compare = panel.querySelector('[class*="compareWrapper"]');
+  let original = '';
+  let effect = '';
+  let imageCount = 0;
+  if (compare) {
+    // 旧版：前后对比容器里第一张是原图，之后的另一张是效果图。
+    const distinct = [...new Set(collectImages(compare))].filter(Boolean);
+    original = distinct[0] || '';
+    effect = distinct.find((src, index) => index > 0 && src !== original) || '';
+    imageCount = distinct.length;
+  } else {
+    // 新版：输入图在 selectImgContainer/cropper，生成结果在 imgPreviewWrapper。
+    const inputRoot = panel.querySelector('[class*="selectImgContainer"], [class*="cropper"]');
+    original = collectImages(inputRoot)[0] || '';
+    const previewRoot = panel.querySelector('[class*="imgPreviewWrapper"]');
+    const effects = [...new Set(collectImages(previewRoot))].filter(Boolean);
+    effect = effects[effects.length - 1] || '';
+    imageCount = effects.length;
+  }
 
   const footerUpload = [...panel.querySelectorAll('button')]
-    .find(btn => isVisible(btn) && String(btn.innerText || '').trim() === '上传');
+    .find(btn => isVisible(btn) && ['上传', '确认'].includes(String(btn.innerText || '').trim()));
   const uploadEnabled = !!footerUpload && !footerUpload.disabled && !String(footerUpload.className || '').includes('disabled');
 
   return {
@@ -3838,7 +4058,8 @@ return (() => {
     original_src: original,
     effect_src: effect,
     upload_enabled: uploadEnabled,
-    image_count: distinct.length
+    action_text: footerUpload ? String(footerUpload.innerText || '').trim() : '',
+    image_count: imageCount
   };
 })()
 '''
@@ -4596,6 +4817,14 @@ def _find_sku_local_upload_button(new_tab):
     )
 
 
+def _click_sku_upload_button(upload_button):
+    """文件输入优先原生点击以打开系统文件对话框，JS 仅作回退。"""
+    try:
+        upload_button.click()
+    except Exception:
+        upload_button.click(by_js=True)
+
+
 def set_sku_info(new_tab, index, sku, remark):
     print(f'设置第{index + 1}个sku -> {sku["name"]}')
     sku_timer_start = _time.time()
@@ -4695,12 +4924,9 @@ def set_sku_info(new_tab, index, sku, remark):
             else:
                 new_tab.set.upload_files(sku_image_path)
                 try:
-                    upload_button.click(by_js=True)
-                except Exception:
-                    try:
-                        upload_button.click()
-                    except Exception as exc:
-                        raise Exception(f'SKU 上传按钮点击失败: {exc}')
+                    _click_sku_upload_button(upload_button)
+                except Exception as exc:
+                    raise Exception(f'SKU 上传按钮点击失败: {exc}')
 
                 step_start = _time.time()
                 new_tab.wait.upload_paths_inputted()

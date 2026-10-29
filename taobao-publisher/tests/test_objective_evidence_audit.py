@@ -22,6 +22,7 @@ import subprocess
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 if str(SUBPROJECT) not in sys.path:
@@ -79,8 +80,7 @@ class UserFlowReachableTest(unittest.TestCase):
     """用户描述过的流程（第 7 轮），每一步都要有落点。"""
 
     def setUp(self) -> None:
-        self.app = (REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py").read_text(
-            encoding="utf-8")
+        self.app = sidecar.text()
 
     def test_add_shop_route_exists_and_launches_the_browser(self) -> None:
         """「添加店铺然后选择淘宝的话 **那么拉起来浏览器**」。"""

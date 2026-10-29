@@ -113,7 +113,7 @@ python -m taobao_publish sanitize taobao-publisher/tmp/xxx_raw.json taobao-publi
 |---|---|
 | `protocol-research-taobao-20260908/` | 淘宝发布环境的 CDP 引导脚本与**环境限制实证**。本子项目直接复用，不重复实证。 |
 | `protocol-research-clean-20260505/` | **抖店**协议研究区。只借架构（阶段划分 / 错误映射 / 安全门形态），结论与字段**一律不搬用**。 |
-| `tauri-app/python-sidecar/app.py` | 淘宝**采集（读）** 已落地处（`_extract_taobao_ice_data` 等）。本子项目不修改它。 |
+| `src/sidecar/capture_*.py`（2026-10-20 前在 `tauri-app/python-sidecar/app.py` 里） | 淘宝**采集（读）** 已落地处（`capture_helpers.py` 里的 `_extract_taobao_ice_data` 等）。本子项目不修改它；发布（写）路径的 Sidecar 接口在 `src/sidecar/taobao_*.py`。 |
 | `src/whitebg/` | 白底图产出。淘宝主图第 5 张要求白底图，是潜在的上游依赖。 |
 
 ## 下一步该做什么

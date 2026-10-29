@@ -36,7 +36,7 @@ try {
     }
     Set-Location -LiteralPath $PSScriptRoot
     Write-LaunchMessage '========================================'
-    Write-LaunchMessage '抖音袜子发布工具 - 开发版'
+    Write-LaunchMessage '电商产品发布工具 - 开发版'
     Write-LaunchMessage '========================================'
     Write-LaunchMessage "前端目录：$PSScriptRoot"
 

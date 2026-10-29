@@ -8,7 +8,7 @@
 |---|---|---|
 | `protocol-research-taobao-20260908/` | 淘宝发布环境的 **CDP 引导脚本 + 环境限制实证** | **复用其结论**，不重复实证。重启 Chrome 调试实例仍用它的 `start-taobao-cdp-chrome.mjs`。 |
 | `protocol-research-clean-20260505/` | **抖店（fxg）** 协议研究区 | 只借架构（阶段划分 / 错误映射 / 安全门形态），**结论与字段一律不可搬用**。 |
-| `tauri-app/python-sidecar/app.py` | 淘宝 **采集（读）** 已落地处 | `_extract_taobao_ice_data()` 等是**读路径**资产，发布（写）路径不得混入。 |
+| `src/sidecar/capture_*.py`（2026-10-20 前在 `tauri-app/python-sidecar/app.py` 里） | 淘宝 **采集（读）** 已落地处 | `capture_helpers.py` 里的 `_extract_taobao_ice_data()` 等是**读路径**资产，发布（写）路径不得混入。发布（写）路径的 Sidecar 接口在 `src/sidecar/taobao_*.py`。 |
 | `docs/淘宝天猫店铺采集技术文档.md` | 淘宝 **读接口** 旧文档 | 只覆盖采集，**不能推广到写接口**。 |
 
 **淘宝与抖店是两套互不相通的账号、协议与字段体系**，本目录不得与 `protocol-research-clean-20260505/`（抖店）混用结论、脚本或字段映射。
@@ -20,7 +20,7 @@
 3. **不落敏感数据**。禁止把 cookie、token、`_m_h5_tk`、`_tb_token_`、`cookie2`、手机号、店铺敏感信息、完整签名 URL、未脱敏请求头写进仓库、日志或产物。一切产物过 `taobao_publish.sanitize`。
 4. **不用兜底掩盖映射错误**。字段没有实证证据时必须**显式记录为 blocker**，不允许"猜一个默认值让它跑通"。宁可拒绝执行，也不悄悄产出错误发布结果。
 5. **研究产物只在本目录**。新增脚本、文档、去敏产物一律落在本目录内，不外溢到 `src/`、`protocol-research-*/`。
-6. **不要直接删除代码文件**（仓库级硬约束）。需要「删除」时移到项目外的归档目录并附 README（原约定的落点 `项目备份 禁止改动使用 只参考/recycle_bin/` 已于 2026-10-17 删除）。
+6. **禁止直接删除代码文件**（仓库级硬约束）。需要"删除"时移到 `项目备份 禁止改动使用 只参考/recycle_bin/RECYCLE_<原因>_<YYYY-MM-DD>/` 并附 README。
 
 ## 2. 证据分级（写文档必须标注）
 

@@ -143,10 +143,11 @@ def test_returns_false_when_field_missing():
 
 def test_brand_failure_raises_in_publish_flow():
     """发布流程必须在品牌设置失败时中断——无品牌是合规硬约束，不能静默漏填。"""
-    import io
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from sidecar_function_source import upload_text
 
-    app_py = os.path.join(REPO_ROOT, 'tauri-app', 'python-sidecar', 'app.py')
-    source = io.open(app_py, encoding='utf-8').read()
+    # 发布流程分散在 app.py 和 src/sidecar/upload_*.py 里：计数 / 反向断言都要读全，不能只读其中一个
+    source = upload_text()
 
     # 品牌统一走 ensure_no_brand()：它会先收起会遮挡品牌字段的材质浮层，
     # 再优先点「可选无品牌」快捷链接，失败才回退通用下拉选择。
@@ -156,3 +157,46 @@ def test_brand_failure_raises_in_publish_flow():
         '每个品牌调用点都必须在失败时抛错，不能静默继续'
     assert "select_text(main_tab, '品牌'" not in source, \
         '品牌不得绕过 ensure_no_brand 直接调用 select_text'
+
+
+def test_selected_value_has_a_single_roundtrip_js_fast_path():
+    class FastTab:
+        def run_js(self, script, *args):
+            assert args == ('适用性别',)
+            return {'found': True, 'value': ' 女  '}
+
+        def ele(self, selector, timeout=None):
+            raise AssertionError('JS 快路径命中后不应再串行查询 DOM')
+
+    assert get_select_field_value(FastTab(), '适用性别') == '女'
+
+
+class _FastTime:
+    now = 0.0
+
+    @classmethod
+    def time(cls):
+        cls.now += 0.01
+        return cls.now
+
+    @classmethod
+    def sleep(cls, seconds):
+        cls.now += seconds
+
+
+def test_option_retries_js_click_within_the_original_total_budget(monkeypatch):
+    """普通点击没写入时，应在同一选项内尽早试 JS，而不是跑完整条搜索回退链。"""
+    monkeypatch.setattr('src.utils._time', _FastTime)
+    tab = BrandSelectTab(selected='', option_clickable=False)
+    clicks = []
+
+    def click(by_js=False):
+        clicks.append(by_js)
+        if by_js:
+            tab.selected = '无品牌'
+
+    tab.option.click = click
+
+    assert select_text(tab, '品牌', '无品牌') is True
+    assert tab.selected == '无品牌'
+    assert clicks == [False, True], '先保留普通点击，未生效才换 JS 点击'

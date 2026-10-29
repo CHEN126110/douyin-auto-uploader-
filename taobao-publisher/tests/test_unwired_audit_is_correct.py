@@ -45,6 +45,7 @@ import pathlib
 import sys
 import unittest
 
+import sidecar_source as sidecar
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SUBPROJECT = REPO_ROOT / "taobao-publisher"
 if str(SUBPROJECT) not in sys.path:
@@ -56,7 +57,6 @@ audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 API_TS = REPO_ROOT / "tauri-app" / "src" / "services" / "api.ts"
-APP = REPO_ROOT / "tauri-app" / "python-sidecar" / "app.py"
 
 
 class ExtractorTest(unittest.TestCase):
@@ -122,10 +122,8 @@ class TaobaoSurfaceIsWiredTest(unittest.TestCase):
     def test_every_taobao_and_shop_route_is_reachable_from_the_frontend(self) -> None:
         import re
 
-        app_source = APP.read_text(encoding="utf-8")
-        routes = sorted(set(
-            m.group(1) for m in re.finditer(
-                r"@app\.(?:route|get|post)\('(/api/(?:taobao|shop)[^']*)'", app_source)))
+        # 路由分散在 app.py 和 src/sidecar/ 的各个 Blueprint 模块里
+        routes = sidecar.route_paths(r"^/api/(?:taobao|shop)")
 
         self.assertGreaterEqual(len(routes), 10, "淘宝/店铺路由应当有十几条")
 

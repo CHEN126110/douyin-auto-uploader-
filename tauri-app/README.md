@@ -1,8 +1,9 @@
-# 抖音袜子发布工具 4.0.30 · Tauri 桌面端
+# 电商产品发布工具 4.0.30 · Tauri 桌面端
 
-> **关于名称**：项目对外名为「**电商产品发布工具**」；安装包名、应用窗口标题、
-> `tauri.conf.json` 的 `productName` 与应用内更新链路仍沿用内部产品名
-> 「**抖音袜子发布工具**」。两者指同一个应用，详见根 [README](../README.md)。
+> **关于名称**：项目对外名为「**电商产品发布工具**」（2026-10-20 起，应用窗口标题、页面标题和欢迎页也改用它）；
+> 安装包名、`tauri.conf.json` 的 `productName`、exe 文件描述与应用内更新链路仍沿用内部产品名
+> 「**抖音袜子发布工具**」，`identifier`（`com.dyin.sock-publisher`，决定数据目录）和 exe 名 `douyin-sock-publisher` 也不改。
+> 两者指同一个应用，详见根 [README](../README.md)。
 
 基于 **Tauri 2 + Vue 3 + TypeScript + Element Plus** 的桌面端，业务后端是 Python Flask Sidecar。
 本目录只是桌面端；共享业务库在仓库根 `src/`，MCP Server 在根 `mcp-server/`。
@@ -23,17 +24,24 @@
 ```text
 tauri-app/
 ├── src/                        # Vue 3 前端
-│   ├── components/             # CaptureSection / SkuList / SettingsPanel / ContextMenu /
-│   │                           # OnboardingGuide / ProductMediaManager / WhiteBgPanel /
-│   │                           # ShopStatusBar / TaobaoPublishPanel / TaobaoPreflightSummary /
-│   │                           # XhsPublishPanel
-│   ├── views/                  # ProductManager.vue（主页面）、Settings.vue
+│   ├── components/             # CaptureSection / SkuList / SettingsPanel（设置页外壳）/ ContextMenu /
+│   │   │                       # OnboardingGuide / ProductMediaManager / WhiteBgPanel /
+│   │   │                       # ShopStatusBar / TaobaoPublishPanel / TaobaoPreflightSummary /
+│   │   │                       # XhsPublishPanel / PricingResultsDialog / UploadProgressPanel
+│   │   └── settings/           # 设置页各 Tab：PricingTab / ModelTab / AutomationTab（含材质、水洗标
+│   │                           # 两个子区块）/ McpTab / AboutTab，及共用样式 _section.scss、_info-grid.scss
+│   ├── composables/            # 主页流程：useShopAccount / useUploadTaskMonitor / useSkuList /
+│   │   │                       # useProductForm / useSmartPricing / usePublishFlow / useProductList
+│   │   └── settings/           # 设置页表单状态：usePricingSettings / useModelSettings /
+│   │                           # useAutomationSettings / useMcpGuide
+│   ├── views/                  # ProductManager.vue（主页面，只做装配）、Settings.vue
 │   ├── stores/productStore.ts  # Pinia 状态
-│   ├── services/               # api.ts（HTTP + Tauri 命令）、updater.ts（应用内更新）
+│   ├── services/               # api.ts（所有 HTTP 请求 + Tauri 命令，导出 BACKEND_URL 与错误整理函数）、
+│   │                           # updater.ts（应用内更新）
 │   ├── styles/                 # variables.scss / global.scss / components.scss
 │   ├── types/index.ts          # 类型定义
 │   ├── router/index.ts         # 路由
-│   ├── utils/                  # taobaoFormVerification.ts、taobaoTextLength.ts
+│   ├── utils/                  # dialog.ts、taobaoFormVerification.ts、taobaoTextLength.ts
 │   ├── App.vue、main.ts        # 根组件与入口
 │   └── auto-imports.d.ts、components.d.ts   # unplugin 自动生成（勿手改）
 ├── src-tauri/                  # Tauri Rust 壳层
@@ -91,8 +99,8 @@ Set-Location tauri-app
 npm install
 
 Set-Location ..
-pip install -r requirements.txt                      # 仓库根，较全
-pip install -r tauri-app/python-sidecar/requirements.txt   # sidecar 子集
+pip install -r requirements.txt                      # 仓库根：只转发到下面这份，两条命令等价
+pip install -r tauri-app/python-sidecar/requirements.txt   # 后端依赖的唯一清单
 ```
 
 ### 3. 开发模式

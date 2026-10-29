@@ -235,9 +235,12 @@ def test_missing_files_are_uploaded_into_their_own_role_folder(completion):
                      if value == call["folder_id"])
         assert parts[0] == manifest.folder_name
         assert len(parts) == 2, "图必须落到角色子目录，不能落到商品目录根层"
+    # 同名主图可能位于 主图/800/；保留项必须按完整相对路径识别，不能假定它在根层。
+    kept_receipt = next(receipt for receipt in prepared.receipts
+                        if receipt.relative_path == keep.relative_path)
+    assert kept_receipt.uploaded_now is False
     assert all(receipt.uploaded_now for receipt in prepared.receipts
-               if Path(receipt.relative_path).name != keep_name
-               or receipt.folder != (manifest.folder_name, "主图"))
+               if receipt.relative_path != keep.relative_path)
     # 补传成功后写回账本，键里带目录，避免以后又被"有回执"挡住
     assert {item["folder_id"] for item in completion.ledger.recorded} == {
         call["folder_id"] for call in completion.uploads}

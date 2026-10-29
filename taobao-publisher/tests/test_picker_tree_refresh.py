@@ -172,6 +172,123 @@ class ScrollIntoWindowTest(unittest.TestCase):
         self.assertEqual([], client.scrolls)
 
 
+class SegmentedVirtualTreeClient:
+    """按真实 metrics 驱动分段扫描；只认生产表达式导出的标记。"""
+
+    def __init__(self, windows):
+        self.windows = windows
+        self.window = WINDOW_WITHOUT_TARGET
+        self.positions = []
+        self.reads = 0
+
+    def evaluate(self, expression, context_id=None, timeout=None):  # noqa: ARG002
+        if media_library.SCROLL_EXPRESSION_MARKER in expression:
+            self.positions.append(0)
+            self.window = self.windows.get(0, WINDOW_WITHOUT_TARGET)
+            return {"ok": True}
+        if media_library.VIRTUAL_TREE_METRICS_MARKER in expression:
+            return {"ok": True, "virtualTreeMetrics": True,
+                    "scrollHeight": 880, "clientHeight": 306}
+        if media_library.SCROLL_TO_POSITION_MARKER in expression:
+            position = int(expression.split("const position=", 1)[1].split(";", 1)[0])
+            self.positions.append(position)
+            self.window = self.windows.get(position, WINDOW_WITHOUT_TARGET)
+            return {"ok": True, "scrollTop": position}
+        self.reads += 1
+        return self.window
+
+
+class SegmentedProductRootTest(unittest.TestCase):
+    """2026-10-27：目标在第二屏，回顶部找不到不等于目录不存在。"""
+
+    PRODUCT = "ID-966677280061"
+
+    def test_target_in_a_later_window_is_found_without_reopening(self) -> None:
+        target_window = tree([["全部图片"], ["全部图片", self.PRODUCT]])
+        client = SegmentedVirtualTreeClient({0: WINDOW_WITHOUT_TARGET, 229: target_window})
+        stale = mock.Mock()
+        path = media_library.ensure_product_root(
+            client, self.PRODUCT, context_id=None, on_stale=stale)
+        self.assertEqual(["全部图片", self.PRODUCT], path)
+        self.assertEqual([0, 0, 229], client.positions)
+        self.assertEqual(3, client.reads, "顶部初读、渲染后复读、第二屏各核对一次")
+        stale.assert_not_called()
+
+    def test_missing_target_scans_through_the_bottom_before_failing(self) -> None:
+        client = SegmentedVirtualTreeClient({})
+        with self.assertRaises(PageError) as caught:
+            media_library.ensure_product_root(client, self.PRODUCT, context_id=None)
+        self.assertIn("判据=directory_missing", str(caught.exception))
+        self.assertEqual([0, 0, 229, 458, 574] * 2, client.positions,
+                         "首次扫描到底后允许刷新一次；刷新后仍须扫描到底才能判定目录缺失")
+
+    def test_position_scroll_expression_notifies_virtual_tree(self) -> None:
+        expression = media_library._scroll_tree_to_position_expression(229)
+        assignment = expression.index("scroller.scrollTop=position;")
+        notification = expression.index("scroller.dispatchEvent(new Event('scroll'));")
+        rendered = expression.index("await new Promise")
+        self.assertLess(assignment, notification)
+        self.assertLess(notification, rendered,
+                        "必须先通知虚拟树重算窗口，再等待新节点挂载")
+
+
+class RetryOpenDirectoryClient(SegmentedVirtualTreeClient):
+    """根目录已展开但子目录未渲染：模拟失败重试时的真实页面。"""
+
+    def __init__(self, windows, open_plan):
+        super().__init__(windows)
+        self.open_plan = [list(path) for path in open_plan]
+        self.opened = []
+        self.current = []
+
+    def evaluate(self, expression, context_id=None, timeout=None):
+        if '"action": "open"' in expression:
+            target = self.open_plan[len(self.opened)]
+            self.opened.append(target)
+            self.current = list(target)
+            return {"ok": True, "supported": True, "path": list(target)}
+        result = super().evaluate(expression, context_id=context_id, timeout=timeout)
+        if isinstance(result, dict) and "paths" in result:
+            return {**result, "path": list(self.current)}
+        return result
+
+
+class RetryOpenDirectoryTest(unittest.TestCase):
+    PRODUCT = "ID-966677280061"
+
+    def test_expanded_root_child_is_scanned_before_opening(self) -> None:
+        root_only = tree([["全部图片"], ["全部图片", self.PRODUCT]])
+        with_child = tree([["全部图片"], ["全部图片", self.PRODUCT],
+                           ["全部图片", self.PRODUCT, "主图"]])
+        client = RetryOpenDirectoryClient({0: root_only, 229: with_child},
+                                          open_plan=[[self.PRODUCT], [self.PRODUCT, "主图"]])
+        with mock.patch.object(media_library, "wait_listing_settled", return_value={}), \
+                mock.patch.object(page, "wait_for_media_gallery_ready", return_value={}):
+            path = media_library.open_directory(
+                client, [self.PRODUCT, "主图"], context_id=None)
+        self.assertEqual([self.PRODUCT, "主图"], path)
+        self.assertEqual([[self.PRODUCT], [self.PRODUCT, "主图"]], client.opened)
+        self.assertEqual([0, 0, 0, 229], client.positions,
+                         "根目录先定位一次；子目录回顶后再初读、渲染复读并定位第二屏")
+
+
+class BindPreparedMediaRetryTest(unittest.TestCase):
+    PRODUCT = "ID-966677280061"
+
+    def test_binding_also_uses_segmented_lookup_when_direct_read_misses(self) -> None:
+        target_window = tree([["全部图片"], ["全部图片", self.PRODUCT]])
+        client = SegmentedVirtualTreeClient({0: WINDOW_WITHOUT_TARGET, 229: target_window})
+        prepared = SimpleNamespace(
+            manifest=SimpleNamespace(folder_name=self.PRODUCT),
+            selection_plan=mock.Mock(return_value={}))
+        with mock.patch.object(form_adapters, "config_for", return_value={}):
+            plan = form_adapters.bind_prepared_media(
+                client, SimpleNamespace(), {}, prepared, "account-A", context_id=None)
+        self.assertEqual({}, plan)
+        self.assertEqual([0, 0, 229], client.positions,
+                         "绑定阶段的直读未命中后，也必须走同一套分段定位")
+
+
 class EnsureProductRootStaleTreeTest(unittest.TestCase):
     """`ensure_product_root`：重取是兜底，滚到顶才是修复。"""
 

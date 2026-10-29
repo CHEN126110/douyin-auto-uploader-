@@ -52,6 +52,7 @@ from unittest import mock
 from taobao_publish import mapping, models, stages
 
 SUBPROJECT_ROOT = Path(__file__).resolve().parents[1]
+import sidecar_source as sidecar
 SIDECAR_APP = SUBPROJECT_ROOT.parent / "tauri-app" / "python-sidecar" / "app.py"
 
 
@@ -150,13 +151,13 @@ class SidecarNoLongerCarriesTheFieldTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.source = SIDECAR_APP.read_text(encoding="utf-8")
+        cls.source = sidecar.text()
 
     def test_no_notice_string_literal_is_left_in_the_sidecar(self) -> None:
         """只看**字符串字面量**，所以解释"为什么删"的注释不会把这条用例考红。"""
 
         literals = sorted({
-            node.value for node in ast.walk(ast.parse(self.source))
+            node.value for tree in sidecar.trees() for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and node.value == "notice"})
         self.assertEqual([], literals, (
             "app.py 里又出现了 'notice' 字符串字面量。回传、指纹、保存白名单、新建插入"

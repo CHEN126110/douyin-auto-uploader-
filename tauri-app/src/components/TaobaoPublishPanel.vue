@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import axios from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { api, tauriCommands } from "@/services/api";
+import { api, apiErrorMessage, tauriCommands } from "@/services/api";
 import { useProductStore } from "@/stores/productStore";
 import type {
   ApiResponse,
@@ -116,13 +115,6 @@ watch(draft, () => {
   fieldErrors.value = {};
 }, { deep: true, flush: "sync" });
 
-function errorMessage(error: unknown): string {
-  if (axios.isAxiosError<ApiResponse>(error)) {
-    return error.response?.data?.message || error.response?.data?.msg || error.message;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
 function responseData<T>(response: ApiResponse<T>, failure: string): T {
   if (!response.success || !response.data) {
     throw new Error(response.message || response.msg || failure);
@@ -147,7 +139,7 @@ async function loadReadiness() {
     readiness.value = data;
   } catch (error) {
     if (version === readinessVersion) {
-      readinessError.value = `读取淘宝路线状态失败：${errorMessage(error)}`;
+      readinessError.value = `读取淘宝路线状态失败：${apiErrorMessage(error)}`;
     }
   } finally {
     if (version === readinessVersion) readinessLoading.value = false;
@@ -245,7 +237,7 @@ async function loadProductPreparation() {
     checkedRevision = draftRevision;
   } catch (error) {
     if (isCurrentRequest(version, recordId)) {
-      actionError.value = `读取淘宝资料失败：${errorMessage(error)}`;
+      actionError.value = `读取淘宝资料失败：${apiErrorMessage(error)}`;
     }
   } finally {
     finishAction();
@@ -374,7 +366,7 @@ async function checkPreparation() {
     ElMessage.info(data.can_export ? "检查已完成，可生成本地淘宝资料包" : "检查已完成，请按报告补全资料");
   } catch (error) {
     if (isCurrentRequest(version, payload.record_id, revision)) {
-      actionError.value = `淘宝资料检查失败：${errorMessage(error)}`;
+      actionError.value = `淘宝资料检查失败：${apiErrorMessage(error)}`;
     }
   } finally {
     finishAction();
@@ -404,7 +396,7 @@ async function exportPacket() {
       // 导出失败后必须重新检查，避免使用文件变化前的检查结果继续生成。
       report.value = null;
       checkedRevision = -1;
-      actionError.value = `生成淘宝资料包失败：${errorMessage(error)}`;
+      actionError.value = `生成淘宝资料包失败：${apiErrorMessage(error)}`;
     }
   } finally {
     finishAction();
@@ -416,7 +408,7 @@ async function openPacketFolder() {
   try {
     await tauriCommands.openFolder(packet.value.packet_dir);
   } catch (error) {
-    actionError.value = `资料包已生成，打开目录失败：${errorMessage(error)}。可按下方路径手动打开。`;
+    actionError.value = `资料包已生成，打开目录失败：${apiErrorMessage(error)}。可按下方路径手动打开。`;
   }
 }
 
@@ -533,7 +525,7 @@ async function pollPublish(taskId: string, token: number) {
     } catch (error) {
       if (publishPollToken.value !== token) return;
       // 轮询失败不当作任务失败——如实说「读不到进度」，保留上一次状态。
-      publishError.value = `读取发布进度失败：${errorMessage(error)}`;
+      publishError.value = `读取发布进度失败：${apiErrorMessage(error)}`;
       return;
     }
   }
@@ -560,7 +552,7 @@ async function cancelPublish() {
     // 否则界面会显示一个后端并不知道的「已取消」。
     ElMessage.info("已请求取消，将在**当前阶段结束后**停止");
   } catch (error) {
-    publishError.value = `取消失败：${errorMessage(error)}`;
+    publishError.value = `取消失败：${apiErrorMessage(error)}`;
   } finally {
     publishCancelling.value = false;
   }
@@ -639,7 +631,7 @@ async function startPublish() {
     );
     void pollPublish(data.task_id, token);
   } catch (error) {
-    publishError.value = `启动淘宝发布失败：${errorMessage(error)}`;
+    publishError.value = `启动淘宝发布失败：${apiErrorMessage(error)}`;
   } finally {
     publishStarting.value = false;
   }

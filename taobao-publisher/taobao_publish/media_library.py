@@ -317,6 +317,127 @@ def _scroll_tree_to_top(client, *, context_id):
         pass
 
 
+#: 虚拟树的实际尺寸。测试按标记分派，不复制整段表达式。
+VIRTUAL_TREE_METRICS_MARKER = "virtualTreeMetrics"
+SCROLL_TO_POSITION_MARKER = "scroller.scrollTop=position;"
+_VIRTUAL_TREE_RENDER_WAIT_MS = 100
+_VIRTUAL_TREE_MAX_STEPS = 200
+
+_VIRTUAL_TREE_METRICS_EXPRESSION = r"""
+(() => {
+  const visible=e=>!!(e.getBoundingClientRect().width&&e.getBoundingClientRect().height);
+  const trees=Array.from(document.querySelectorAll('[role="tree"],.next-tree'))
+    .filter(visible).filter(e=>!e.parentElement.closest('[role="tree"],.next-tree'));
+  if(trees.length!==1)return {ok:false,reason:'tree_not_unique'};
+  for(let n=trees[0];n;n=n.parentElement){
+    const s=getComputedStyle(n);
+    if(n.scrollHeight>n.clientHeight+2&&/auto|scroll/.test(s.overflowY)){
+      return {ok:true,virtualTreeMetrics:true,scrollTop:n.scrollTop,
+        scrollHeight:n.scrollHeight,clientHeight:n.clientHeight};
+    }
+  }
+  return {ok:false,reason:'scroller_missing'};
+})()
+"""
+
+
+def _scroll_tree_to_position_expression(position):
+    """滚动一屏并等虚拟列表提交新节点；位置只由下面的整数计算产生。"""
+
+    return r"""
+(async () => {
+  const position=POSITION;
+  const visible=e=>!!(e.getBoundingClientRect().width&&e.getBoundingClientRect().height);
+  const trees=Array.from(document.querySelectorAll('[role="tree"],.next-tree'))
+    .filter(visible).filter(e=>!e.parentElement.closest('[role="tree"],.next-tree'));
+  if(trees.length!==1)return {ok:false,reason:'tree_not_unique'};
+  let scroller=null;
+  for(let n=trees[0];n;n=n.parentElement){
+    const s=getComputedStyle(n);
+    if(n.scrollHeight>n.clientHeight+2&&/auto|scroll/.test(s.overflowY)){scroller=n;break;}
+  }
+  if(!scroller)return {ok:false,reason:'scroller_missing'};
+  scroller.scrollTop=position;
+  // 该虚拟树只在收到 scroll 事件后重算渲染窗口；仅改 scrollTop 不会挂载后续节点。
+  scroller.dispatchEvent(new Event('scroll'));
+  await new Promise(resolve=>setTimeout(resolve,WAIT_MS));
+  return {ok:true,scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,
+    clientHeight:scroller.clientHeight};
+})()
+""".replace('POSITION', str(int(position))).replace('WAIT_MS', str(_VIRTUAL_TREE_RENDER_WAIT_MS))
+
+
+def _scroll_target_into_view(client, context_id, read_target, target_label):
+    """分段滚动并逐屏调用 ``read_target``；滚动本身不作为目录存在的证据。"""
+
+    from .page import PageError
+
+    _scroll_tree_to_top(client, context_id=context_id)
+    target = read_target()
+    if target:
+        return target
+    metrics = client.evaluate(_VIRTUAL_TREE_METRICS_EXPRESSION, context_id=context_id)
+    if not isinstance(metrics, dict) or metrics.get('ok') is not True:
+        return None
+    height = metrics.get('clientHeight')
+    total = metrics.get('scrollHeight')
+    if (isinstance(height, bool) or isinstance(total, bool)
+            or not isinstance(height, (int, float)) or not isinstance(total, (int, float))
+            or height <= 0 or total < height):
+        return None
+    maximum = max(0, int(total - height))
+    step = max(40, int(height * 0.75))
+    positions = list(range(0, maximum + 1, step))
+    if positions[-1] != maximum:
+        positions.append(maximum)
+    if len(positions) > _VIRTUAL_TREE_MAX_STEPS:
+        raise PageError('选图器目录树分段扫描未完成（超过 {} 屏）：{}'.format(
+            _VIRTUAL_TREE_MAX_STEPS, target_label))
+    for position in positions:
+        result = client.evaluate(_scroll_tree_to_position_expression(position), context_id=context_id)
+        if isinstance(result, dict) and result.get('ok') is False:
+            return None
+        target = read_target()
+        if target:
+            return target
+    return None
+
+
+def _scroll_product_into_view(client, product_name, *, context_id):
+    """分段滚动虚拟树，直到商品根目录被现有读取器真正识别。"""
+
+    return _scroll_target_into_view(
+        client, context_id,
+        lambda: product_root_path(client, product_name, context_id=context_id, page=PAGE_PICKER),
+        product_name)
+
+
+def _rendered_directory_path(client, path, *, context_id):
+    """按路径后缀读当前渲染窗口；命中多条时拒绝猜一个同名目录。"""
+
+    from .page import PageError
+
+    wanted = list(path)
+    state = read_directory(client, context_id=context_id)
+    matches = [list(known) for known in (state.get('paths') or [])
+               if wanted and len(known) >= len(wanted) and list(known[-len(wanted):]) == wanted]
+    if len(matches) > 1:
+        raise PageError(_media_failure(
+            STAGE_UPLOAD_IMAGES, 'open_directory', PAGE_PICKER,
+            '/'.join(wanted), 'directory_ambiguous'))
+    return matches[0] if matches else None
+
+
+def _scroll_directory_into_view(client, path, *, context_id):
+    """按完整目录路径定位后续窗口，覆盖根目录已展开但子目录未渲染的重试现场。"""
+
+    wanted = list(path)
+    return _scroll_target_into_view(
+        client, context_id,
+        lambda: _rendered_directory_path(client, wanted, context_id=context_id),
+        '/'.join(wanted))
+
+
 def ensure_product_root(client, product_name, *, context_id, creator=None, role_names=(),
                         wait_seconds=5.0, page=PAGE_PICKER, on_stale=None,
                         context_holder=None):
@@ -383,10 +504,10 @@ def ensure_product_root(client, product_name, *, context_id, creator=None, role_
     from .page import PageError
 
     def read():
-        # ⚠️ **每次读之前都滚到顶**：树是虚拟列表，窗口位置决定哪些节点存在。
-        # 这一步只改滚动位置（不点选、不改选中），是助推；读到的结果才是判据。
+        # 先回顶部走快速路径；目标在后续窗口时逐屏扫描并逐屏回读，不能只找第一屏。
         if page == PAGE_PICKER:
-            _scroll_tree_to_top(client, context_id=_current_context(storage, context_id))
+            return _scroll_product_into_view(
+                client, product_name, context_id=_current_context(storage, context_id))
         return product_root_path(client, product_name,
                                  context_id=_current_context(storage, context_id), page=page)
 
@@ -394,6 +515,13 @@ def ensure_product_root(client, product_name, *, context_id, creator=None, role_
     path = read()
     if path:
         return path
+    if page == PAGE_PICKER and creator is None:
+        # 仅用于已有完整素材回执、选图器却保留旧树的路径；不改变 creator 建目录契约。
+        # 只刷新这一次，不循环点击、不重建目录；失败仍由后面的原判据如实报错。
+        refresh_gallery(client, context_id=_current_context(storage, context_id))
+        path = read()
+        if path:
+            return path
     stale_first = page == PAGE_PICKER and on_stale is not None
     if stale_first:
         # 兜底路径：调用方给了"重取"能力时再用一次（重开弹层会换 iframe 上下文）。
@@ -1137,10 +1265,16 @@ def open_directory(client, path, *, context_id, timeout=5.0, expand=False, page=
             listing_before = None
     for size in sizes:
         prefix = list(path[:size])
+        # 选图器的虚拟窗口也会卸载「已展开父节点」的子项（2026-10-27 真机）。
+        # 点击这一层之前先按完整路径分段定位；不把第一屏读不到当成目录不存在。
+        if page == PAGE_PICKER and prefix:
+            rendered = [known for known in (state.get('paths') or [])
+                        if len(known) >= len(prefix) and list(known[-len(prefix):]) == prefix]
+            if not rendered:
+                _scroll_directory_into_view(client, prefix, context_id=context_id)
         # 素材中心页把「已展开」父节点的子项从 DOM 上卸载（真机实证 2026-10-10）：
         # 子目录**存在**却读不到。进下一层之前先助推并有界等待，等不到再照原样如实报
         # directory_missing——否则会把「没渲染」判成「不存在」，把人引去手建重复目录。
-        # 选图器不点：那棵树的子目录会正常渲染（E-291/E-293），多点一下只会把节点折回去。
         if page == PAGE_MATERIAL_CENTER and len(prefix) > 1:
             _wait_for_child_render(client, prefix, context_id=context_id)
         result = client.evaluate(folder_expression(prefix, action='open'), context_id=context_id)

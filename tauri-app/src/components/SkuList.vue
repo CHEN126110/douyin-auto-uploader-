@@ -52,6 +52,18 @@ function updateSkuName(sku: SKU, value: string) {
 function updateSkuPrice(sku: SKU, value: number) {
   sku.price = value;
 }
+
+function updateSkuRemark(sku: SKU, value: string) {
+  sku.remark = value;
+}
+
+// 双数是平台销售规格，独立于 SKU 备注；其余已采集规格保持不变。
+function updateSkuPairCount(sku: SKU, value: string) {
+  const specs = { ...(sku.spec_values || {}) };
+  if (value.trim()) specs.双数 = value;
+  else delete specs.双数;
+  sku.spec_values = specs;
+}
 </script>
 
 <template>
@@ -60,6 +72,8 @@ function updateSkuPrice(sku: SKU, value: number) {
     <div class="sku-header">
       <div class="sku-header-item thumbnail-col"></div>
       <div class="sku-header-item name-col">SKU名称</div>
+      <div class="sku-header-item remark-col">SKU备注</div>
+      <div class="sku-header-item pair-count-col">双数（必填）</div>
       <div class="sku-header-item price-col">价格</div>
       <div class="sku-header-item action-col"></div>
     </div>
@@ -95,6 +109,22 @@ function updateSkuPrice(sku: SKU, value: number) {
           placeholder="SKU名称"
           :class="['sku-name-input', { 'is-duplicate': isDuplicate(sku) }]"
           @update:model-value="updateSkuName(sku, $event)"
+        />
+
+        <!-- 这一条 SKU 自己的可选备注，与商品级 remark 独立 -->
+        <el-input
+          :model-value="sku.remark ?? ''"
+          placeholder="SKU备注（可选）"
+          class="sku-remark-input"
+          @update:model-value="updateSkuRemark(sku, $event)"
+        />
+
+        <!-- 平台销售规格：按每条 SKU 的实际双数填写，与备注无关 -->
+        <el-input
+          :model-value="sku.spec_values?.双数 ?? ''"
+          placeholder="双数，如 1"
+          class="sku-pair-count-input"
+          @update:model-value="updateSkuPairCount(sku, $event)"
         />
 
         <!-- 价格 -->
@@ -172,6 +202,10 @@ function updateSkuPrice(sku: SKU, value: number) {
 
   &.name-col {
     flex: 1;
+  }
+
+  &.remark-col {
+    width: 150px;
   }
 
   &.price-col {
@@ -281,6 +315,16 @@ function updateSkuPrice(sku: SKU, value: number) {
   :deep(.el-input__wrapper.is-focus) {
     box-shadow: 0 0 0 1px #f56c6c inset !important;
   }
+}
+
+.sku-remark-input {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.sku-pair-count-input {
+  width: 100px;
+  flex-shrink: 0;
 }
 
 .sku-price-input {

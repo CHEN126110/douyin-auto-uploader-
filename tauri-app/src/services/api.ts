@@ -7,6 +7,7 @@ import axios from "axios";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ApiResponse,
+  AppInfo,
   Product,
   ProductDetail,
   ProductMediaListing,
@@ -31,6 +32,7 @@ import type {
   ShopSessionState,
   ShopProfile,
   ShopSwitchResult,
+  ShopRestoreResult,
   ShopFreightTemplates,
   WhiteBgModelStatus,
   WhiteBgSelectionResult,
@@ -41,7 +43,9 @@ import type {
 
 // 后端URL配置
 // 注意: 如果端口5000被占用，使用5001
-const BACKEND_URL = "http://127.0.0.1:5001";
+// 前端里凡是要用到后端地址的地方（请求、图片预览地址、界面展示）都从这里取，
+// 不要再在组件里写死 127.0.0.1:5001。
+export const BACKEND_URL = "http://127.0.0.1:5001";
 
 export function productMediaImageUrl(recordId: number, path: string, modifiedAt: string, preview = false) {
   const query = new URLSearchParams({ path, version: modifiedAt, size: preview ? "preview" : "thumb" });
@@ -105,6 +109,29 @@ http.interceptors.response.use(
   }
 );
 
+// ========== 请求错误整理 ==========
+//
+// 组件不直接依赖 axios：判断「是不是 HTTP 错误」「后端回了什么」都走下面三个函数，
+// 这样以后换请求库只需要改本文件。
+
+/** 把任意异常整理成给用户看的原因：HTTP 错误优先取后端返回的 message / msg。 */
+export function apiErrorMessage(error: unknown): string {
+  if (axios.isAxiosError<ApiResponse>(error)) {
+    return error.response?.data?.message || error.response?.data?.msg || error.message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** 后端返回的 HTTP 状态码；超时、断网、非 HTTP 异常时为 undefined。 */
+export function apiErrorStatus(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined;
+}
+
+/** 后端明确回了 `success: false`，说明请求已被后端处理并拒绝（区别于「结果未知」）。 */
+export function apiErrorRejectedExplicitly(error: unknown): boolean {
+  return axios.isAxiosError<ApiResponse>(error) && error.response?.data?.success === false;
+}
+
 // ========== Tauri 命令 ==========
 
 // 后端生命周期（启动/停止/状态）由 Rust 壳层独占管理，前端不提供任何拉起或停止封装。
@@ -119,30 +146,18 @@ export const tauriCommands = {
     }
   },
 
+  /** 由桌面端写入系统剪贴板，避免 WebView 复制成功提示与系统内容不一致 */
+  async writeClipboardText(text: string): Promise<void> {
+    try {
+      await invoke("write_clipboard_text", { text });
+    } catch (error) {
+      console.error("写入系统剪贴板失败:", error);
+      throw error;
+    }
+  },
+
   /** 获取应用信息 */
-  async getAppInfo(): Promise<{
-    name: string;
-    version: string;
-    platform: string;
-    arch: string;
-    backend_url: string;
-    runtime_mode: "development" | "packaged";
-    app_dir: string;
-    workspace_root: string;
-    resource_root: string | null;
-    mcp_server_dir: string;
-    mcp_server_entry: string;
-    mcp_readme_path: string;
-    skill_dir: string;
-    mcp_http_endpoint: string;
-    mcp_executable_path: string | null;
-    mcp_server_exists: boolean;
-    mcp_server_entry_exists: boolean;
-    mcp_readme_exists: boolean;
-    skill_dir_exists: boolean;
-    mcp_executable_exists: boolean;
-    preferred_mcp_launch_mode: "node" | "exe";
-  }> {
+  async getAppInfo(): Promise<AppInfo> {
     try {
       return await invoke("get_app_info");
     } catch (error) {
@@ -618,12 +633,14 @@ export const api = {
 
   // ========== 店铺会话 ==========
 
-  /**
-   * 当前账户与平台状态。抖音店铺身份来自发布浏览器实测；
-   * 淘宝使用独立浏览器手动登录，当前仍返回 manual，不宣称身份已验证。
-   */
+  /** 当前账户与平台的实测身份；no_browser 只表示没有检测入口，不等于登录失效。 */
   getShopSession(silent = false): Promise<ApiResponse<ShopSessionState>> {
     return http.get("/api/shop/current", { __silentError: silent } as any);
+  },
+
+  /** 启动或人工恢复时调用一次；普通状态轮询不要调用，避免反复打开页面。 */
+  restoreShopSession(): Promise<ApiResponse<ShopRestoreResult>> {
+    return http.post("/api/shop/restore");
   },
 
   /** 已登记的店铺列表 */
@@ -708,6 +725,11 @@ export const api = {
     return http.post("/settings/automation/wash-label/remove", {
       stored_path: storedPath || "",
     });
+  },
+
+  /** 水洗标/吊牌图预览地址（后端只有一张全局图，加时间戳避免换图后读到浏览器缓存） */
+  automationWashLabelPreviewUrl(): string {
+    return `${BACKEND_URL}/settings/automation/wash-label/preview?t=${Date.now()}`;
   },
 
   /** 重置设置 */
@@ -806,6 +828,20 @@ export const api = {
   /** 白底图预览地址。后端只放行 uploads/products 之内的文件 */
   whiteBgImageUrl(path: string): string {
     return `${BACKEND_URL}/api/whitebg/image?path=${encodeURIComponent(path)}`;
+  },
+
+  // ========== 应用更新 ==========
+
+  /**
+   * 后台是否空闲（没有进行中的采集 / 发布 / 图片处理任务）。
+   * 自动更新在停止后端、覆盖安装之前必须先问一次，所以只给 5 秒，
+   * 并且不在控制台打印错误——失败原因由更新流程自己如实展示给用户。
+   */
+  getUpdateReadiness(): Promise<ApiResponse<{ ready: boolean }>> {
+    return http.get("/internal/update-readiness", {
+      timeout: 5000,
+      __silentError: true,
+    } as any);
   },
 
   // ========== 健康检查 ==========

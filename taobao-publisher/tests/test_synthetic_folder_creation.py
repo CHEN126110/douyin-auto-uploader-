@@ -65,13 +65,9 @@ def synthetic_browser(tmp_path_factory):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     client = None
     try:
+        from browser_process_support import wait_for_devtools_port
         active = profile / "DevToolsActivePort"
-        deadline = time.monotonic() + 20
-        while not active.is_file():
-            if time.monotonic() > deadline or process.poll() is not None:
-                pytest.fail("隔离测试浏览器启动失败")
-            time.sleep(0.1)
-        port = int(active.read_text(encoding="utf-8").splitlines()[0])
+        port = wait_for_devtools_port(process, active, timeout=20)
         with urllib.request.urlopen("http://127.0.0.1:%s/json/list" % port, timeout=5) as response:
             targets = json.load(response)
         matches = [t for t in targets if t.get("url") == FIXTURE.as_uri()]

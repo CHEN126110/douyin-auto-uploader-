@@ -25,7 +25,8 @@ from taobao_publish.media_manifest import (
 @pytest.fixture
 def prepared_case(tmp_path):
     root = tmp_path / '原商品目录'
-    names = ['主图/同名.jpg', 'SKU/同名.jpg', 'SKU/规格.jpg', '详情页/详情01.jpg']
+    # 两张不同目录的同名**主图**保留消歧覆盖；SKU 不再混入主图来源。
+    names = ['主图/同名.jpg', '主图/800/同名.jpg', 'SKU/规格.jpg', '详情页/详情01.jpg']
     for index, name in enumerate(names):
         file = root / name
         file.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +147,16 @@ def test_source_change_before_upload_is_not_a_partial_batch(prepared_case):
 def test_original_names_and_same_names_in_different_folders_select_correct_images(browser, prepared_case, monkeypatch):
     _, prepared, item = prepared_case
     grouped_gallery(browser, prepared.manifest.folder_name, caption='sibling')
+    browser.evaluate('''(() => {
+      const tree=document.querySelector('[role=tree]');
+      const main=window.productTreeNode.querySelector('[aria-label="主图"]');
+      const nested=document.createElement('div');nested.setAttribute('role','treeitem');
+      nested.setAttribute('aria-label','800');nested.style.cssText='min-height:28px;width:200px';
+      const text=document.createElement('span');text.className='next-tree-node-label';text.textContent='800';
+      text.onclick=e=>{e.stopPropagation();tree.querySelectorAll('[aria-selected]').forEach(n=>n.removeAttribute('aria-selected'));
+        nested.setAttribute('aria-selected','true');window.currentFolder='800';window.renderFolder();};
+      nested.append(text);main.append(nested);
+    })()''')
     groups={}
     for receipt in prepared.receipts:
         groups.setdefault(receipt.folder[-1], []).append({'name':receipt.name,'url':receipt.url})
@@ -204,7 +215,7 @@ def test_prepared_original_folders_pass_through_the_actual_http_worker_and_pipel
       }
       nodes.get('全部图片').setAttribute('aria-selected','true');renderPreparedFolder('全部图片');
     })()'''.replace('GROUPS',json.dumps(groups)).replace('PATHS',json.dumps(tree_paths)))
-    existing_loader=handoff.case.ns['_load_taobao_pipeline']
+    existing_loader=handoff.service.load_pipeline
     def load():
         actual=existing_loader()
         def from_record(row, request, **options):
@@ -212,7 +223,7 @@ def test_prepared_original_folders_pass_through_the_actual_http_worker_and_pipel
             options['media_preparer'] = lambda *args: prepared
             return actual.run_from_record(row, request, **options)
         return SimpleNamespace(run_from_record=from_record)
-    handoff.case.ns['_load_taobao_pipeline']=load
+    handoff.service.load_pipeline=load
     _,task=save_and_start(handoff)
     assert task['status']=='succeeded',task.get('error')
     assert not handoff.uploads,'进入表单后不得再次上传素材'

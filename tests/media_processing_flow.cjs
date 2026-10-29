@@ -168,10 +168,6 @@ test('完成后刷新当前目录，关闭或换商品后忽略旧任务的刷�
     '@/stores/productStore': {useProductStore: () => store},
     '@/services/api': {api: {}, productMediaImageUrl() {}},
     '@/components/WhiteBgPanel.vue': {},
-    // 2026-10-17：ProductMediaManager 后来引入了小红书发布面板（第 9 行 import、
-    // 第 117 行渲染），这里没同步补桩，导致本用例报「未配置依赖」而整步失败 ——
-    // 它同样挡住了发布流水线的「运行发布回归」。
-    '@/components/XhsPublishPanel.vue': {},
     '@element-plus/icons-vue': {}, 'element-plus': {},
   }, t);
   loads.length = 0;

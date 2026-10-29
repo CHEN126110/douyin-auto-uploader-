@@ -119,7 +119,10 @@ def test_one_native_directory_preserves_paths_bytes_and_waits_for_cloud_receipts
     assert client.evaluate('window.directoryRoots') == [{'name': manifest.folder_name, 'isDirectory': True}]
     received = {entry['path']: entry['sha'] for entry in client.evaluate('window.imported')}
     assert received == {'/' + manifest.folder_name + '/' + source.relative_path: source.sha256 for source in manifest.images}
-    assert len(reads) == 3 and len({tuple(path) for path in reads}) == 3
+    expected_directories = {(manifest.folder_name, *Path(source.relative_path).parts[:-1])
+                            for source in manifest.images}
+    assert len(reads) == len(expected_directories)
+    assert {tuple(path) for path in reads} == expected_directories
     assert all(receipt.picture_id for receipt in result.receipts)
     assert client.evaluate('location.href') == url, '素材模块本身没有导航到发布页'
 

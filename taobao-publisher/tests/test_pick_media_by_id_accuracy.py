@@ -79,14 +79,10 @@ def picker():
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
+        from browser_process_support import wait_for_devtools_port
         active = PROFILE / "DevToolsActivePort"
-        deadline = time.monotonic() + 20
-        while not active.is_file():
-            if time.monotonic() > deadline or process.poll() is not None:
-                pytest.fail("隔离测试浏览器启动失败")
-            time.sleep(0.1)
-        with urllib.request.urlopen("http://127.0.0.1:%s/json/list" % active.read_text(
-                encoding="utf-8").splitlines()[0], timeout=5) as response:
+        port = wait_for_devtools_port(process, active, timeout=20)
+        with urllib.request.urlopen("http://127.0.0.1:%s/json/list" % port, timeout=5) as response:
             matches = [t for t in json.load(response) if t.get("url") == FIXTURE.as_uri()]
         assert len(matches) == 1, "只能连接此次新建浏览器中的本地合成页"
         yield {"ws_url": matches[0]["webSocketDebuggerUrl"], "url": FIXTURE.as_uri()}

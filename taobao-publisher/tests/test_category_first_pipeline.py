@@ -24,16 +24,16 @@ CATEGORY_URL = 'https://item.upload.taobao.com/sell/ai/category.htm'
 
 class LocalCategoryClient:
     """只替换导航地址边界；输入、按钮、候选和面包屑表达式真实执行。"""
-    def __init__(self, browser, ns, cancel_after_next=False):
+    def __init__(self, browser, service, cancel_after_next=False):
         self.browser = browser
-        self.ns = ns
+        self.service = service              # TaobaoPublishService：取消时把它任务表里的任务都打上 cancelled
         self.cancel_after_next = cancel_after_next
 
     def evaluate(self, expression, **kwargs):
         if expression == 'location.href':
             href = self.browser.evaluate('window.categoryModel.href')
             if self.cancel_after_next and href != CATEGORY_URL:
-                for task in self.ns['_taobao_tasks'].values():
+                for task in self.service.tasks.values():
                     task['cancelled'] = True
             return href
         return self.browser.evaluate(expression, **kwargs)
@@ -59,12 +59,12 @@ def install_model(handoff, contracts, monkeypatch, variant='ok', cancel=False):
     source = Path(__file__).parent / 'fixtures/category-stage.js'
     handoff.browser.evaluate(source.read_text(encoding='utf-8'))
     handoff.browser.evaluate('setupCategoryModel(%s)' % json.dumps(variant))
-    client = LocalCategoryClient(handoff.browser, handoff.case.ns, cancel_after_next=cancel)
+    client = LocalCategoryClient(handoff.browser, handoff.service, cancel_after_next=cancel)
     monkeypatch.setattr(stages, '_open_publish_page', lambda *_args, **_kwargs: client)
     monkeypatch.setitem(stages.STAGE_HANDLERS, 'select_category',
         replace(stages.STAGE_HANDLERS['select_category'], run=REAL_CATEGORY_HANDLER))
     actual_run = pipeline.run_from_record
-    handoff.case.ns['_load_taobao_pipeline'] = lambda: SimpleNamespace(
+    handoff.service.load_pipeline = lambda: SimpleNamespace(
         run_from_record=lambda *args, **kwargs: actual_run(*args, **kwargs, contracts=contracts))
     # 缩短固定等待，仍让真实异步面包屑/地址更新发生，不替换任何类目DOM动作。
     actual_sleep = time.sleep

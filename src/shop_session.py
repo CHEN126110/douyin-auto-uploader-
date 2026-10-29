@@ -514,9 +514,9 @@ def observe_identity(
                     slug, entry["platform"], normalized
                 )
             )
-        # 一个身份都没有才叫「不知道」。只有账户 ID（淘宝能读 unb 但读不到店铺）时
-        # 仍然要记下来——「确认了登录的账户」本身是有价值的事实，只是没有店铺 ID。
-        if not shop_id and not account_id:
+        # 一个身份都没有才叫「不知道」。淘宝可能只读到账户 ID，千帆目前只读到
+        # 店铺名；这些都是实测身份，不能因为没有 shop_id 就把观测整条丢掉。
+        if not shop_id and not shop_name and not account_id:
             return {"status": "unknown", "previous_shop_id": None}
         now = datetime.now().isoformat(timespec="seconds")
         shop_id = str(shop_id) if shop_id else None
@@ -567,10 +567,8 @@ def list_profiles() -> List[Dict[str, Any]]:
 
     未实测到身份的账户以用户备注或本地账户标识展示，不把它冒充成店铺身份。
 
-    **两个平台现在走同一套规则**：``shop_id`` 是实测值，有就是已验证，没有就是
-    未验证。早先这里写死 ``platform == "douyin"``，导致淘宝**永远不可能**
-    变成已验证——那是当时「淘宝只做本地资料准备」的产品决策留下的。
-    现在淘宝也走真实登录链路了，所以规则统一。
+    三个平台走同一套规则：实测到店铺 ID、店铺名或账户 ID 中的任意一个，
+    就有可保留的登录身份。千帆目前只有店铺名，不能再要求它提供 ``shop_id``。
     """
     registry = load_registry()
     active = slugify_profile_name(registry.get("active_profile"))
@@ -580,10 +578,11 @@ def list_profiles() -> List[Dict[str, Any]]:
         item["profile_name"] = slug
         # 「已验证」= 实测到过任何一个真实的平台身份。
         #
-        # 淘宝上「账户 ID」与「店铺 ID」是两个不同的东西，可能只拿到前者
-        # （登录确认了，但店铺信息接口没读到）。那种情况仍算「已验证登录」，
-        # 只是没有店铺身份——展示时据实说明，不拿账户 ID 冒充店铺 ID。
-        has_verified_identity = bool(item.get("shop_id") or item.get("account_id"))
+        # 淘宝上「账户 ID」与「店铺 ID」是两个不同的东西，可能只拿到前者；
+        # 千帆则只有 DOM 实测的店铺名。都按各自真实证据展示，不互相冒充字段。
+        has_verified_identity = bool(
+            item.get("shop_id") or item.get("shop_name") or item.get("account_id")
+        )
         if not has_verified_identity:
             # 默认名按**平台**取，不能用"是淘宝吗？否则抖音"这种二选一 ✗ ——
             # 那会把小红书静默落成「抖音账户」（2026-10-14 真机截图实测：

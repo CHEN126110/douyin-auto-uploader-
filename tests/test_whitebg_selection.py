@@ -13,6 +13,7 @@ from PIL import Image
 import pytest
 
 from test_capture_attribute_storage import storage, definitions
+from taobao_test_support import make_service
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -26,9 +27,12 @@ from taobao_publish import desktop, local_source
 @pytest.fixture
 def selection(storage):
     ns = storage.ns
+    # 编辑保护读的是真实的淘宝发布服务的任务表和锁（2026-10-20 起不再是 app.py 里的模块全局）；
+    # 上传服务的同理（2026-10-21 起读 upload_service.tasks / .lock）
+    taobao = make_service()
     ns.update(_shop_account_lock=threading.RLock(),
-              _upload_tasks={}, _upload_tasks_lock=threading.RLock(),
-              _taobao_tasks={}, _taobao_tasks_lock=threading.RLock())
+              upload_service=SimpleNamespace(tasks={}, lock=threading.RLock()),
+              taobao_service=taobao)
     exec(definitions(ROOT / 'tauri-app/python-sidecar/app.py', {
         '_record_edit_blocked', '_product_edit_revision',
     }), ns)
@@ -40,7 +44,7 @@ def selection(storage):
         resolve_data_file=lambda name: name, edit_blocked=ns['_record_edit_blocked'],
         product_revision=ns['_product_edit_revision'], account_lock=ns['_shop_account_lock'], whitebg=jobs,
     ))
-    info = ns['_import_capture_product_record'](storage.product)
+    info = storage.service.import_capture_product_record(storage.product)
     record_id = info['record_id']
     root = Path(storage.product['download_path'])
     (root / '自选图片').mkdir()
@@ -138,7 +142,7 @@ def test_setting_is_product_scoped_and_capture_refresh_preserves_manual_choice(s
     second = selection.Record.create(name='其它商品', path=str(selection.root.parent), type=2,
                                      status=0, content='[]', update_time=datetime.now())
     assert not second.white_bg_path
-    selection.ns['_import_capture_product_record'](selection.product)
+    selection.service.import_capture_product_record(selection.product)
     assert record(selection).white_bg_path == selection.selected
 
 
@@ -146,7 +150,7 @@ def test_choice_changes_publish_revision_and_running_publish_blocks_edits(select
     before = selection.ns['_product_edit_revision'](record(selection).__data__)
     response = choose(selection, selection.selected)
     assert response.json['data']['record_revision'] != before
-    selection.ns['_taobao_tasks']['running'] = {'record_id': selection.record_id, 'status': 'running'}
+    selection.ns['taobao_service'].tasks['running'] = {'record_id': selection.record_id, 'status': 'running'}
     response = choose(selection, '')
     assert response.status_code == 409 and response.json['success'] is False
     assert record(selection).white_bg_path == selection.selected
